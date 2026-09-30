@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS assignments (
     family_key TEXT PRIMARY KEY, categories TEXT NOT NULL,
     updated_by TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS options (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS mappings (
+    source_key TEXT PRIMARY KEY, symbol_key TEXT NOT NULL, name TEXT,
+    updated_by TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS layer_colors (
+    name TEXT PRIMARY KEY, color TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS symbol_options (
     family_key TEXT PRIMARY KEY, show_fill INTEGER,
     updated_by TEXT, updated_at TEXT);
@@ -236,6 +241,35 @@ class CompanyStore:
             con.execute("DELETE FROM assignments")
             self._seed(con)
         return self.categories()
+
+    # -- remembered decisions for unknown plan elements ---------------------------
+
+    def mappings(self) -> dict[str, str]:
+        with self._tx() as con:
+            return {r["source_key"]: r["symbol_key"] for r in con.execute("SELECT * FROM mappings")}
+
+    def set_mapping(self, source_key: str, symbol_key: str | None, name: str = "") -> None:
+        """Remember which library symbol an element is (or "__ignore__"). None forgets it."""
+        with self._tx() as con:
+            if symbol_key is None:
+                con.execute("DELETE FROM mappings WHERE source_key=?", (source_key,))
+            else:
+                con.execute("INSERT OR REPLACE INTO mappings VALUES (?,?,?,?,?)",
+                            (source_key, symbol_key, name, current_user(), _now()))
+            self._log(con, "mapping", f"{source_key} -> {symbol_key}")
+
+    # -- layer colours learned from imported plans ----------------------------------
+
+    def layer_colors(self) -> dict[str, str]:
+        with self._tx() as con:
+            return {r["name"]: r["color"] for r in con.execute("SELECT * FROM layer_colors")}
+
+    def learn_layer_colors(self, colors: dict[str, str]) -> None:
+        with self._tx() as con:
+            for name, color in colors.items():
+                if color:
+                    con.execute("INSERT OR REPLACE INTO layer_colors VALUES (?,?,?)",
+                                (name, color, _now()))
 
     # -- per family display options ----------------------------------------------
 

@@ -2,9 +2,9 @@
 
 Windows-Programm, das aus Trimble-Nova-Elektroplänen die Legende der Apparate erzeugt.
 
-Stand: **Phase 1 (Bibliothek)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, gruppiert UP/AP-Varianten zu Familien und ordnet sie Kategorien zu. Die Kategorien gelten für die ganze Firma.
+Stand: **Phase 2 (Projekte und Import)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, ordnet sie Kategorien zu (für die ganze Firma) und liest Pläne (DXF, N4D, DWG) pro Geschoss in Projekte ein. Die Gesamtliste zeigt alle Apparate mit einer Spalte pro Geschoss.
 
-Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md)
+Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md) · [Phase 2](docs/PHASE2.md)
 
 ## Installation für die Firma
 
@@ -60,6 +60,9 @@ backend/nova_legend/
   parser/      Nova-Datensatz (.nzp): Baumformat, Geometrie, Symbolkatalog
   library/     Bibliotheks-Cache (SQLite) und Symbolfamilien
   categories/  Kategorien und Zuordnungen der Firma (firma.sqlite)
+  importer/    Plan-Import DXF, DWG (ODA), N4D und Erkennung
+  matcher/     Vorschläge für unbekannte Elemente
+  projects/    Projekte (Ordner pro Projekt, projekt.nlproj) und Gesamtliste
   n4d/         N4D-Analyse (nur Lesen)
   render/      SVG-Ausgabe der Symbole
   analysis/    Phase-0-Skripte

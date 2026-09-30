@@ -25,6 +25,7 @@ from pathlib import Path
 import olefile
 
 CSTRING = re.compile(rb"\xff\xfe\xff")
+DATASET_PREFIXES = ("Trimble.", "Plancal.")
 CODE_RE = re.compile(r"^[0-9A-Za-z_]+-[0-9A-Za-z_]+$")
 # Marker that follows the CString of a free text element
 TEXT_TAIL = b"\x33\x04\x00\x00\x00\x66\x3e\x00"
@@ -166,7 +167,7 @@ def analyse(path: str | Path) -> N4DReport:
         elements_field=struct.unpack_from("<I", elements, 4)[0],
         version_stream=version.hex(" "),
         acis_versions=acis,
-        datasets=dict(Counter(s.text for s in strings if s.text.startswith("Trimble."))),
+        datasets=dict(Counter(s.text for s in strings if s.text.startswith(DATASET_PREFIXES))),
         string_count=len(strings),
     )
 
@@ -178,13 +179,18 @@ def analyse(path: str | Path) -> N4DReport:
         if i + 1 < len(strings) and (strings[i + 1].text.startswith("elektro\\")
                                      or strings[i + 1].text.startswith("novaleiste\\")):
             last_name = _strip_guid(t)
-        if t.startswith("Trimble.") and i + 2 < len(strings):
+        if t.startswith(DATASET_PREFIXES) and i + 2 < len(strings):
             sheet, item = strings[i + 1].text, strings[i + 2].text
             nxt = strings[i + 3].text if i + 3 < len(strings) else ""
             if nxt.startswith("2D-"):
                 if current and current.item == item and current.graphic_id is None:
                     current.graphic_id = nxt
                     current.graphic_name = strings[i + 4].text if i + 4 < len(strings) else None
+                continue
+            # Objects without a 2D graphic reference their dataset twice, close
+            # together: the second reference belongs to the same object.
+            if (current and current.graphic_id is None and current.item == item
+                    and current.name == last_name and s.offset - current.offset < 3000):
                 continue
             current = N4DObject(last_name, t, sheet, item, offset=s.offset)
             report.objects.append(current)

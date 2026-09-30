@@ -3,8 +3,9 @@ import { api, Category, Options, setDatasetNames, Status, UpdateInfo } from "./a
 import Library from "./components/Library";
 import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
+import ProjectsPage from "./components/ProjectsPage";
 
-type Tab = "library" | "categories" | "settings";
+type Tab = "projects" | "library" | "categories" | "settings";
 
 export interface Toast {
   text: string;
@@ -12,7 +13,7 @@ export interface Toast {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("library");
+  const [tab, setTab] = useState<Tab>("projects");
   const [status, setStatus] = useState<Status | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [options, setOptions] = useState<Options | null>(null);
@@ -61,6 +62,9 @@ export default function App() {
           <span className="brand-mark">NL</span> NOVA-Legenden
         </div>
         <nav className="tabs">
+          <button className={`tab ${tab === "projects" ? "active" : ""}`} onClick={() => setTab("projects")}>
+            Projekte
+          </button>
           <button className={`tab ${tab === "library" ? "active" : ""}`} onClick={() => setTab("library")}>
             Bibliothek
           </button>
@@ -92,6 +96,9 @@ export default function App() {
         )}
       </header>
       <div className="main">
+        {tab === "projects" && (
+          <ProjectsPage categories={categories} notify={notify} onOpenSettings={() => setTab("settings")} />
+        )}
         {tab === "library" && options && (
           <Library
             categories={categories}

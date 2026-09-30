@@ -93,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import webview  # pywebview, installed in the Windows build
 
+            webview.settings["ALLOW_DOWNLOADS"] = True   # project export (ZIP)
+
             window = webview.create_window(f"NOVA-Legenden {config.APP_VERSION}", url,
                                            width=1400, height=900, min_size=(900, 600))
             app.state.shutdown = window.destroy  # used by the program update

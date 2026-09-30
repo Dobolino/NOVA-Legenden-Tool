@@ -66,6 +66,7 @@ class AppState:
 class SettingsIn(BaseModel):
     dataset_paths: list[str] | None = None
     company_folder: str | None = None
+    projects_folder: str | None = None
     nova_version: str | None = None
     oda_path: str | None = None
 
@@ -335,6 +336,9 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     @app.post("/api/categories/reset")
     def reset() -> dict:
         return {"items": st.company.reset_defaults()}
+
+    from .projects import register as register_projects
+    register_projects(app, st)
 
     # -- UI --------------------------------------------------------------------------
 

@@ -94,10 +94,14 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+DEFAULT_PROJECTS_FOLDER = r"T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
+
+
 @dataclass
 class Settings:
     dataset_paths: list[str] = field(default_factory=list)
     company_folder: str = ""
+    projects_folder: str = DEFAULT_PROJECTS_FOLDER
     nova_version: str = "19.2"
     oda_path: str = ""
 

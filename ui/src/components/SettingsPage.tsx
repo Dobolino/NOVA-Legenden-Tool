@@ -13,6 +13,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   const [paths, setPaths] = useState<string[]>(status.settings.dataset_paths);
   const [newPath, setNewPath] = useState("");
   const [company, setCompany] = useState(status.settings.company_folder);
+  const [projectsFolder, setProjectsFolder] = useState(status.settings.projects_folder);
   const [nova, setNova] = useState(status.settings.nova_version);
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -45,6 +46,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   useEffect(() => {
     setPaths(status.settings.dataset_paths);
     setCompany(status.settings.company_folder);
+    setProjectsFolder(status.settings.projects_folder);
     setNova(status.settings.nova_version);
   }, [status]);
 
@@ -190,6 +192,30 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
             </button>
             <button className="btn danger" disabled={busy || paths.length === 0} onClick={removeAll}>
               Alle entfernen
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Projektordner</h3>
+          <p className="desc">
+            Hier legt das Programm pro Projekt einen Ordner an (Projektdatei, importierte Pläne, später die Legenden).
+            Alle Mitarbeitenden tragen denselben Ordner ein.
+          </p>
+          <div className="row">
+            <input
+              className="input"
+              style={{ flex: 1, minWidth: 260 }}
+              placeholder="T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
+              value={projectsFolder}
+              onChange={(e) => setProjectsFolder(e.target.value)}
+            />
+            <button
+              className="btn primary"
+              disabled={busy || projectsFolder === status.settings.projects_folder}
+              onClick={() => save({ projects_folder: cleanPath(projectsFolder) }, "Projektordner gespeichert")}
+            >
+              Speichern
             </button>
           </div>
         </div>

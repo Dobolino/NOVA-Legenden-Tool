@@ -10,7 +10,8 @@ a = Analysis(
     [str(root / "packaging" / "launcher.py")],
     pathex=[str(root / "backend")],
     datas=[(str(root / "ui" / "dist"), "ui/dist")],
-    hiddenimports=collect_submodules("nova_legend") + collect_submodules("uvicorn") + ["webview"],
+    hiddenimports=(collect_submodules("nova_legend") + collect_submodules("uvicorn")
+                   + collect_submodules("python_multipart") + ["multipart", "webview"]),
     excludes=["tkinter", "matplotlib", "pytest"],
     noarchive=False,
 )

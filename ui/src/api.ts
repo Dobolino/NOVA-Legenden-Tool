@@ -68,6 +68,7 @@ export interface DatasetInfo {
 export interface Settings {
   dataset_paths: string[];
   company_folder: string;
+  projects_folder: string;
   nova_version: string;
   oda_path: string;
 }
@@ -122,6 +123,96 @@ export interface SymbolDetail {
   stats: Record<string, number>;
 }
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  nova_version: string;
+  created_at: string;
+  created_by: string;
+  template_from: string;
+  plan_count: number;
+  modified: string;
+}
+
+export interface Plan {
+  id: number;
+  name: string;
+  sort: number;
+  current_version: number | null;
+  file_name: string | null;
+  format: string | null;
+  imported_at: string | null;
+  imported_by: string | null;
+  versions: number;
+}
+
+export interface SummaryRow {
+  family_id: string;
+  family_key: string;
+  datasets: string[];
+  title: string;
+  item: string;
+  dataset: string;
+  svg: string;
+  kind: string;
+  categories: string[];
+  counts: Record<string, number>;
+  mountings: Record<string, number>;
+  names: string[];
+  methods: string[];
+  total: number;
+}
+
+export interface UnknownElement {
+  source_key: string;
+  name: string;
+  item: string;
+  graphic_name: string;
+  dataset: string;
+  counts: Record<string, number>;
+  layers: Record<string, number>;
+  total: number;
+}
+
+export interface IgnoredElement {
+  source_key: string;
+  name: string;
+  reason: string;
+  manual: boolean;
+  total: number;
+}
+
+export interface LayerInfo {
+  name: string;
+  color: string;
+  linetype: string;
+  source: string;
+}
+
+export interface ProjectDetail {
+  id: string;
+  folder: string;
+  meta: { name: string; nova_version: string; created_at: string; created_by: string; template_from: string };
+  settings: Record<string, unknown>;
+  layers: LayerInfo[];
+  plans: Plan[];
+  rows: SummaryRow[];
+  unknown: UnknownElement[];
+  ignored: IgnoredElement[];
+  stats: Record<string, number>;
+}
+
+export interface Suggestion {
+  symbol_key: string;
+  name: string;
+  item: string;
+  dataset: string;
+  mounting: string | null;
+  svg: string;
+  score: number;
+  parts: Record<string, number>;
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -141,11 +232,51 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return res.json() as Promise<T>;
 }
 
+async function upload<T>(url: string, fields: Record<string, string>, file: File): Promise<T> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  form.append("file", file);
+  const res = await fetch(url, { method: "POST", body: form });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const data = await res.json();
+      if (data.detail) msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    } catch {
+      /* keep status text */
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
 const qs = (params: Record<string, string | boolean | number>) =>
   new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
 
 export const api = {
   status: () => request<Status>("GET", "/api/status"),
+  projects: () => request<{ folder: string; folder_exists: boolean; items: ProjectSummary[] }>("GET", "/api/projects"),
+  createProject: (name: string, nova_version: string, template: string | null) =>
+    request<ProjectDetail>("POST", "/api/projects", { name, nova_version, template }),
+  project: (id: string) => request<ProjectDetail>("GET", `/api/projects/${encodeURIComponent(id)}`),
+  updateProject: (id: string, values: { name?: string; nova_version?: string }) =>
+    request<ProjectDetail>("PUT", `/api/projects/${encodeURIComponent(id)}`, values),
+  copyProject: (id: string, name: string) =>
+    request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/copy`, { name }),
+  deleteProject: (id: string) => request<{ ok: boolean; moved_to: string }>("DELETE", `/api/projects/${encodeURIComponent(id)}`),
+  exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
+  importPlan: (id: string, name: string, file: File, planId?: number) =>
+    upload<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}/plans`, { name, ...(planId ? { plan_id: String(planId) } : {}) }, file),
+  renamePlan: (id: string, planId: number, name: string) =>
+    request<ProjectDetail>("PUT", `/api/projects/${encodeURIComponent(id)}/plans/${planId}`, { name }),
+  reorderPlans: (id: string, ids: number[]) =>
+    request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/reorder`, { ids }),
+  deletePlan: (id: string, planId: number) =>
+    request<ProjectDetail>("DELETE", `/api/projects/${encodeURIComponent(id)}/plans/${planId}`),
+  suggestions: (id: string, sourceKey: string) =>
+    request<{ items: Suggestion[] }>("GET", `/api/projects/${encodeURIComponent(id)}/suggestions?${qs({ source_key: sourceKey })}`),
+  setMapping: (sourceKey: string, symbolKey: string | null, name = "") =>
+    request<{ ok: boolean }>("PUT", "/api/mappings", { source_key: sourceKey, symbol_key: symbolKey, name }),
   saveSettings: (s: Partial<Settings>) => request<Status>("PUT", "/api/settings", s),
   searchDatasets: () => request<{ found: string[]; folders: string[] }>("POST", "/api/settings/search-datasets"),
   sync: () => request<Status["sync"]>("POST", "/api/library/sync"),
