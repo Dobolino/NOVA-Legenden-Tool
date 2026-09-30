@@ -112,7 +112,8 @@ button, input, select { font: inherit; color: inherit; }
 .tile:hover { border-color: var(--accent); }
 .tile.selected { border-color: var(--accent); outline: 2px solid var(--accent); }
 .tile .pic { aspect-ratio: 1; display: grid; place-items: center; color: var(--fg); }
-.tile .pic svg { width: 78%; height: 78%; }
+.tile .pic { overflow: hidden; }
+.tile .pic svg { width: 78%; height: 78%; max-height: 100%; }
 .tile .name { font-size: 12px; font-weight: 600; line-height: 1.25; word-break: break-word; }
 .tile .meta { font-size: 11px; color: var(--muted); display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .badge {
