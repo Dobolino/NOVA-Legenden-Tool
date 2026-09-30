@@ -19,7 +19,7 @@ Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Zi
 - Kein freies Millimeter-Schieben. Alles sitzt auf dem festen Raster. Einträge ziehst du mit der Maus an einen anderen Platz oder in einen anderen Abschnitt, auf dem Blatt und in der linken Liste. ↑ ↓ und die Pfeiltasten gehen auch.
 - Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Platzhalter im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
 - In jeder Spalte eines Abschnitts liegen alle Symbole mit ihrem Einfügepunkt auf einer senkrechten Achse. Liegt der Einfügepunkt nicht in der mittleren Hälfte des Symbols (Leitungen, Bus-Taster), gilt die Mitte des Symbols. Beschriftungen wie «2» oder «3» neben der Steckdose zählen nicht zur Mitte. Alle Texte beginnen auf einer zweiten senkrechten Linie rechts vom Symbol, das am weitesten nach rechts reicht. Symbol und Text teilen sich die waagrechte Mitte der Zeile.
-- Jeder Eintrag belegt ganze Rasterzeilen. «Raster anzeigen» zeichnet pro Abschnitt genau diese Platzhalter: Zeilen, Spaltenränder, Symbolachse und Textlinie (gestrichelt). Ein Symbol passt in eine Rasterzeile, gedreht in zwei.
+- Jeder Eintrag belegt ganze Rasterzeilen. «Raster anzeigen» zeichnet pro Abschnitt genau diese Platzhalter: Zeilen, Spaltenränder, Symbolachse und Textlinie (gestrichelt). Alle Symbole haben denselben Massstab, das Programm verkleinert keines einzeln. Ein hohes Symbol belegt mehr Rasterzeilen. Nur ein Symbol, das breiter als eine halbe Spalte wäre, wird auf diese Breite begrenzt.
 - Jedes Symbol hat einen eigenen Faktor «Symbolgrösse» (Voreinstellung 1) auf den gemeinsamen Symbolmassstab. Ein grösseres Symbol belegt mehr Rasterzeilen.
 - Ein Symbol dreht sich in Schritten von 90 Grad um seinen Mittelpunkt. Der Text bleibt waagrecht. Die Zeile wird so hoch wie das gedrehte Symbol.
 - Texte umbrechen in ihrer Spalte. Die Zeile wird höher, nie liegt ein Text auf dem nächsten Symbol oder in der nächsten Spalte.
@@ -38,7 +38,7 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 ## Gemeinsame Werte
 
 - Eine Schriftgrösse für alle Texte (Titel, Kopfleisten, Einträge, freier Text). Jeder Text hat zusätzlich einen Faktor (Voreinstellung 1). 1,2 macht nur diesen Text grösser, die Zeile wächst mit. Der Firmen-Standard speichert nur die gemeinsame Grösse.
-- Ein Symbolmassstab für alle Symbole. Sehr grosse Symbole werden zusätzlich auf die Zeilenhöhe begrenzt.
+- Ein Symbolmassstab für alle Symbole. Soll jedes Symbol in eine Rasterzeile passen, wähle einen kleineren Massstab (z. B. 0,6).
 - Ein neues Projekt startet mit dem Firmen-Standard (Einstellungen → Legende der Firma). Mit Vorlage kommen Werte und Legende aus der Vorlage.
 - Eine Änderung im Projekt gilt nur dort. «Für neue Projekte merken» schreibt die beiden Werte in den Firmen-Standard (nur Admins). Bestehende Projekte bleiben unverändert.
 

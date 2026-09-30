@@ -523,9 +523,9 @@ def test_entries_fill_whole_grid_rows_of_their_section():
         assert abs(off - round(off)) < 1e-6                              # starts on a grid line
         assert grid["y"] <= h["y"] and h["y"] + h["h"] <= grid["y"] + grid["h"] + 1e-6
     syms = [p for p in lay["prims"] if p["t"] == "symbol"]
-    assert all(s["h"] <= row - 0.5 + 1e-6 for s in syms if s["rot"] == 0)
-    turned = next(s for s in syms if s["rot"] == 90)
-    assert turned["h"] <= 2 * row - 0.5 + 1e-6
+    assert {s["scale"] for s in syms} == {1.0}                          # same scale, same size
+    tall = next(s for s in syms if s["id"] == "s1")                      # 7 mm high: two rows
+    assert next(h for h in boxes(lay) if h["id"] == "s1")["h"] == 2 * row and tall["h"] == 7.0
     col0 = grid["x"]
     assert all(abs(s["cx"] - (col0 + grid["axis"]) - k * grid["colw"]) < 1e-6
                for s in syms for k in [round((s["cx"] - col0 - grid["axis"]) / grid["colw"])])

@@ -81,18 +81,16 @@ SYMBOL_CLEARANCE = 0.5       # mm free above and below a symbol inside its grid 
 TEXT_CLEARANCE = 0.4
 
 
-def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool, rows: int = 1) -> float:
-    """Common scale, limited so a symbol fits ``rows`` grid rows and its symbol cell.
-    ``size`` is (width, height) at scale 1 as it stands on the sheet (after turning); the
-    height counts twice the larger extent above or below the insertion point, because the
-    insertion point sits on the middle of the row."""
+def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool,
+                 max_w: float | None = None) -> float:
+    """Common scale for every symbol (engine symbols at the plan scale). No symbol is
+    shrunk to fit a row: a tall symbol takes more grid rows instead, so equal scale means
+    equal size. Only a symbol wider than ``max_w`` (half a column) is limited, so it
+    cannot reach into the next column."""
     s = style["symbol_scale"] * (50.0 / style["plan_scale"] if engine else 1.0)
-    if not size or size[0] <= 0 or size[1] <= 0:
+    if not size or size[0] <= 0 or max_w is None or size[0] * s <= max_w:
         return s
-    w, h = size
-    max_h = style["row"] * rows - SYMBOL_CLEARANCE
-    max_w = (style["text_offset"] - 1.2) * 2 if not engine else style["text_offset"] * 4
-    return round(min(s, max_h / h, max_w / w), 4)
+    return round(max_w / size[0], 4)
 
 
 def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
@@ -125,7 +123,7 @@ def _turn(left, right, up, down, rotation: int):
     return left, right, up, down
 
 
-def _symbol_box(item: dict, size, style: dict) -> dict:
+def _symbol_box(item: dict, size, style: dict, max_w: float | None = None) -> dict:
     """Symbol cell of an entry on the sheet: extents around the point that sits on the
     symbol axis (left, right, up, down in mm), the scale and the anchor in the drawing."""
     kind = item["kind"]
@@ -139,10 +137,8 @@ def _symbol_box(item: dict, size, style: dict) -> dict:
         if size:
             x0, y0, x1, y1, ax, ay, engine = _anchor(size)
             left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
-            # a turned symbol may take two grid rows, every other symbol fits one;
-            # the factor of this symbol enlarges it beyond that (the row grows)
-            scale = symbol_scale((left + right, 2 * max(up, down)), style, engine,
-                                 rows=2 if rot in (90, 270) else 1) * factor
+            # the factor of this symbol enlarges it; the row grows by whole grid rows
+            scale = symbol_scale((left + right, 2 * max(up, down)), style, engine, max_w) * factor
             return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
         half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
         return box(half, half, half, half)
@@ -212,7 +208,7 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     body: list[dict] = []
     colw = (inner - 2 * pad) / cols
     items = [it for it in block["items"] if not it.get("hidden")]
-    boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style) for it in items}
+    boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, colw / 2) for it in items}
     # one symbol axis (insertion points) and one text line for the section,
     # right of the symbol reaching furthest to the right of the axis
     axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
