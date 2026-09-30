@@ -1,0 +1,79 @@
+name: Windows-Setup bauen
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Oberfläche bauen
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Python-Pakete installieren
+        run: pip install -r backend/requirements.txt -r packaging/requirements-windows.txt
+
+      - name: Tests
+        run: python -m pytest backend/tests -q
+
+      - name: Programmversion lesen
+        id: ver
+        shell: python
+        run: |
+          import os, re
+          text = open("backend/nova_legend/config.py", encoding="utf-8").read()
+          version = re.search(r'APP_VERSION = "([^"]+)"', text).group(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+
+      - name: exe bauen (PyInstaller)
+        run: |
+          python packaging/make_icon.py
+          pyinstaller packaging/nova_legenden.spec --noconfirm
+
+      - name: exe kurz starten (Rauchtest)
+        shell: pwsh
+        run: |
+          $env:NOVA_LEGENDEN_HOME = "$env:RUNNER_TEMP\nl-home"
+          $p = Start-Process -FilePath "dist\NOVA-Legenden\NOVA-Legenden.exe" -ArgumentList "--server","--port","8799" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $r = Invoke-RestMethod "http://127.0.0.1:8799/api/status"; $ok = $true; break } catch { Start-Sleep 1 }
+          }
+          $page = Invoke-WebRequest "http://127.0.0.1:8799/" -UseBasicParsing
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { Get-Content "$env:NOVA_LEGENDEN_HOME\nova-legenden.log" -ErrorAction SilentlyContinue; throw "Server startet nicht" }
+          if ($page.Content -notmatch "NOVA-Legenden") { throw "Oberfläche fehlt in der exe" }
+          Write-Host "Rauchtest ok, Version $($r.version)"
+
+      - name: Setup bauen (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*\ISCC.exe" | Select-Object -First 1
+          }
+          & $iscc.FullName "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup fehlgeschlagen" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOVA-Legenden-Setup-${{ steps.ver.outputs.version }}
+          path: dist-installer/*.exe
+          retention-days: 30

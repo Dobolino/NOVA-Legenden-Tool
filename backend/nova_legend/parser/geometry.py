@@ -254,9 +254,11 @@ def _text(elem: list, layer: str, warnings: list[str]) -> Primitive | None:
         frame, font, content = elem[0], elem[1], elem[2]
         m = _nums(frame[0])
         pos = _nums(frame[1])
-        height = math.hypot(m[2], m[3]) if len(m) >= 4 else 0.0025
-        width_factor = (math.hypot(m[0], m[1]) / height) if height else 1.0
-        rotation = math.degrees(math.atan2(m[1], m[0]))
+        # The 2x2 matrix is stored column by column: text x axis = (m0, m2),
+        # text y axis = (m1, m3). Verified on "T23" in 90-105 (vertical text).
+        height = math.hypot(m[1], m[3]) if len(m) >= 4 else 0.0025
+        width_factor = (math.hypot(m[0], m[2]) / height) if height else 1.0
+        rotation = math.degrees(math.atan2(m[2], m[0]))
         font_name = str(font[0][0]) if font and font[0] else "Arial"
         flags = [str(f[0]) if f else "" for f in font[1:]]
         text = str(content[0]) if content else ""

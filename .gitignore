@@ -17,3 +17,10 @@ __pycache__/
 
 # Node
 node_modules/
+
+# Build output
+ui/dist/
+dist/
+build/
+dist-installer/
+packaging/app.ico

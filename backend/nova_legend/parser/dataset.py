@@ -57,10 +57,12 @@ class Symbol:
     lib_ref: str | None = None   # "Lib:Content" for Symbol items
     files_3d: list[str] = field(default_factory=list)
     attributes: dict[str, str] = field(default_factory=dict)
+    duplicate_no: int = 0        # >0 when Nova repeats sheet+item+graphic id
 
     @property
     def key(self) -> str:
-        return f"{self.dataset}|{self.item}|{self.graphic_id}"
+        base = f"{self.dataset}|{self.sheet}|{self.item}|{self.graphic_id}"
+        return f"{base}~{self.duplicate_no}" if self.duplicate_no else base
 
 
 def detect_mounting(*texts: str | None) -> str | None:
@@ -204,6 +206,15 @@ class Dataset:
                 attributes=attrs,
             ))
         symbols.sort(key=lambda s: (_sort_key(s.sheet), _sort_key(s.item), s.graphic_id))
+        # The datasets contain a few repeated graphic ids (e.g. 120-130 "Var. 1"
+        # and "Var. 2" both as 2D-10). Number them so every symbol keeps a
+        # unique key.
+        seen: dict[str, int] = {}
+        for sym in symbols:
+            count = seen.get(sym.key, 0)
+            seen[sym.key] = count + 1
+            if count:
+                sym.duplicate_no = count
         return symbols
 
     # -- helpers -----------------------------------------------------------

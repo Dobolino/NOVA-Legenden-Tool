@@ -1,0 +1,4 @@
+# Only for the Windows build (own window + exe)
+pywebview>=5.3
+pyinstaller>=6.10
+pillow>=10.0

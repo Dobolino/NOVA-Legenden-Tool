@@ -50,8 +50,13 @@ def geometry_bounds(geo: SymbolGeometry) -> tuple[float, float, float, float]:
             add(sample_spline(d, 24))
         elif p.kind == "text":
             x, y = d["position"]
-            w = d["height"] * 0.6 * max(len(d["text"]), 1)
-            add([(x, y), (x + w, y + d["height"])])
+            w = d["height"] * 0.6 * max(len(d["text"]), 1) * d.get("width_factor", 1.0)
+            a = math.radians(d.get("rotation", 0.0))
+            ux, uy = math.cos(a), math.sin(a)      # text direction
+            vx, vy = -uy, ux                       # text up direction
+            h = d["height"]
+            add([(x, y), (x + ux * w, y + uy * w), (x + vx * h, y + vy * h),
+                 (x + ux * w + vx * h, y + uy * w + vy * h)])
     for v in geo.points.values():
         add([(v[0], v[1])])
     if not xs:
@@ -61,7 +66,7 @@ def geometry_bounds(geo: SymbolGeometry) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def render_svg(geo: SymbolGeometry, size_px: int = 96, show_points: bool = True,
+def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
                stroke_mm: float = 0.18, title: str | None = None) -> str:
     x0, y0, x1, y1 = geometry_bounds(geo)
     pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
@@ -106,8 +111,9 @@ def render_svg(geo: SymbolGeometry, size_px: int = 96, show_points: bool = True,
             parts.append(f'<circle cx="{v[0] * MM:.4f}" cy="{-v[1] * MM:.4f}" r="{r:.4f}" '
                          f'fill="{color}" stroke="none"><title>{html.escape(name)}</title></circle>')
     title_tag = f"<title>{html.escape(title)}</title>" if title else ""
+    size_attr = f'width="{size_px}" height="{size_px}" ' if size_px else ""
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size_px}" height="{size_px}" '
+        f'<svg xmlns="http://www.w3.org/2000/svg" {size_attr}'
         f'viewBox="{x0 * MM:.4f} {-y1 * MM:.4f} {w:.4f} {h:.4f}" '
         f'preserveAspectRatio="xMidYMid meet">{title_tag}'
         f'<g fill="none" stroke="currentColor" stroke-width="{stroke_mm:.3f}" '

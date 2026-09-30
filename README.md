@@ -1,59 +1,37 @@
-# NOVA-Legenden-Tool
+# NOVA-Legenden
 
-Lokales Windows-Werkzeug, das aus Trimble-Nova-Elektroplänen die Legende der Apparate erzeugt.
+Windows-Programm, das aus Trimble-Nova-Elektroplänen die Legende der Apparate erzeugt.
 
-Aktueller Stand: **Phase 0 (Analyse und Validierung)**. Es gibt noch keine Oberfläche. Phase 0 liefert einen Parser für die Nova-Datensätze, eine Symbol-JSON-Datei, SVG-Vorschauen, HTML-Kontrollseiten und eine Analyse der N4D-Dateien.
+Stand: **Phase 1 (Bibliothek)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, gruppiert UP/AP-Varianten zu Familien und ordnet sie Kategorien zu. Die Kategorien gelten für die ganze Firma.
 
-Den Bericht zu Phase 0 findest du in [docs/PHASE0_BERICHT.md](docs/PHASE0_BERICHT.md).
+Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md)
 
-## Voraussetzungen
+## Installation für die Firma
 
-- Windows 10 oder 11, 64 Bit
-- Python 3.11 oder neuer (python.org, beim Installieren «Add Python to PATH» anhaken)
+1. `NOVA-Legenden-Setup-<Version>.exe` doppelklicken.
+2. Weiter, Fertig. Adminrechte sind nicht nötig. Das Programm landet im Benutzerprofil, auf dem Desktop erscheint ein Symbol.
+3. Beim ersten Start sucht das Programm die Nova-Datensätze selbst. Findet es sie nicht, trägst du den Pfad unter **Einstellungen** ein.
+4. Unter **Einstellungen → Firmenordner** tragen alle denselben Ordner ein, zum Beispiel `T:\_CAD\NOVA-Legenden`. Dort liegen die gemeinsamen Kategorien.
 
-## Einrichten (einmalig)
+Hinweis: Das Setup ist noch nicht digital signiert. Windows zeigt beim ersten Start «Der Computer wurde durch Windows geschützt». Klicke auf «Weitere Informationen» und «Trotzdem ausführen», oder lass die Datei von der IT freigeben.
 
-Öffne die Eingabeaufforderung (Windows-Taste, «cmd» tippen) im Projektordner:
+DWG-Dateien brauchen zusätzlich den kostenlosen ODA File Converter. DXF und N4D funktionieren ohne.
 
-```
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r backend\requirements.txt
-```
+### Woher kommt das Setup?
 
-`venv` ist eine abgeschottete Python-Umgebung nur für dieses Projekt. `pip` installiert die Bibliotheken.
+GitHub baut es bei jeder Änderung automatisch (Reiter **Actions** → «Windows-Setup bauen» → Lauf öffnen → unten unter **Artifacts** herunterladen).
 
-## Beispieldateien ablegen
+## Start aus dem Quellcode (Entwicklung)
 
-Lege deine Dateien in den Ordner `samples` im Projektordner:
-
-- `Elektroinstallationen.V2.CH.nzp` und `Elektroinstallationen.CH.nzp` (Nova-Datensätze)
-- `Legende_edeco20.n4d` und Pläne als `.n4d`
-- `Benutzerschablonen.n5q`
-
-Der Ordner `samples` und alle Ausgaben stehen in `.gitignore`. Trimble- und Firmendaten landen so nie im Git-Repository.
-
-## Phase 0 ausführen
+Voraussetzungen: Python 3.11 und Node.js 22.
 
 ```
-.venv\Scripts\activate
-set PYTHONPATH=backend
-python -m nova_legend.analysis.phase0 --samples samples --out output\phase0
+start.bat
 ```
 
-Danach liegen in `output\phase0`:
+Der erste Start richtet alles ein und dauert einige Minuten. Danach öffnet sich das Programmfenster.
 
-| Datei | Inhalt |
-|---|---|
-| `kontrolle_<Datensatz>.html` | Alle Symbole mit Name, Code, Montageart, Kategorie und Bild. Suche und Filter oben. |
-| `familien_<Datensatz>.html` | UP/AP-Familien. Blauer Rahmen = vorgeschlagener UP-Vertreter. |
-| `legende_Legende_edeco20.html` | Texte der bestehenden Legende an ihrer Position, dazu alle erkannten Symbole. |
-| `symbole_<Datensatz>.json` | Alle Symbole mit Geometrie, Anschlusspunkten und 3D-Verweisen. |
-| `familien_<Datensatz>.json` | Familien mit Mitgliedern. |
-| `n4d_<Datei>.json` | Analyse jeder N4D-Datei. |
-| `zusammenfassung.json` | Kennzahlen. |
-
-Öffne die HTML-Dateien mit Doppelklick im Browser.
+Nur im Browser: `start.bat --browser`
 
 ## Tests
 
@@ -62,20 +40,28 @@ Danach liegen in `output\phase0`:
 python -m pytest backend\tests -q
 ```
 
-Tests, die echte Beispieldateien brauchen, werden übersprungen, wenn `samples` fehlt.
+Tests mit echten Nova-Dateien laufen nur, wenn der Ordner `samples` die Beispieldateien enthält. Dieser Ordner und alle Ausgaben stehen in `.gitignore`. So landen keine Trimble- oder Firmendaten im Repository.
+
+## Phase-0-Analyse erneut ausführen
+
+```
+set PYTHONPATH=backend
+python -m nova_legend.analysis.phase0 --samples samples --out output\phase0
+```
 
 ## Aufbau
 
 ```
 backend/nova_legend/
-  parser/      Nova-Datensatz (.nzp): Baumformat lesen/schreiben, Geometrie, Symbolkatalog
-  n4d/         N4D-Analyse (nur Lesen, Stand Phase 0)
+  __main__.py  Programmstart (Server + Fenster)
+  config.py    Einstellungen, Datenordner, Suche nach Datensätzen
+  api/         REST-Schnittstelle (FastAPI) für die Oberfläche
+  parser/      Nova-Datensatz (.nzp): Baumformat, Geometrie, Symbolkatalog
+  library/     Bibliotheks-Cache (SQLite) und Symbolfamilien
+  categories/  Kategorien und Zuordnungen der Firma (firma.sqlite)
+  n4d/         N4D-Analyse (nur Lesen)
   render/      SVG-Ausgabe der Symbole
-  library/     Symbolfamilien (UP-Vertreter)
-  categories/  Kategorien der Legende und Zuordnungsregeln
-  analysis/    Phase-0-Skript
-backend/tests/ Tests
-docs/          Berichte
+  analysis/    Phase-0-Skripte
+ui/            Oberfläche (React, TypeScript)
+packaging/     exe (PyInstaller) und Setup (Inno Setup)
 ```
-
-Die Module importer, matcher, legend, exporter, api und ui folgen in den Phasen 1 bis 6.

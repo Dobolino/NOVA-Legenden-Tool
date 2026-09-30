@@ -139,3 +139,12 @@ def test_families_up_representative():
 def test_combinations_in_two_categories():
     from nova_legend.categories.defaults import categories_for
     assert categories_for("50") == ["schalter", "steckdosen"]
+
+
+def test_text_matrix_is_column_major():
+    text = ('((1)(("X_Text")()(0)((0))((0))((0))((1)(((0;-0.0025;0.0025;0)(0.00126;0.00528))'
+            '(("Arial")(0)(0))("T23")))))((0))((0))()')
+    geo = geometry.parse_geometry(text)
+    t = geo.primitives[0].data
+    assert t["rotation"] == pytest.approx(90.0)
+    assert t["height"] == pytest.approx(0.0025)
