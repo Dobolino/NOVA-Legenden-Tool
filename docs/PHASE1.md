@@ -26,7 +26,7 @@ Jede Änderung an den Firmendaten speichert Benutzer und Zeit (Tabelle `log` in 
 
 ## So testest du Phase 1
 
-1. Setup herunterladen (GitHub → Actions → neuester Lauf «Windows-Setup bauen» → Artifacts) und installieren.
+1. Setup herunterladen: https://github.com/Dobolino/NOVA-Legenden-Tool/releases/latest → «Assets» → `NOVA-Legenden-Setup-0.1.0.exe`. Dann installieren.
 2. NOVA-Legenden starten. Oben rechts muss «2 Datensätze · 4664 Symbole» stehen. Steht dort 0: Einstellungen → Pfad zur .nzp eintragen.
 3. Einstellungen → Firmenordner: einen Testordner eintragen, etwa `T:\_CAD\NOVA-Legenden-Test`.
 4. Bibliothek: «Steckdose T23» suchen. Erwartet: 3 Kacheln. Kachel anklicken: 8 Varianten (UP, NUP, AP, NAP, je mit und ohne Text), UP mit Stern.

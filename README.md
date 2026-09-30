@@ -19,7 +19,8 @@ DWG-Dateien brauchen zusätzlich den kostenlosen ODA File Converter. DXF und N4D
 
 ### Woher kommt das Setup?
 
-GitHub baut es bei jeder Änderung automatisch (Reiter **Actions** → «Windows-Setup bauen» → Lauf öffnen → unten unter **Artifacts** herunterladen).
+GitHub baut es bei jeder Änderung automatisch und legt es unter **Releases** ab:
+https://github.com/Dobolino/NOVA-Legenden-Tool/releases/latest → unter «Assets» `NOVA-Legenden-Setup-<Version>.exe` anklicken.
 
 ## Start aus dem Quellcode (Entwicklung)
 
