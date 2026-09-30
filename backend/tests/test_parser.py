@@ -134,3 +134,8 @@ def test_families_up_representative():
     fam = next(f for f in fams if f.key == family_key("Schalter, Schema 0, UP"))
     assert fam.representative.item == "10-10"
     assert {"UP", "AP", "NUP"} <= set(fam.mountings)
+
+
+def test_combinations_in_two_categories():
+    from nova_legend.categories.defaults import categories_for
+    assert categories_for("50") == ["schalter", "steckdosen"]

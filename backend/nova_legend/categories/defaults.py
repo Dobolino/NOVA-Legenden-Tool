@@ -33,7 +33,8 @@ DEFAULT_CATEGORIES: list[Category] = [
     Category("fluchtweg", "Fluchtwegleuchten", "E_Fluchtwegleuchten", sheets=["165"]),
     Category("schalter", "Schalter und Taster", "E_Licht",
              sheets=["10", "20", "30", "40", "50", "60", "70", "80"]),
-    Category("steckdosen", "Steckdosen und Dosen", "E_Licht", sheets=["90", "100", "390", "400"]),
+    Category("steckdosen", "Steckdosen und Dosen", "E_Licht",
+             sheets=["90", "100", "390", "400", "50", "60"]),  # Kombinationen Gr.I in both
     Category("kraft", "Kraft und Elektrogeräte", "E_Starkstrom", sheets=["170"]),
     Category("schwachstrom", "Schwachstrom", "E_Schwachstrom", sheets=["330"]),
     Category("telefon", "Telefon", "E_Telefon", parent="schwachstrom", sheets=["250", "260"]),
@@ -67,6 +68,11 @@ NAME_RULES: list[tuple[str, str]] = [
     (r"leitung|kanal|rohr", "leitungen"),
     (r"verteil|tableau", "verteiler"),
 ]
+
+
+def categories_for(sheet: str) -> list[str]:
+    """All categories that list this number range (a symbol may appear in several)."""
+    return [cat.id for cat in DEFAULT_CATEGORIES if sheet in cat.sheets]
 
 
 def category_for(sheet: str, name: str = "") -> tuple[str, str]:

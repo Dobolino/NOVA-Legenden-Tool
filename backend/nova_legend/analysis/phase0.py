@@ -24,6 +24,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from ..categories.defaults import DEFAULT_CATEGORIES, category_for
+from .dxf_probe import analyse_dxf
 from ..library.families import build_families, label_variant
 from ..n4d.probe import analyse
 from ..parser.dataset import Dataset, Symbol
@@ -307,6 +308,20 @@ def main(argv: list[str] | None = None) -> int:
                 merged.update(lookups.get(ds_id, {}))
             write_legend_page(rep, merged, out / f"legende_{tag}.html")
         print(f"{n4d.name}: {len(rep.objects)} Objekte, {len(rep.texts)} Texte")
+
+    names: dict[str, set[str]] = defaultdict(set)
+    for lookup in lookups.values():
+        for sym in lookup.values():
+            for n in (sym.name, sym.part_name):
+                if n:
+                    names[n.replace(",", "_").lower()].add(sym.item)
+    for dxf in sorted(samples.glob("*.dxf")):
+        info = analyse_dxf(dxf, names)
+        (out / f"dxf_{dxf.stem}.json").write_text(json.dumps(info, ensure_ascii=False, indent=1),
+                                                   encoding="utf-8")
+        summary.setdefault("dxf", {})[dxf.name] = {k: info[k] for k in
+                                                   ("dxf_version", "inserts", "erkennung", "herkunft")}
+        print(f"{dxf.name}: {info['inserts']} Blockeinfügungen, Erkennung {info['erkennung']}")
 
     (out / "zusammenfassung.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1),
                                                encoding="utf-8")

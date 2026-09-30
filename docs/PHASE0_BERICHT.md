@@ -223,7 +223,58 @@ DWG/DXF-Ausgabeversion: Herstellerangaben zu Nova 19.2 und 20 liegen mir nicht g
 
 Die Bibliothek braucht diesen Rückfall nicht, weil die .nzp vollständig gelesen ist. Für Pläne gilt: Exportiere den Plan in Nova als DWG oder DXF (Datei > Exportieren > DWG/DXF, Blöcke nicht auflösen). Das Tool liest die Blöcke mit ezdxf und erkennt die Symbole über Blocknamen und Geometrie. Die genauen Menüpunkte prüfe ich mit dir, sobald du einen Export gemacht hast.
 
-## 11. Nächste Schritte
+## 11. Nachtrag: DXF, DWG und neu gespeicherte Legende
+
+Neue Dateien: 3_1.OG.dxf, 3_1.OG.dwg (beide aus Nova exportiert), Legende_edeco20.n4d neu gespeichert, Symbole.zip (eigene Symbole, laut dir vorerst nicht nötig).
+
+### So legt Nova Symbole im DXF ab
+
+- Nova exportiert DXF in Version **AC1027 (R2013)**. Die DWG trägt dieselbe Kennung AC1027.
+- Jedes Element wird ein eigener Block, **ein Block pro Platzierung**. Blockname = Elementname, Kommas durch «_» ersetzt, dazu die Element-ID: `Steckdose T13_ UP_ 3-fach_A09QHENBUK`.
+- Das INSERT liegt auf der Nova-Ebene (E_…). Die Geometrie im Block liegt auf Ebene 0.
+- Das INSERT trägt versteckte Attribute. **`TypID` enthält den Katalogcode** (etwa 90-30), **`Herkunft` den Datensatz** («Elektroinstallationen V2 CH 2025-09 edeco AG»), `Bez` den Grafiknamen.
+- Einige Elementtypen (Einlasskasten, Funkempfänger, Türkontakt, Stellantrieb, Raumthermostat) haben keine Attribute. Sie erkenne ich über den Blocknamen.
+- Einheiten: Weltkoordinaten in Millimetern, `$INSUNITS` = 0 (ohne Einheit). Planmassstab 1:50 (`$DIMSCALE` = 50).
+- Parametrische Leuchten (Engine) exportiert Nova als fertige Geometrie. Damit gibt es für diese Leuchten einen Weg zur Vorschau.
+
+Erkennung im OG-Plan (608 Blockeinfügungen):
+
+| Weg | Anzahl |
+|---|---|
+| TypID-Attribut | 147 |
+| Blockname = Name im Datensatz | 148 |
+| offen | 313 |
+
+Die offenen sind fast nur Leitungen (150), Bauteilbeschriftungen (64), Gruppenzuleitungen (61), Masse und Polygone. Echte Apparate ohne Treffer: 4 (umbenannter Verteiler «UV-. Büro 1-6», «LED-Langfeldleuchte 8W», «Gateway», «Deckendurchbruch»). Diese löst später der Ähnlichkeitsvergleich.
+
+DXF und N4D desselben Plans stimmen nicht ganz überein (DXF 214 Bauteile mit TypID, N4D 236 Objekte mit Grafik). Ursache vermutlich: Nova exportiert nicht für alle Typen Attribute. Das prüfe ich in Phase 2.
+
+### Nova-Version im N4D
+
+Die neu gespeicherte Legende hat im Strom `Version` denselben Wert wie der OG-Plan (`00 ab ee 21 01 …`). Die alte Legende hatte `00 54 b0 12 01 …`. Dieser Wert kennzeichnet also die Nova-Version, mit der gespeichert wurde. Der Inhalt von `Elements` ist fast gleich geblieben (Dokument-ID neu, 3339 Byte länger, gleiche Objekte und Texte). Welche Programmversion zu welchem Wert gehört, ist offen.
+
+### Kompatibilitätsmatrix, aktualisiert
+
+| Format | Richtung | Version «54 b0 12» (alt) | Version «ab ee 21» (aktuell) | Bemerkung |
+|---|---|---|---|---|
+| NZP | Lesen | [Geprüft] | [Geprüft] | unabhängig von der Programmversion |
+| N4D | Lesen | [Eingeschränkt] | [Eingeschränkt] | Codes, Ebenen, Texte. Keine Symbol-Einfügepunkte. |
+| N4D | Schreiben | [Ungeprüft] | [Ungeprüft] | Phase 6 |
+| DXF | Lesen | [Ungeprüft] | [Geprüft] | R2013 aus Nova, ezdxf liest fehlerfrei |
+| DXF | Schreiben | [Ungeprüft] | [Ungeprüft] | Phase 5, Ziel R2013 |
+| DWG | Lesen | [Ungeprüft] | [Eingeschränkt] | Datei ist R2013. Umwandlung braucht ODA, hier nicht getestet. |
+| DWG | Schreiben | [Ungeprüft] | [Ungeprüft] | Phase 5 |
+
+## 12. Entscheide nach Rückmeldung (30.09.2026)
+
+- Beschriftungsvarianten werden unter dem UP-Vertreter zusammengefasst. Ausrichtungen (liegend, stehend, rechts) bleiben eigene Symbole. Beides wird eine Einstellung.
+- Kategorie «Melder, Fühler, Sensoren (HLKS)» bleibt, einstellbar.
+- Kombinationen Gr.I (50, 60) erscheinen in «Schalter und Taster» und in «Steckdosen und Dosen».
+- Firmeneigene Symbole (Makro\Symbole) sind vorerst ausgeklammert.
+- Die Legende darf moderner aussehen als die bestehende. Die Gliederung nach Kategorien ist eine Einstellung.
+- DXF R2013 ist das Standardformat für den Austausch, weil Nova selbst so exportiert.
+
+## 13. Nächste Schritte
 
 - Phase 1 (Bibliothek) ist nicht blockiert. Die Daten aus Phase 0 reichen.
 - Phase 2 (Import N4D) ist für die Symbolliste nicht blockiert: Codes und Anzahl pro Plan liegen vor. Positionen fehlen noch, werden für die Legende aber nicht gebraucht.
