@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, Category, DATASET_LABEL, FamilyItem, SymbolDetail } from "../api";
-import SymbolPic from "./SymbolPic";
+import SymbolPic, { missingPreviewReason } from "./SymbolPic";
 
 interface Props {
   id: string;
@@ -120,7 +120,7 @@ export default function FamilyDetail({ id, categories, notify, onClose, onAssign
         <div>
           <h2>{fam.title}</h2>
           <div className="sub">
-            {DATASET_LABEL(fam.dataset)} · {fam.variant_count} Variante{fam.variant_count === 1 ? "" : "n"}
+            Symbol-Datensatz {DATASET_LABEL(fam.dataset)} · {fam.variant_count} Variante{fam.variant_count === 1 ? "" : "n"}
           </div>
         </div>
         <button className="btn small" onClick={onClose} title="Schliessen">
@@ -131,7 +131,14 @@ export default function FamilyDetail({ id, categories, notify, onClose, onAssign
       <div className="big-pic">
         <SymbolPic sym={current} svg={detail?.key === current.key ? detail.svg_points || undefined : undefined} />
       </div>
-      <div className="hint">Punkte: orange = Anschlusspunkte (NP), blau = Einfüge-/Hilfspunkte.</div>
+      {current.svg ? (
+        <div className="hint">Punkte: orange = Anschlusspunkte (NP), blau = Einfüge-/Hilfspunkte.</div>
+      ) : (
+        <div className="info-line">
+          <b>Keine Symbolvorschau verfügbar.</b> {missingPreviewReason(current)} Das Symbol ist bekannt und wird
+          erkannt, zugeordnet und gezählt.
+        </div>
+      )}
       {current.kind === "Engine" && current.svg && (
         <div className="hint">
           Vereinfachte Vorschau: Nova zeichnet dieses Symbol aus Länge, Breite und Typ. Eingebettete Nova-Symbole
@@ -141,7 +148,7 @@ export default function FamilyDetail({ id, categories, notify, onClose, onAssign
       {fam.has_fill && (
         <label className="toggle" style={{ marginTop: 8 }} title="Flächen und Schraffuren dieser Familie zeigen oder ausblenden">
           <input type="checkbox" checked={fam.show_fill} disabled={saving} onChange={(e) => saveFill(e.target.checked)} />
-          Füllung und Schraffur anzeigen
+          Füllung und Schraffur anzeigen <span className="hint">(gilt für die ganze Firma)</span>
         </label>
       )}
 

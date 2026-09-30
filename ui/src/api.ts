@@ -98,6 +98,7 @@ export interface Status {
   sync: { neu?: string[]; unveraendert?: string[]; entfernt?: string[]; fehler?: string[]; doppelt?: string[] };
   oda: string;
   local_home: string;
+  dialogs?: boolean;
 }
 
 export interface SymbolDetail {
@@ -144,6 +145,11 @@ export interface CategoryColor {
   layer: string;
   reason: string;
   manual: boolean;
+  parent?: string | null;
+  state: "automatisch" | "manuell" | "waehlen" | "unbenutzt";
+  used: number;
+  layer_missing: boolean;
+  no_color: boolean;
 }
 
 export interface Plan {
@@ -381,6 +387,8 @@ export const api = {
     request<Category>("PUT", `/api/categories/${encodeURIComponent(id)}`, values),
   deleteCategory: (id: string) => request<{ ok: boolean }>("DELETE", `/api/categories/${encodeURIComponent(id)}`),
   reorder: (ids: string[]) => request<{ items: Category[] }>("POST", "/api/categories/reorder", { ids }),
+  dialog: (kind: "dataset" | "folder", start = "") =>
+    request<{ available: boolean; path: string | null }>("POST", `/api/dialog/${kind}`, { start }),
   resetCategories: () => request<{ items: Category[] }>("POST", "/api/categories/reset"),
 };
 

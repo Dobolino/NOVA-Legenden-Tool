@@ -77,22 +77,24 @@ export default function App() {
         </nav>
         <div className="spacer" />
         {status && (
-          <>
-            <span className={`chip ${noDatasets ? "warn" : ""}`} title="Geladene Nova-Datensätze">
+          <div className="top-chips">
+            <span className={`chip ${noDatasets ? "warn" : ""}`} title="Geladene Nova-Symbol-Datensätze (z. B. V1 2022, V2 2025)">
               <span className={`dot ${noDatasets ? "warn" : ""}`} />
-              {status.datasets.length} Datensätze · {status.symbol_count} Symbole
+              {status.datasets.length} Symbol-Datensätze · {status.symbol_count} Symbole
             </span>
-            <span className={`chip ${status.company_error ? "warn" : ""}`} title={status.company_db}>
+            <span className={`chip ${status.company_error ? "warn" : ""}`} title={`Firmenweite Daten: ${status.company_db}`}>
               <span className={`dot ${status.company_error || !status.settings.company_folder ? "warn" : ""}`} />
               {status.settings.company_folder ? "Firmenordner" : "Firmenordner fehlt"}
             </span>
-            <span className="chip">Nova {status.settings.nova_version}</span>
+            <span className="chip" title="Standard für neue Projekte. Jedes Projekt speichert seine eigene Nova-Version.">
+              Nova-Version {status.settings.nova_version}
+            </span>
             {update?.available && (
               <button className="chip update" onClick={() => setTab("settings")} title="Zum Update">
                 Update {update.latest} verfügbar
               </button>
             )}
-          </>
+          </div>
         )}
       </header>
       <div className="main">

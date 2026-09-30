@@ -98,6 +98,9 @@ def main(argv: list[str] | None = None) -> int:
             window = webview.create_window(f"NOVA-Legenden {config.APP_VERSION}", url,
                                            width=1400, height=900, min_size=(900, 600))
             app.state.shutdown = window.destroy  # used by the program update
+            from . import dialogs
+
+            dialogs.attach(window)  # "Datei wählen …" / "Ordner wählen …" in the settings
             webview.start()
             server.should_exit = True
             return 0

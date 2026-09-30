@@ -58,3 +58,38 @@ def pick_category_layer(category_layer: str, layers: list[dict], usage: dict[str
     color = best.get("color") or ""
     reason = "" if color else f"Ebene {best['name']} hat keine Farbe"
     return {"color": color, "layer": best["name"], "reason": reason, "manual": False}
+
+
+def category_usage(rows: list[dict]) -> dict[str, int]:
+    """Apparatus per category in the current imports (rows of the overall list)."""
+    used: dict[str, int] = {}
+    for row in rows:
+        total = int(row.get("total") or 0)
+        if total <= 0:
+            continue
+        for cid in row.get("categories") or []:
+            used[cid] = used.get(cid, 0) + total
+    return used
+
+
+def category_state(picked: dict, layers: list[dict], used: int) -> dict:
+    """What the layers tab shows for one category.
+
+    state: "manuell" (the project chose a layer), "unbenutzt" (no apparatus in
+    the current imports), "automatisch" (found by name) or "waehlen" (used, but
+    no layer found). layer_missing and no_color tell a layer that is not in the
+    plans apart from a layer without colour.
+    """
+    names = {layer["name"] for layer in layers}
+    layer = picked.get("layer") or ""
+    layer_missing = bool(layer) and layer not in names
+    no_color = bool(layer) and not layer_missing and not picked.get("color")
+    if picked.get("manual"):
+        state = "manuell"
+    elif used <= 0:
+        state = "unbenutzt"
+    elif layer:
+        state = "automatisch"
+    else:
+        state = "waehlen"
+    return {"state": state, "used": used, "layer_missing": layer_missing, "no_color": no_color}

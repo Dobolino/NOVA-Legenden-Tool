@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Suggestion, UnknownElement } from "../api";
 import { floorNameFromFilename } from "../floors";
+import { formatDateTime, layerStateText, plansOpen, rememberPlansOpen } from "../uiState";
 import ChangesTab, { changeHint } from "./ChangesTab";
+import Menu from "./Menu";
 
 interface Props {
   projectId: string;
@@ -13,6 +15,13 @@ interface Props {
 }
 
 type Tab = "list" | "unknown" | "layers" | "ignored" | "changes";
+
+interface ImportStatus {
+  kind: "busy" | "ok" | "error";
+  text: string;
+}
+
+const DETACH_TEXT = "Entfernt nur die gespeicherte Plandatei. Importierte Anzahlen und Versionen bleiben erhalten.";
 
 export default function ProjectView({ projectId, projects, categories, notify, onBack, onOpenProject }: Props) {
   const [data, setData] = useState<ProjectDetail | null>(null);
@@ -26,6 +35,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [title, setTitle] = useState("");
   const [dragPlan, setDragPlan] = useState<number | null>(null);
   const [dropHot, setDropHot] = useState(false);
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
+  const [open, setOpen] = useState(true);
+  const [allCategories, setAllCategories] = useState(false);
+  const [chosenFile, setChosenFile] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -33,12 +46,14 @@ export default function ProjectView({ projectId, projects, categories, notify, o
       setData(next);
       setNumber(next.meta.project_number || "");
       setTitle(next.meta.name || "");
+      setOpen(plansOpen(projectId, next.plans.length));
     } catch (e) {
       notify((e as Error).message, true);
     }
   }, [projectId, notify]);
 
   useEffect(() => {
+    setImportStatus(null);
     load();
   }, [load]);
 
@@ -59,12 +74,46 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   async function importFile(file: File, planId?: number, explicitName?: string) {
     const typed = explicitName !== undefined ? explicitName.trim() : planName.trim();
     const name = planId ? "" : typed || file.name.replace(/\.[^.]+$/, "");
-    const result = await run(() => api.importPlan(projectId, name, file, planId), `«${file.name}» importiert`);
-    if (result) {
+    const before = new Set((data?.plans ?? []).map((p) => p.id));
+    const target = planId ? data?.plans.find((p) => p.id === planId)?.name : name;
+    setImportStatus({
+      kind: "busy",
+      text: planId ? `Importiere «${file.name}» als neue Planversion von ${target} …` : `Importiere «${file.name}» …`,
+    });
+    setBusy(true);
+    try {
+      const result = await api.importPlan(projectId, name, file, planId);
       setData(result);
       setPlanName("");
       if (fileRef.current) fileRef.current.value = "";
+      setChosenFile("");
+      const plan = planId
+        ? result.plans.find((p) => p.id === planId)
+        : result.plans.find((p) => !before.has(p.id)) ?? result.plans[result.plans.length - 1];
+      const count = plan ? result.rows.reduce((n, r) => n + (r.counts[plan.id] ?? 0), 0) : 0;
+      const unknown = plan ? result.unknown.filter((u) => u.counts[plan.id]).length : 0;
+      const parts = [`${count} Apparate erkannt`];
+      if (unknown) parts.push(`${unknown} Elementarten unbekannt`);
+      if (plan && plan.versions > 1) parts.push(`Importversion ${plan.versions}`);
+      setImportStatus({ kind: "ok", text: `«${file.name}» importiert${plan ? ` als ${plan.name}` : ""}: ${parts.join(", ")}.` });
+      notify(`«${file.name}» importiert`);
+    } catch (e) {
+      const msg = (e as Error).message;
+      setImportStatus({ kind: "error", text: `Import von «${file.name}» fehlgeschlagen: ${msg}` });
+      notify(msg, true);
+    } finally {
+      setBusy(false);
     }
+  }
+
+  function toggleOpen(next: boolean) {
+    setOpen(next);
+    rememberPlansOpen(projectId, next);
+  }
+
+  async function reorder(ids: number[]) {
+    const r = await run(() => api.reorderPlans(projectId, ids));
+    if (r) setData(r);
   }
 
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
@@ -89,6 +138,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     (n, p) => n + (p.change_summary ? p.change_summary.neu + p.change_summary.weg + p.change_summary.geaendert : 0),
     0,
   );
+  const toChoose = data.category_colors.filter((c) => c.state === "waehlen").length;
+  const usedCats = data.category_colors.filter((c) => c.used > 0 || c.manual);
+  const shownCats = allCategories ? data.category_colors : usedCats;
+  const headDirty = number !== (data.meta.project_number || "") || title !== data.meta.name;
 
   // Group the overall list by the first category of each row
   const groups: { cat: Category | null; rows: typeof data.rows }[] = [];
@@ -99,49 +152,80 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     else groups.push({ cat, rows: [row] });
   }
 
+  async function saveHead() {
+    if (!title.trim()) {
+      notify("Bezeichnung fehlt", true);
+      return;
+    }
+    const r = await run(
+      () => api.updateProject(projectId, { name: title.trim(), project_number: number.trim() }),
+      "Projekt gespeichert",
+    );
+    if (r) {
+      if (r.id !== projectId) onOpenProject(r.id);
+      else setData(r);
+    }
+  }
+
   return (
     <div className="page">
-      <div className="page-inner wide">
-        <div className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <button className="btn small" onClick={onBack}>
-                ← Alle Projekte
-              </button>
-              <div className="row" style={{ marginTop: 10 }}>
-                <input className="input" style={{ width: 140 }} value={number} placeholder="Projektnummer" onChange={(e) => setNumber(e.target.value)} />
-                <input className="input" style={{ width: 280 }} value={title} placeholder="Bezeichnung" onChange={(e) => setTitle(e.target.value)} />
-                <button
-                  className="btn small"
-                  disabled={busy || (number === (data.meta.project_number || "") && title === data.meta.name)}
-                  onClick={async () => {
-                    if (!title.trim()) {
-                      notify("Bezeichnung fehlt", true);
-                      return;
-                    }
-                    const r = await run(
-                      () => api.updateProject(projectId, { name: title.trim(), project_number: number.trim() }),
-                      "Projekt gespeichert",
-                    );
-                    if (r) {
-                      if (r.id !== projectId) onOpenProject(r.id);
-                      else setData(r);
-                    }
-                  }}
-                >
-                  Speichern
-                </button>
-              </div>
-              <div className="hint">
-                {data.folder} · angelegt {data.meta.created_at?.slice(0, 10)} von {data.meta.created_by}
-                {data.meta.template_from ? ` · Vorlage: ${data.meta.template_from}` : ""}
-              </div>
-            </div>
-            <div className="row">
+      <div className="page-inner full">
+        <div className="card project-head">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <button className="btn small" onClick={onBack}>
+              ← Alle Projekte
+            </button>
+            <label className="filter-label">
+              Projekt wechseln
+              <select
+                className="select"
+                style={{ maxWidth: 320 }}
+                value={projectId}
+                title="Öffnet ein anderes Projekt aus dem Projektordner"
+                onChange={(e) => onOpenProject(e.target.value)}
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.project_number ? `${p.project_number} · ` : ""}
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <h2 className="project-title">
+            {data.meta.project_number && <span className="number">{data.meta.project_number}</span>}
+            {data.meta.name}
+          </h2>
+          <div className="head-fields">
+            <label className="field">
+              <span>Projektnummer</span>
+              <input
+                className="input"
+                style={{ width: 150 }}
+                value={number}
+                onChange={(e) => setNumber(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
+              />
+            </label>
+            <label className="field grow">
+              <span>Bezeichnung</span>
+              <input
+                className="input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
+              />
+            </label>
+            <button className="btn primary" disabled={busy || !headDirty} onClick={saveHead}>
+              Speichern
+            </button>
+            <label className="field">
+              <span>Nova-Version des Projekts</span>
               <select
                 className="select"
                 value={data.meta.nova_version}
-                title="Nova-Version des Projekts"
+                title="Gespeicherte Angabe zum Projekt. Keine Zusage, dass der Import versionsabhängig arbeitet."
                 onChange={async (e) => {
                   const r = await run(() => api.updateProject(projectId, { nova_version: e.target.value }), "Nova-Version gespeichert");
                   if (r) setData(r);
@@ -150,69 +234,71 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 <option value="19.2">Nova 19.2</option>
                 <option value="20">Nova 20</option>
               </select>
-              <select
-                className="select"
-                value={projectId}
-                title="Anderes Projekt öffnen"
-                onChange={(e) => onOpenProject(e.target.value)}
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
-                  const name = window.prompt("Name der Kopie", `${data.meta.name} Kopie`);
-                  if (!name) return;
-                  const r = await run(() => api.copyProject(projectId, name), "Projekt kopiert");
-                  if (r) onOpenProject(r.id);
-                }}
-              >
-                Kopieren
-              </button>
-              <a
-                className="btn"
-                href={api.exportUrl(projectId)}
-                download={data.export_name}
-                title="Sichert das Projekt als eine ZIP-Datei mit der Projektdatenbank und einer Plandatei pro Geschoss."
-              >
-                Exportieren
-              </a>
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
-                  const next = data.meta.use_as_template === false;
-                  const r = await run(
-                    () => api.updateProject(projectId, { use_as_template: next }),
-                    next ? "Wieder als Vorlage wählbar" : "Nicht mehr als Vorlage angeboten",
-                  );
-                  if (r) setData(r);
-                }}
-              >
-                {data.meta.use_as_template === false ? "Als Vorlage anbieten" : "Vorlage ausblenden"}
-              </button>
-              <button
-                className="btn danger"
-                disabled={busy}
-                onClick={async () => {
-                  if (!window.confirm(`Projekt «${data.meta.name}» löschen? Es wird in den Ordner _Geloescht verschoben.`)) return;
-                  const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
-                  if (r) onBack();
-                }}
-              >
-                Löschen
-              </button>
-            </div>
+            </label>
+          </div>
+          <div className="head-actions">
+            <button
+              className="btn small"
+              disabled={busy}
+              onClick={async () => {
+                const name = window.prompt("Name des duplizierten Projekts", `${data.meta.name} Kopie`);
+                if (!name) return;
+                const r = await run(() => api.copyProject(projectId, name), "Projekt dupliziert");
+                if (r) onOpenProject(r.id);
+              }}
+            >
+              Projekt duplizieren
+            </button>
+            <a
+              className="btn small"
+              href={api.exportUrl(projectId)}
+              download={data.export_name}
+              title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
+            >
+              Projekt als ZIP exportieren
+            </a>
+            <button
+              className="btn small"
+              disabled={busy}
+              title="Ändert nur, ob das Projekt beim Anlegen eines neuen Projekts als Vorlage erscheint."
+              onClick={async () => {
+                const next = data.meta.use_as_template === false;
+                const r = await run(
+                  () => api.updateProject(projectId, { use_as_template: next }),
+                  next ? "Wieder als Vorlage wählbar" : "Nicht mehr als Vorlage angeboten",
+                );
+                if (r) setData(r);
+              }}
+            >
+              {data.meta.use_as_template === false ? "Als Vorlage anbieten" : "Vorlage ausblenden"}
+            </button>
+            <span className="sep" />
+            <button
+              className="btn small danger"
+              disabled={busy}
+              title="Verschiebt den Projektordner nach _Geloescht. Nichts wird endgültig gelöscht."
+              onClick={async () => {
+                if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben?`)) return;
+                const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
+                if (r) onBack();
+              }}
+            >
+              Nach ‚Gelöscht‘ verschieben
+            </button>
+          </div>
+          <div className="muted-line" title={data.folder}>
+            Ordner: {data.folder} · angelegt {data.meta.created_at?.slice(0, 10)} von {data.meta.created_by}
+            {data.meta.template_from ? ` · Vorlage: ${data.meta.template_from}` : ""}
           </div>
         </div>
 
-        <div
-          className={`card ${dropHot ? "drop-hot" : ""}`}
+        <details
+          className={`card fold ${dropHot ? "drop-hot" : ""}`}
+          open={open || plans.length === 0}
+          onToggle={(e) => {
+            const next = (e.currentTarget as HTMLDetailsElement).open;
+            if (next !== (open || plans.length === 0)) toggleOpen(next);
+          }}
           onDragOver={(e) => {
             if (![...e.dataTransfer.types].includes("Files")) return;
             e.preventDefault();
@@ -229,110 +315,140 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             importFile(file, undefined, guess ?? "");
           }}
         >
-          <h3>Pläne</h3>
+          <summary onClick={(e) => plans.length === 0 && e.preventDefault()}>
+            Pläne · {plans.length === 1 ? "1 Geschoss" : `${plans.length} Geschosse`}
+            {!open && plans.length > 0 && <span className="hint">Datei hierher ziehen importiert ein neues Geschoss</span>}
+            {importStatus?.kind === "busy" && <span className="hint">· importiert …</span>}
+          </summary>
           <p className="desc">
-            Ein Plan pro Geschoss. Datei hierher ziehen oder unten wählen. Formate: DXF und N4D, DWG mit ODA File Converter.
-            Exportieren sichert das Projekt als eine ZIP-Datei mit der Projektdatenbank und einer Plandatei pro Geschoss.
+            Ein Plan pro Geschoss. Datei hierher ziehen oder unten wählen. Formate: DXF und N4D, DWG mit ODA File
+            Converter. Geschosse sortierst du durch Ziehen am Griff ⠿ oder mit ↑ ↓.
           </p>
           {plans.length > 0 && (
-            <table className="list-table">
-              <thead>
-                <tr>
-                  <th>Geschoss</th>
-                  <th>Datei</th>
-                  <th>Importiert</th>
-                  <th>Apparate</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {plans.map((p, i) => (
-                  <tr
-                    key={p.id}
-                    draggable
-                    onDragStart={() => setDragPlan(p.id)}
-                    onDragOver={(e) => {
-                      if ([...e.dataTransfer.types].includes("Files")) return;
-                      e.preventDefault();
-                    }}
-                    onDrop={(e) => {
-                      if (e.dataTransfer.files?.length || dragPlan == null || dragPlan === p.id) return;
-                      e.preventDefault();
-                      const ids = plans.map((x) => x.id);
-                      const from = ids.indexOf(dragPlan);
-                      ids.splice(from, 1);
-                      ids.splice(i, 0, dragPlan);
-                      setDragPlan(null);
-                      run(() => api.reorderPlans(projectId, ids)).then((r) => r && setData(r));
-                    }}
-                  >
-                    <td>
-                      <span className="hint" title="Ziehen zum Sortieren" style={{ cursor: "grab", marginRight: 6 }}>⠿</span>
-                      <b>{p.name}</b>
-                    </td>
-                    <td>
-                      {p.file_name} <span className="badge">{p.format?.toUpperCase()}</span>
-                      {p.versions > 1 && <span className="hint"> · {p.versions} Versionen</span>}
-                      {p.versions > 1 && p.change_summary && <div className="hint">{changeHint(p.change_summary)}</div>}
-                    </td>
-                    <td>
-                      {p.imported_at?.replace("T", " ").slice(0, 16)} · {p.imported_by}
-                    </td>
-                    <td>{planTotals[p.id]}</td>
-                    <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
-                      <button
-                        className="btn small"
-                        disabled={busy || i === 0}
-                        title="nach oben"
-                        onClick={async () => {
-                          const ids = plans.map((x) => x.id);
-                          [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
-                          const r = await run(() => api.reorderPlans(projectId, ids));
-                          if (r) setData(r);
-                        }}
-                      >
-                        ↑
-                      </button>{" "}
-                      <button
-                        className="btn small"
-                        disabled={busy}
-                        title="Geänderten Plan erneut importieren"
-                        onClick={() => {
-                          setReimportPlan(p.id);
-                          reimportRef.current?.click();
-                        }}
-                      >
-                        Neu importieren
-                      </button>{" "}
-                      <button
-                        className="btn small"
-                        disabled={busy}
-                        onClick={async () => {
-                          const name = window.prompt("Name des Geschosses", p.name);
-                          if (!name || name === p.name) return;
-                          const r = await run(() => api.renamePlan(projectId, p.id, name));
-                          if (r) setData(r);
-                        }}
-                      >
-                        Umbenennen
-                      </button>{" "}
-                      <button
-                        className="btn small danger"
-                        disabled={busy || !p.file_name}
-                        title="Löscht nur die Plandatei. Liste, Symbole und Anzahlen bleiben."
-                        onClick={async () => {
-                          if (!window.confirm(`Datei von «${p.name}» entfernen? Liste, Symbole und Anzahlen bleiben.`)) return;
-                          const r = await run(() => api.detachPlan(projectId, p.id), "Datei entfernt, Liste bleibt");
-                          if (r) setData(r);
-                        }}
-                      >
-                        Datei entfernen
-                      </button>
-                    </td>
+            <div className="table-scroll">
+              <table className="list-table">
+                <thead>
+                  <tr>
+                    <th>Geschoss</th>
+                    <th>Plandatei</th>
+                    <th>Letzter Import</th>
+                    <th className="num-col">Apparate</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {plans.map((p, i) => (
+                    <tr
+                      key={p.id}
+                      draggable
+                      onDragStart={() => setDragPlan(p.id)}
+                      onDragOver={(e) => {
+                        if ([...e.dataTransfer.types].includes("Files")) return;
+                        e.preventDefault();
+                      }}
+                      onDrop={(e) => {
+                        if (e.dataTransfer.files?.length || dragPlan == null || dragPlan === p.id) return;
+                        e.preventDefault();
+                        const ids = plans.map((x) => x.id);
+                        ids.splice(ids.indexOf(dragPlan), 1);
+                        ids.splice(i, 0, dragPlan);
+                        setDragPlan(null);
+                        reorder(ids);
+                      }}
+                    >
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <span className="handle" title="Ziehen zum Sortieren" aria-hidden>
+                          ⠿
+                        </span>
+                        <b>{p.name}</b>
+                      </td>
+                      <td>
+                        {p.file_name ? (
+                          <span title={p.file_name}>{p.file_name}</span>
+                        ) : (
+                          <span className="hint">Plandatei entfernt</span>
+                        )}{" "}
+                        {p.format && <span className="badge">{p.format.toUpperCase()}</span>}
+                        <div className="hint">
+                          {p.versions === 1 ? "1 Importversion" : `${p.versions} Importversionen`}
+                          {p.versions > 1 && p.change_summary ? ` · ${changeHint(p.change_summary)}` : ""}
+                        </div>
+                      </td>
+                      <td>
+                        {p.imported_at ? formatDateTime(p.imported_at) : ""}
+                        <div className="hint">{p.imported_by}</div>
+                      </td>
+                      <td className="num-col">{planTotals[p.id]}</td>
+                      <td className="plan-actions">
+                        <div>
+                          <button
+                            className="btn small"
+                            disabled={busy}
+                            title="Geänderten Plan dieses Geschosses einlesen. Die bisherigen Importe bleiben für den Vergleich erhalten."
+                            onClick={() => {
+                              setReimportPlan(p.id);
+                              reimportRef.current?.click();
+                            }}
+                          >
+                            Neue Planversion importieren
+                          </button>
+                          <button
+                            className="btn small"
+                            disabled={busy || i === 0}
+                            aria-label={`${p.name} nach oben`}
+                            title="Nach oben"
+                            onClick={() => {
+                              const ids = plans.map((x) => x.id);
+                              [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+                              reorder(ids);
+                            }}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            className="btn small"
+                            disabled={busy || i === plans.length - 1}
+                            aria-label={`${p.name} nach unten`}
+                            title="Nach unten"
+                            onClick={() => {
+                              const ids = plans.map((x) => x.id);
+                              [ids[i + 1], ids[i]] = [ids[i], ids[i + 1]];
+                              reorder(ids);
+                            }}
+                          >
+                            ↓
+                          </button>
+                          <Menu label="Weitere Aktionen" disabled={busy}>
+                            <button
+                              onClick={async () => {
+                                const name = window.prompt("Name des Geschosses", p.name);
+                                if (!name || name === p.name) return;
+                                const r = await run(() => api.renamePlan(projectId, p.id, name), "Geschoss umbenannt");
+                                if (r) setData(r);
+                              }}
+                            >
+                              Geschoss umbenennen
+                            </button>
+                            <button
+                              className="danger"
+                              disabled={!p.file_name}
+                              onClick={async () => {
+                                if (!window.confirm(`Datei von «${p.name}» entfernen?\n\n${DETACH_TEXT}`)) return;
+                                const r = await run(() => api.detachPlan(projectId, p.id), "Plandatei entfernt, Anzahlen bleiben");
+                                if (r) setData(r);
+                              }}
+                            >
+                              Datei entfernen
+                              <span className="hint">{p.file_name ? DETACH_TEXT : "Keine Plandatei gespeichert."}</span>
+                            </button>
+                          </Menu>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           <input
             ref={reimportRef}
@@ -345,26 +461,42 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               e.target.value = "";
             }}
           />
-          <div className="row" style={{ marginTop: 12 }}>
-            <input
-              className="input"
-              placeholder="Geschoss, z. B. EG"
-              value={planName}
-              onChange={(e) => setPlanName(e.target.value)}
-              style={{ width: 200 }}
-            />
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".dxf,.dwg,.n4d"
-              disabled={busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const guess = floorNameFromFilename(file.name);
-                if (guess) setPlanName(guess);
-              }}
-            />
+          <div className="head-fields" style={{ marginTop: 12 }}>
+            <label className="field">
+              <span>Neues Geschoss</span>
+              <input
+                className="input"
+                placeholder="z. B. EG"
+                value={planName}
+                onChange={(e) => setPlanName(e.target.value)}
+                style={{ width: 200 }}
+              />
+            </label>
+            <div className="field grow">
+              <span>Plandatei (DXF, N4D, DWG)</span>
+              <div className="file-pick">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".dxf,.dwg,.n4d"
+                  disabled={busy}
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    setChosenFile(file?.name ?? "");
+                    if (!file) return;
+                    const guess = floorNameFromFilename(file.name);
+                    if (guess) setPlanName(guess);
+                  }}
+                />
+                <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+                  Datei wählen …
+                </button>
+                <span className={chosenFile ? "name" : "hint"} title={chosenFile}>
+                  {chosenFile || "Keine Datei gewählt"}
+                </span>
+              </div>
+            </div>
             <button
               className="btn primary"
               disabled={busy}
@@ -374,41 +506,75 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 else importFile(f);
               }}
             >
-              {busy ? "importiert …" : "Plan importieren"}
+              {importStatus?.kind === "busy" ? "importiert …" : "Plan importieren"}
             </button>
           </div>
-        </div>
+          {importStatus && (
+            <div className={`import-status ${importStatus.kind}`} role="status" aria-live="polite">
+              <b>{importStatus.kind === "busy" ? "Läuft: " : importStatus.kind === "ok" ? "Fertig: " : "Fehler: "}</b>
+              {importStatus.text}
+              {importStatus.kind !== "busy" && (
+                <>
+                  {" "}
+                  <button className="btn small" onClick={() => setImportStatus(null)}>
+                    Ausblenden
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </details>
 
         {plans.length > 0 && (
           <div className="card">
-            <div className="subtabs">
-              <button className={`tab ${tab === "list" ? "active" : ""}`} onClick={() => setTab("list")}>
+            <div className="subtabs" role="tablist">
+              <button
+                className={`tab ${tab === "list" ? "active" : ""}`}
+                onClick={() => setTab("list")}
+                title={`${data.rows.length} Zeilen: eine Zeile pro Apparat (Symbolfamilie) über alle Geschosse`}
+              >
                 Gesamtliste ({data.rows.length})
               </button>
-              <button className={`tab ${tab === "changes" ? "active" : ""}`} onClick={() => setTab("changes")}>
+              <button
+                className={`tab ${tab === "changes" ? "active" : ""}`}
+                onClick={() => setTab("changes")}
+                title="Vergleich von Importversionen. Die Zahl zählt geänderte Zeilen zum vorigen Import, über alle Geschosse."
+              >
                 Änderungen{changeCount ? ` (${changeCount})` : ""}
               </button>
-              <button className={`tab ${tab === "unknown" ? "active" : ""}`} onClick={() => setTab("unknown")}>
+              <button
+                className={`tab ${tab === "unknown" ? "active" : ""}`}
+                onClick={() => setTab("unknown")}
+                title={`${data.unknown.length} Elementarten ohne sichere Erkennung`}
+              >
                 Unbekannt ({data.unknown.length})
               </button>
-              <button className={`tab ${tab === "layers" ? "active" : ""}`} onClick={() => setTab("layers")}>
-                Ebenen und Farben ({data.layers.length})
+              <button
+                className={`tab ${tab === "layers" ? "active" : ""}`}
+                onClick={() => setTab("layers")}
+                title={`${toChoose} verwendete Kategorien ohne passende Ebene · ${data.layers.length} Ebenen aus den importierten Plänen`}
+              >
+                Ebenen und Farben{toChoose ? ` · ${toChoose} Ebene wählen` : ""}
               </button>
-              <button className={`tab ${tab === "ignored" ? "active" : ""}`} onClick={() => setTab("ignored")}>
+              <button
+                className={`tab ${tab === "ignored" ? "active" : ""}`}
+                onClick={() => setTab("ignored")}
+                title={`${data.ignored.length} Elementarten, die nicht als Apparat zählen (Leitungen, Masse, Beschriftungen, von Hand ignoriert)`}
+              >
                 Nicht berücksichtigt ({data.ignored.length})
               </button>
             </div>
 
             {tab === "list" && (
-              <div className="table-scroll">
+              <div className="table-scroll sticky">
                 <table className="list-table summary">
                   <thead>
                     <tr>
-                      <th style={{ width: 52 }} />
-                      <th>Symbol</th>
-                      <th>Code</th>
+                      <th className="stick stick-1" />
+                      <th className="stick stick-2">Symbol</th>
+                      <th>Code · Symbol-Datensatz</th>
                       {plans.map((p) => (
-                        <th key={p.id} className="num-col">
+                        <th key={p.id} className="num-col plan-col" title={p.name}>
                           {p.name}
                         </th>
                       ))}
@@ -419,71 +585,76 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                     {groups.map((g) => {
                       const info = g.cat ? colorById[g.cat.id] : undefined;
                       return (
-                      <GroupRows
-                        key={g.cat?.id ?? "none"}
-                        title={g.cat?.title ?? "Ohne Kategorie"}
-                        color={info?.color || undefined}
-                        layer={info?.layer || g.cat?.layer || ""}
-                        reason={info?.reason || ""}
-                        colSpan={4 + plans.length}
-                        picker={
-                          g.cat ? (
-                            <LayerSelect
-                              value={info?.manual ? info.layer : ""}
-                              layers={data.layers}
-                              disabled={busy}
-                              onChange={async (layer) => {
-                                const r = await run(() => api.setCategoryLayer(projectId, g.cat!.id, layer));
-                                if (r) setData(r);
-                              }}
-                            />
-                          ) : undefined
-                        }
-                      >
-                        {g.rows.map((r) => (
-                          <tr key={r.family_key}>
-                            <td>
-                              <div className="mini-pic">
-                                {r.svg ? <span style={{ display: "contents" }} dangerouslySetInnerHTML={{ __html: r.svg }} /> : "–"}
-                              </div>
-                            </td>
-                            <td>
-                              <b>{r.title}</b>
-                              {r.names.length > 0 && <div className="hint">im Plan: {r.names.join(", ")}</div>}
-                            </td>
-                            <td>
-                              {r.item}
-                              <div className="hint">{r.datasets.map(DATASET_LABEL).join(", ")}</div>
-                            </td>
-                            {plans.map((p) => (
-                              <td key={p.id} className="num-col">
-                                {r.counts[p.id] ?? ""}
+                        <GroupRows
+                          key={g.cat?.id ?? "none"}
+                          title={g.cat?.title ?? "Ohne Kategorie"}
+                          color={info?.color || undefined}
+                          layer={info?.layer || ""}
+                          state={info ? layerStateText(info).text : ""}
+                          colSpan={4 + plans.length}
+                          picker={
+                            g.cat ? (
+                              <LayerSelect
+                                value={info?.manual ? info.layer : ""}
+                                layers={data.layers}
+                                disabled={busy}
+                                label={`Ebene für ${g.cat.title}`}
+                                onChange={async (layer) => {
+                                  const r = await run(() => api.setCategoryLayer(projectId, g.cat!.id, layer));
+                                  if (r) setData(r);
+                                }}
+                              />
+                            ) : undefined
+                          }
+                        >
+                          {g.rows.map((r) => (
+                            <tr key={r.family_key}>
+                              <td className="stick stick-1">
+                                <div className="mini-pic">
+                                  {r.svg ? (
+                                    <span style={{ display: "contents" }} dangerouslySetInnerHTML={{ __html: r.svg }} />
+                                  ) : (
+                                    <span className="hint" title="Keine Symbolvorschau verfügbar. Das Symbol ist erkannt.">
+                                      –
+                                    </span>
+                                  )}
+                                </div>
                               </td>
-                            ))}
-                            <td className="num-col">
-                              <b>{r.total}</b>
-                              {r.total === 0 && r.sources.length > 0 && (
-                                <>
-                                  {" "}
-                                  <button
-                                    className="btn small danger"
-                                    disabled={busy}
-                                    onClick={async () => {
-                                      const next = await run(
-                                        () => api.deleteRows(projectId, r.sources),
-                                        "Zeile gelöscht",
-                                      );
-                                      if (next) setData(next);
-                                    }}
-                                  >
-                                    Zeile löschen
-                                  </button>
-                                </>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </GroupRows>
+                              <td className="stick stick-2">
+                                <b>{r.title}</b>
+                                {r.names.length > 0 && <div className="hint">im Plan: {r.names.join(", ")}</div>}
+                              </td>
+                              <td>
+                                {r.item}
+                                <div className="hint">{r.datasets.map(DATASET_LABEL).join(", ")}</div>
+                              </td>
+                              {plans.map((p) => (
+                                <td key={p.id} className="num-col plan-col">
+                                  {r.counts[p.id] ?? ""}
+                                </td>
+                              ))}
+                              <td className="num-col">
+                                <b>{r.total}</b>
+                                {r.total === 0 && r.sources.length > 0 && (
+                                  <>
+                                    {" "}
+                                    <button
+                                      className="btn small danger"
+                                      disabled={busy}
+                                      title="Entfernt die Zeile mit Total 0 aus den aktuellen Importen"
+                                      onClick={async () => {
+                                        const next = await run(() => api.deleteRows(projectId, r.sources), "Zeile gelöscht");
+                                        if (next) setData(next);
+                                      }}
+                                    >
+                                      Zeile löschen
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </GroupRows>
                       );
                     })}
                   </tbody>
@@ -500,80 +671,117 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "unknown" && (
-              <UnknownList
-                projectId={projectId}
-                plans={plans}
-                items={data.unknown}
-                notify={notify}
-                onChanged={load}
-              />
+              <UnknownList projectId={projectId} plans={plans} items={data.unknown} notify={notify} onChanged={load} />
             )}
 
             {tab === "layers" && (
               <>
                 <p className="desc">
-                  Die Kategorie behält ihre Legendenebene. Passt der Name nicht zum Plan (E_Licht gegenüber
-                  E_232.5_Licht), wird der gleiche Namensteil gesucht. Sonst die Ebene hier wählen.
+                  Jede Kategorie behält ihre Legendenebene. Für die Farbe sucht das Programm in den Plänen zuerst
+                  denselben Ebenennamen, danach den Namensteil nach der BKP-Nummer (E_232.5_Licht passt zu E_Licht,
+                  E_233_Leuchten nicht). Bei mehreren Treffern zählt die Ebene mit den meisten Apparaten. Eine manuell
+                  gewählte Ebene gilt nur für dieses Projekt.
                 </p>
-                <table className="list-table">
-                  <thead>
-                    <tr>
-                      <th>Kategorie</th>
-                      <th>Farbe</th>
-                      <th>Ebene im Plan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.category_colors.map((c) => (
-                      <tr key={c.id}>
-                        <td>
-                          {c.title}
-                          <div className="hint">Legende: {c.legend_layer || "–"}</div>
-                        </td>
-                        <td>
-                          {c.color ? (
-                            <span className="swatch" style={{ background: c.color }} title={c.color} />
-                          ) : (
-                            "–"
-                          )}
-                          {c.reason && <div className="hint">{c.reason}</div>}
-                        </td>
-                        <td>
-                          <LayerSelect
-                            value={c.manual ? c.layer : ""}
-                            layers={data.layers}
-                            disabled={busy}
-                            onChange={async (layer) => {
-                              const next = await run(() => api.setCategoryLayer(projectId, c.id, layer));
-                              if (next) setData(next);
-                            }}
-                          />
-                          {c.layer && <span className="hint"> · {c.layer}</span>}
-                        </td>
+                <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+                  <span className="hint">
+                    {allCategories
+                      ? `Alle ${data.category_colors.length} Kategorien`
+                      : `${usedCats.length} Kategorien mit Apparaten in den aktuellen Importen`}
+                    {toChoose ? ` · ${toChoose} brauchen eine Ebene` : " · keine offene Entscheidung"}
+                  </span>
+                  <label className="toggle">
+                    <input type="checkbox" checked={allCategories} onChange={(e) => setAllCategories(e.target.checked)} />
+                    Alle Kategorien anzeigen
+                  </label>
+                </div>
+                {shownCats.length === 0 ? (
+                  <div className="empty">Keine Kategorie hat Apparate in den aktuellen Importen.</div>
+                ) : (
+                  <div className="table-scroll">
+                    <table className="list-table">
+                      <thead>
+                        <tr>
+                          <th>Kategorie</th>
+                          <th>Zustand</th>
+                          <th>Farbe</th>
+                          <th>Ebene für dieses Projekt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {shownCats.map((c) => {
+                          const st = layerStateText(c);
+                          return (
+                            <tr key={c.id}>
+                              <td>
+                                <b>{c.title}</b>
+                                <div className="hint">
+                                  Legendenebene: {c.legend_layer || "keine"} ·{" "}
+                                  {c.used ? `${c.used} Apparate` : "keine Apparate"}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`status ${st.cls}`}>{st.text}</span>
+                                {st.detail && <div className="hint">{st.detail}</div>}
+                              </td>
+                              <td style={{ whiteSpace: "nowrap" }}>
+                                {c.color ? (
+                                  <>
+                                    <span className="swatch big" style={{ background: c.color }} />{" "}
+                                    <span className="hint">{c.color}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="swatch big none" />{" "}
+                                    <span className="hint">{c.layer && c.no_color ? "ohne Farbangabe" : "keine Farbe"}</span>
+                                  </>
+                                )}
+                              </td>
+                              <td>
+                                <LayerSelect
+                                  value={c.manual ? c.layer : ""}
+                                  layers={data.layers}
+                                  disabled={busy}
+                                  label={`Ebene für ${c.title}`}
+                                  onChange={async (layer) => {
+                                    const next = await run(() => api.setCategoryLayer(projectId, c.id, layer));
+                                    if (next) setData(next);
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <h4 style={{ margin: "20px 0 6px" }}>Ebenen aus den Plänen ({data.layers.length})</h4>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  Alle Ebenen der importierten Pläne mit Farbe und Linienart, wie sie in der Datei stehen.
+                </p>
+                <div className="table-scroll">
+                  <table className="list-table">
+                    <thead>
+                      <tr>
+                        <th>Farbe</th>
+                        <th>Ebene</th>
+                        <th>Linienart</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <table className="list-table" style={{ marginTop: 16 }}>
-                  <thead>
-                    <tr>
-                      <th>Farbe</th>
-                      <th>Ebene</th>
-                      <th>Linienart</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.layers.map((l) => (
-                      <tr key={l.name}>
-                        <td>
-                          <span className="swatch" style={{ background: l.color || "transparent" }} title={l.color} />
-                        </td>
-                        <td>{l.name}</td>
-                        <td>{l.linetype}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {data.layers.map((l) => (
+                        <tr key={l.name}>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <span className={`swatch big ${l.color ? "" : "none"}`} style={l.color ? { background: l.color } : undefined} />{" "}
+                            <span className="hint">{l.color || "ohne Farbangabe"}</span>
+                          </td>
+                          <td style={{ wordBreak: "break-word" }}>{l.name}</td>
+                          <td>{l.linetype}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
 
@@ -591,7 +799,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   {data.ignored.map((g) => (
                     <tr key={g.source_key}>
                       <td>{g.name}</td>
-                      <td className="hint">{g.manual ? "von Hand ignoriert" : g.reason}</td>
+                      <td className="hint">{g.manual ? "von Hand ignoriert (gilt für die ganze Firma)" : g.reason}</td>
                       <td className="num-col">{g.total}</td>
                       <td style={{ textAlign: "right" }}>
                         {g.manual && (
@@ -622,26 +830,30 @@ function LayerSelect({
   value,
   layers,
   disabled,
+  label,
   onChange,
 }: {
   value: string;
   layers: ProjectDetail["layers"];
   disabled?: boolean;
+  label: string;
   onChange: (layer: string | null) => void;
 }) {
   return (
     <select
       className="select"
-      style={{ maxWidth: 240, marginLeft: 8 }}
+      style={{ maxWidth: 280 }}
       value={value}
       disabled={disabled}
-      title="Ebene für die Farbe dieser Kategorie. «automatisch» sucht den passenden Namen."
+      aria-label={label}
+      title={value ? `Manuell: ${value}. «automatisch» sucht wieder nach dem Namen.` : "automatisch: passender Ebenenname"}
       onChange={(e) => onChange(e.target.value || null)}
     >
       <option value="">automatisch</option>
       {layers.map((l) => (
         <option key={l.name} value={l.name}>
           {l.name}
+          {l.color ? "" : " (ohne Farbangabe)"}
         </option>
       ))}
     </select>
@@ -652,7 +864,7 @@ function GroupRows({
   title,
   color,
   layer,
-  reason,
+  state,
   colSpan,
   picker,
   children,
@@ -660,7 +872,7 @@ function GroupRows({
   title: string;
   color?: string;
   layer: string;
-  reason: string;
+  state: string;
   colSpan: number;
   picker?: React.ReactNode;
   children: React.ReactNode;
@@ -669,10 +881,12 @@ function GroupRows({
     <>
       <tr className="group-row">
         <td colSpan={colSpan}>
-          {color && <span className="swatch" style={{ background: color }} title={`${layer} ${color}`} />} {title}
-          {layer && <span className="hint"> · {layer}</span>}
-          {reason && <span className="hint"> · {reason}</span>}
-          {picker}
+          <div className="row" style={{ position: "sticky", left: 8, display: "inline-flex" }}>
+            <span className={`swatch ${color ? "" : "none"}`} style={color ? { background: color } : undefined} title={`${layer} ${color ?? ""}`} />
+            <span>{title}</span>
+            {state && <span className="hint">· {state}</span>}
+            {picker}
+          </div>
         </td>
       </tr>
       {children}

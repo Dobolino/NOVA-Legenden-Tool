@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Category, ProjectSummary } from "../api";
+import { formatDateTime } from "../uiState";
 import ProjectView from "./ProjectView";
 
 interface Props {
@@ -80,8 +81,8 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
               <thead>
                 <tr>
                   <th>Projekt</th>
-                  <th>Nova</th>
-                  <th>Pläne</th>
+                  <th>Nova-Version</th>
+                  <th>Geschosse</th>
                   <th>Geändert</th>
                   <th>Angelegt von</th>
                   <th />
@@ -95,16 +96,16 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                       <b>{p.name}</b>
                       {p.template_from && <div className="hint">Vorlage: {p.template_from}</div>}
                     </td>
-                    <td>{p.nova_version}</td>
+                    <td>Nova {p.nova_version}</td>
                     <td>{p.plan_count}</td>
-                    <td>{p.modified.replace("T", " ").slice(0, 16)}</td>
+                    <td>{formatDateTime(p.modified)}</td>
                     <td>{p.created_by}</td>
                     <td style={{ textAlign: "right" }}>
                       <button
                         className="btn small danger"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!window.confirm(`Projekt «${p.name}» löschen? Es wird in den Ordner _Geloescht verschoben.`)) return;
+                          if (!window.confirm(`Projekt «${p.name}» in den Ordner _Geloescht verschieben?`)) return;
                           try {
                             await api.deleteProject(p.id);
                             notify("Projekt nach _Geloescht verschoben");
@@ -115,7 +116,7 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                           }
                         }}
                       >
-                        Löschen
+                        Nach ‚Gelöscht‘ verschieben
                       </button>
                     </td>
                   </tr>
@@ -194,7 +195,7 @@ function CreateDialog({
           <select className="select full" value={existing} onChange={(e) => setExisting(e.target.value)}>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} (Nova {p.nova_version}, {p.plan_count} Pläne)
+                {p.project_number ? `${p.project_number} · ` : ""}{p.name} (Nova {p.nova_version}, {p.plan_count} Geschosse)
               </option>
             ))}
           </select>
@@ -214,7 +215,7 @@ function CreateDialog({
               <option value="19.2">Nova 19.2</option>
               <option value="20">Nova 20</option>
             </select>
-            <label>Vorlage</label>
+            <label>Vorlage (Einstellungen und Ebenen)</label>
             <select className="select" value={template} onChange={(e) => setTemplate(e.target.value)}>
               <option value="">keine Vorlage</option>
               {projects.filter((p) => p.use_as_template !== false).map((p) => (

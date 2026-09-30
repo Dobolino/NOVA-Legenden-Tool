@@ -148,3 +148,13 @@ def test_merge_does_not_guess_between_datasets_with_the_same_code():
     rows = merge_found(previous, [Found("code:X|90-30|G3", "Neu", 6, item="90-30", graphic_name="G3")])
     counts = {row["source_key"]: row["count"] for row in rows}
     assert counts == {"code:X|90-30|G3": 6, "n4d:V1|90|90-30|2D-10": 0, "n4d:V2|90|90-30|2D-10": 0}
+
+
+def test_new_plan_version_without_floor_name_as_sent_by_the_ui(env):
+    client, tmp = env
+    pid = client.post("/api/projects", json={"name": "Test"}).json()["id"]
+    plan_id = import_dxf(client, pid, nova_like_dxf(tmp / "eg.dxf")).json()["plans"][0]["id"]
+    res = import_dxf(client, pid, _revised(tmp / "eg-neu.dxf"), name="", plan_id=plan_id)
+    assert res.status_code == 200, res.text
+    assert res.json()["plans"][0]["versions"] == 2
+    assert import_dxf(client, pid, nova_like_dxf(tmp / "x.dxf"), name="").status_code == 200  # name from file

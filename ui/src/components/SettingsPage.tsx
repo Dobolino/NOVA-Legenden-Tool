@@ -79,6 +79,24 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
     }
   }
 
+  const canPick = Boolean(status.dialogs);
+  const pickHint = canPick ? "" : "Dateidialoge gibt es nur im Programmfenster. Pfad bitte einfügen.";
+
+  /** Native dialog of the program window. Cancel keeps the previous value. */
+  async function choose(kind: "dataset" | "folder", start: string): Promise<string | null> {
+    try {
+      const r = await api.dialog(kind, start);
+      if (!r.available) {
+        notify("Dateidialoge gibt es nur im Programmfenster. Pfad bitte von Hand einfügen.", true);
+        return null;
+      }
+      return r.path;
+    } catch (e) {
+      notify((e as Error).message, true);
+      return null;
+    }
+  }
+
   const cleanPath = (p: string) => p.trim().replace(/^"(.*)"$/, "$1");
   const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase();
 
@@ -132,8 +150,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
                 <div key={p} className="path-item">
                   <span>{p}</span>
                   {ds && (
-                    <span className="badge up" style={{ flex: "none" }}>
-                      {DATASET_LABEL(ds.id)} · {ds.version} · {ds.symbol_count} Symbole
+                    <span className="badge up" style={{ flex: "none" }} title={`Stand des Datensatzes: ${ds.version}`}>
+                      Symbol-Datensatz {DATASET_LABEL(ds.id)} · Stand {ds.version} · {ds.symbol_count} Symbole
                     </span>
                   )}
                   {!ds && doubled && (
@@ -157,6 +175,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               className="input"
               style={{ flex: 1, minWidth: 260 }}
               placeholder="C:\…\Elektroinstallationen.V2.CH.nzp"
+              aria-label="Pfad eines Nova-Datensatzes"
               value={newPath}
               onChange={(e) => setNewPath(e.target.value)}
             />
@@ -170,6 +189,22 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               }}
             >
               Hinzufügen
+            </button>
+            <button
+              className="btn"
+              disabled={busy || !canPick}
+              title={pickHint || "Nova-Datensatz (.nzp) im Explorer wählen"}
+              onClick={async () => {
+                const p = await choose("dataset", paths[paths.length - 1] ?? "C:\\Users\\Public\\Documents\\Trimble\\Warehouse");
+                if (!p) return;
+                if (paths.some((x) => norm(x) === norm(p))) {
+                  notify("Dieser Datensatz ist schon eingetragen");
+                  return;
+                }
+                save({ dataset_paths: [...paths, p] }, "Datensatz hinzugefügt");
+              }}
+            >
+              Datei wählen …
             </button>
             <button className="btn" disabled={busy} onClick={search}>
               Automatisch suchen
@@ -208,8 +243,23 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               style={{ flex: 1, minWidth: 260 }}
               placeholder="T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
               value={projectsFolder}
+              title={projectsFolder}
+              aria-label="Projektordner"
               onChange={(e) => setProjectsFolder(e.target.value)}
             />
+            <button
+              className="btn"
+              disabled={busy || !canPick}
+              title={pickHint || "Projektordner im Explorer wählen"}
+              onClick={async () => {
+                const p = await choose("folder", projectsFolder || status.settings.projects_folder);
+                if (!p) return;
+                setProjectsFolder(p);
+                if (p !== status.settings.projects_folder) save({ projects_folder: p }, "Projektordner gespeichert");
+              }}
+            >
+              Ordner wählen …
+            </button>
             <button
               className="btn primary"
               disabled={busy || projectsFolder === status.settings.projects_folder}
@@ -232,8 +282,23 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               style={{ flex: 1, minWidth: 260 }}
               placeholder="T:\_CAD\NOVA-Legenden"
               value={company}
+              title={company}
+              aria-label="Firmenordner"
               onChange={(e) => setCompany(e.target.value)}
             />
+            <button
+              className="btn"
+              disabled={busy || !canPick}
+              title={pickHint || "Firmenordner im Explorer wählen"}
+              onClick={async () => {
+                const p = await choose("folder", company || status.settings.company_folder);
+                if (!p) return;
+                setCompany(p);
+                if (p !== status.settings.company_folder) save({ company_folder: p }, "Firmenordner gespeichert");
+              }}
+            >
+              Ordner wählen …
+            </button>
             <button
               className="btn primary"
               disabled={busy || company === status.settings.company_folder}
@@ -242,13 +307,18 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               Speichern
             </button>
           </div>
-          <p className="hint">Aktuelle Datei: {status.company_db}</p>
+          {!canPick && <p className="hint">{pickHint}</p>}
+          <p className="hint" style={{ wordBreak: "break-all" }}>Aktuelle Datei: {status.company_db}</p>
           {status.company_error && <p className="warn-text">{status.company_error}</p>}
         </div>
 
         <div className="card">
-          <h3>Nova-Version</h3>
-          <p className="desc">Steuert später das Format für Import und Export. Pro Projekt änderbar (ab Phase 2).</p>
+          <h3>Nova-Version (Standard für neue Projekte)</h3>
+          <p className="desc">
+            Nova-Programmversion, zum Beispiel 19.2 oder 20. Jedes Projekt speichert seine eigene Angabe. Die Angabe ist
+            eine Information zum Projekt: Der Import liest heute alle Pläne gleich und prüft die Nova-Version nicht.
+            Geprüft ist das Programm mit Nova 19.2 Patch 3, Nova 20 noch nicht.
+          </p>
           <div className="row">
             <select
               className="select"
@@ -285,12 +355,23 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <div className="card">
           <h3>Info</h3>
           <dl className="kv">
-            <dt>Version</dt>
+            <dt>Programmversion</dt>
             <dd>{status.version_label}</dd>
             <dt>Benutzer</dt>
             <dd>{status.user}</dd>
             <dt>Lokale Daten</dt>
             <dd>{status.local_home}</dd>
+          </dl>
+          <div className="section">Begriffe</div>
+          <dl className="kv">
+            <dt>Programmversion</dt>
+            <dd>Version und Build von NOVA-Legenden. Das Update oben ändert nur sie.</dd>
+            <dt>Nova-Version</dt>
+            <dd>Version des Programms Trimble Nova, zum Beispiel 19.2 oder 20.</dd>
+            <dt>Symbol-Datensatz</dt>
+            <dd>Nova-Symbolbibliothek, zum Beispiel V1 (2022) oder V2 (2025). Keine Planrevision und keine Nova-Version.</dd>
+            <dt>Importversion</dt>
+            <dd>Ein gespeicherter Import eines Geschossplans. Jede neue Planversion eines Geschosses ergibt eine weitere.</dd>
           </dl>
         </div>
       </div>

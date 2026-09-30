@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from dataclasses import asdict
 from pathlib import Path
@@ -11,7 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import config, updater
+from .. import config, dialogs, updater
 from ..categories.store import CompanyStore, auto_categories
 from ..library.families import FamilyOptions
 from ..library.store import Library
@@ -60,6 +61,8 @@ class AppState:
         opts = self.company.options()
         return FamilyOptions(bool(opts["merge_labels"]), bool(opts["merge_orientation"]))
 
+log = logging.getLogger(__name__)
+
 
 # -- request models --------------------------------------------------------------
 
@@ -91,6 +94,10 @@ class FillIn(BaseModel):
 
 class ReorderIn(BaseModel):
     ids: list[str]
+
+
+class DialogIn(BaseModel):
+    start: str = ""
 
 
 # -- app factory -----------------------------------------------------------------
@@ -144,7 +151,21 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
             "sync": st.sync_report,
             "oda": st.settings.oda_path or config.find_oda_converter(),
             "local_home": str(config.local_home()),
+            "dialogs": dialogs.available(),
         }
+
+    @app.post("/api/dialog/{kind}")
+    def dialog(kind: str, body: DialogIn) -> dict:
+        """Native dialog of the program window. path None = cancelled."""
+        if kind not in dialogs.KINDS:
+            raise HTTPException(404, "Unbekannter Dialog")
+        if not dialogs.available():
+            return {"available": False, "path": None}
+        try:
+            return {"available": True, "path": dialogs.choose(kind, body.start)}
+        except Exception as exc:  # noqa: BLE001 - dialog errors must not break the page
+            log.warning("Dateidialog fehlgeschlagen: %s", exc)
+            raise HTTPException(500, f"Dialog konnte nicht geöffnet werden: {exc}") from None
 
     @app.put("/api/settings")
     def put_settings(body: SettingsIn) -> dict:

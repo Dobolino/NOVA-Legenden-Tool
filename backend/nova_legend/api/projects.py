@@ -16,7 +16,7 @@ from ..importer.dwg import ConverterMissing, read_dwg
 from ..importer.dxf import read_dxf
 from ..importer.n4d import read_n4d
 from ..importer.recognize import IGNORE
-from ..projects.colors import pick_category_layer
+from ..projects.colors import category_state, category_usage, pick_category_layer
 from ..projects.diff import diff_counts, tally
 from ..projects.floors import resolve_plan_name
 from ..projects.service import ProjectEvaluator
@@ -95,12 +95,14 @@ def register(app: FastAPI, st) -> None:
         layers = p.layers()
         chosen = (p.settings().get("category_layers") or {})
         usage = getattr(ev, "layer_usage", {})
+        used = category_usage(result["rows"])
         category_colors = []
         for cat in ev.categories:
             picked = pick_category_layer(cat.get("layer") or "", layers, usage.get(cat["id"], {}),
                                          chosen.get(cat["id"]) or None)
-            category_colors.append({"id": cat["id"], "title": cat["title"],
-                                    "legend_layer": cat.get("layer") or "", **picked})
+            category_colors.append({"id": cat["id"], "title": cat["title"], "parent": cat.get("parent"),
+                                    "legend_layer": cat.get("layer") or "", **picked,
+                                    **category_state(picked, layers, used.get(cat["id"], 0))})
         meta = p.meta()
         for plan in result["plans"]:
             plan["change_summary"] = _change_summary(p, plan["id"])
@@ -187,7 +189,7 @@ def register(app: FastAPI, st) -> None:
     # -- plans -------------------------------------------------------------------------
 
     @app.post("/api/projects/{project_id}/plans")
-    async def import_plan(project_id: str, name: str = Form(...), file: UploadFile = File(...),
+    async def import_plan(project_id: str, file: UploadFile = File(...), name: str = Form(""),
                           plan_id: int | None = Form(None)) -> dict:
         p = project(project_id)
         suffix = Path(file.filename or "").suffix.lower()

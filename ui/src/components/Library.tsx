@@ -156,34 +156,36 @@ export default function Library(props: Props) {
           />
         </div>
         <div className="toolbar">
-          <select className="select" value={dataset} onChange={(e) => setDataset(e.target.value)} title="Datensatz">
-            <option value="">Alle Datensätze</option>
-            {datasets.map((d) => (
-              <option key={d.id} value={d.id}>
-                {DATASET_LABEL(d.id)}
-              </option>
-            ))}
-          </select>
-          <select className="select" value={mounting} onChange={(e) => setMounting(e.target.value)} title="Montageart">
-            <option value="">Alle Montagearten</option>
-            {MOUNTINGS.map((m) => (
-              <option key={m} value={m}>
-                {m === "-" ? "ohne Angabe" : m}
-              </option>
-            ))}
-          </select>
+          <label className="filter-label">
+            Symbol-Datensatz
+            <select className="select" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+              <option value="">Alle Datensätze</option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {DATASET_LABEL(d.id)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-label">
+            Montage
+            <select className="select" value={mounting} onChange={(e) => setMounting(e.target.value)}>
+              <option value="">Alle Montagearten</option>
+              {MOUNTINGS.map((m) => (
+                <option key={m} value={m}>
+                  {m === "-" ? "ohne Angabe" : m}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="toggle" title="Zeigt jede Variante (UP, AP, ohne Text …) als eigene Kachel">
             <input type="checkbox" checked={allVariants} onChange={(e) => setAllVariants(e.target.checked)} />
             Alle Varianten anzeigen
           </label>
-          <input
-            type="range"
-            min={110}
-            max={240}
-            value={tile}
-            onChange={(e) => setTile(Number(e.target.value))}
-            title="Kachelgrösse"
-          />
+          <label className="range-field">
+            Symbolgrösse
+            <input type="range" min={110} max={260} value={tile} onChange={(e) => setTile(Number(e.target.value))} />
+          </label>
           <span className="result-count">{loading ? "lädt …" : `${total} Einträge`}</span>
         </div>
         <div className="grid-wrap">
@@ -194,14 +196,14 @@ export default function Library(props: Props) {
                 key={it.id}
                 className={`tile ${selected === it.id ? "selected" : ""}`}
                 onClick={() => setSelected(it.id)}
-                title={it.representative.name}
+                title={`${it.representative.name} · ${it.representative.item}`}
               >
                 <div className="pic">
                   <SymbolPic sym={it.representative} />
                 </div>
                 <div className="name">{allVariants ? it.representative.name : it.title}</div>
                 <div className="meta">
-                  <span>{it.representative.item}</span>
+                  <span style={{ fontWeight: 600, color: "var(--fg)" }}>{it.representative.item}</span>
                   {allVariants ? (
                     <span className={`badge ${it.representative.mounting === "UP" ? "up" : ""}`}>
                       {it.representative.mounting ?? "–"}
