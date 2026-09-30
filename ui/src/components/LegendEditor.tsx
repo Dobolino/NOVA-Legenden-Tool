@@ -638,6 +638,11 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
               🔒 Allgemeinteil (gesperrt)
             </button>
           )}
+          {doc.title.text.trim() && (
+            <button className={`outline-item ${sel?.type === "title" ? "active" : ""}`} style={{ paddingLeft: 6 }} onClick={() => setSel({ type: "title" })} title={doc.title.text}>
+              T Titel
+            </button>
+          )}
           {doc.blocks.map((b) => (
             <div key={b.id} className="outline-block">
               <div
@@ -789,6 +794,8 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         <aside className="legend-props">
           {sel?.type === "general" ? (
             <GeneralProps general={general} company={info.company} />
+          ) : sel?.type === "title" ? (
+            <TitleProps doc={doc} field={field} change={change} />
           ) : selItem && selBlock ? (
             <ItemProps
               item={selItem}
@@ -818,7 +825,6 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
               info={info}
               field={field}
               setStyle={setStyle}
-              setDoc={change}
               projectId={projectId}
               notify={notify}
               exportBlock={exportBlock}
@@ -916,7 +922,8 @@ function Prim({
       const selected =
         (p.kind === "item" && sel?.type === "item" && sel.item === p.id) ||
         (p.kind === "block" && sel?.type === "block" && sel.block === p.id) ||
-        (p.kind === "general" && sel?.type === "general");
+        (p.kind === "general" && sel?.type === "general") ||
+        (p.kind === "title" && sel?.type === "title");
       const isStale = p.kind === "item" && stale.has(p.id);
       const isDup = p.kind === "item" && Boolean(dups?.has(p.id));
       if (p.kind === "section")
@@ -952,7 +959,15 @@ function Prim({
           onPointerDown={p.kind === "item" && onDragStart ? (e) => onDragStart(e, p.block, p.id) : undefined}
           onClick={(e) => {
             e.stopPropagation();
-            onSelect(p.kind === "item" ? { type: "item", block: p.block, item: p.id } : p.kind === "block" ? { type: "block", block: p.block } : { type: "general" });
+            onSelect(
+              p.kind === "item"
+                ? { type: "item", block: p.block, item: p.id }
+                : p.kind === "block"
+                  ? { type: "block", block: p.block }
+                  : p.kind === "title"
+                    ? { type: "title" }
+                    : { type: "general" },
+            );
           }}
         >
           <title>
@@ -1333,6 +1348,39 @@ function BlockProps({
   );
 }
 
+function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; change: (d: LegendDoc) => void }) {
+  const t = doc.title;
+  const set = (patch: Partial<LegendDoc["title"]>) => change({ ...doc, title: { ...t, ...patch } });
+  const mm = Math.round(doc.style.text_size * (t.scale ?? 1) * 100) / 100;
+  return (
+    <>
+      <h4>Titel</h4>
+      <label className="field">
+        <span>Text</span>
+        <input className="input" value={t.text} {...field((d, v) => ({ ...d, title: { ...d.title, text: v } }))} />
+      </label>
+      <label className="field">
+        <span>Textgrösse (Faktor)</span>
+        <NumberInput label="Textgrösse Titel" value={t.scale ?? 1} step={0.1} onCommit={(v) => set({ scale: Math.max(0.5, Math.min(3, v)) })} />
+      </label>
+      <p className="hint">
+        = {String(mm).replace(".", ",")} mm. Faktor 1 = gemeinsame Schriftgrösse ({String(doc.style.text_size).replace(".", ",")} mm).
+      </p>
+      <div className="color-grid">
+        <label className="color-field">
+          <input type="color" value={t.color || "#000000"} onChange={(e) => set({ color: e.target.value })} aria-label="Farbe Titel" />
+          <span>Schrift</span>
+        </label>
+        <label className="color-field">
+          <input type="checkbox" checked={Boolean(t.border_on)} onChange={(e) => set({ border_on: e.target.checked })} aria-label="Umrandung Titel an" />
+          <input type="color" value={t.border || "#000000"} onChange={(e) => set({ border: e.target.value })} aria-label="Farbe Umrandung Titel" />
+          <span>Umrandung</span>
+        </label>
+      </div>
+    </>
+  );
+}
+
 function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: string }) | null; company: LegendInfo["company"] }) {
   return (
     <>
@@ -1359,7 +1407,6 @@ function DocProps({
   info,
   field,
   setStyle,
-  setDoc,
   projectId,
   notify,
   exportBlock,
@@ -1374,7 +1421,6 @@ function DocProps({
   info: LegendInfo;
   field: FieldFn;
   setStyle: (patch: Partial<LegendDoc["style"]>) => void;
-  setDoc: (d: LegendDoc) => void;
   projectId: string;
   notify: (text: string, error?: boolean) => void;
   exportBlock: string;
@@ -1413,10 +1459,6 @@ function DocProps({
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
-          <span>Textgrösse Titel (Faktor)</span>
-          <NumberInput value={doc.title.scale ?? 1} step={0.1} onCommit={(v) => setDoc({ ...doc, title: { ...doc.title, scale: Math.max(0.5, Math.min(3, v)) } })} />
-        </label>
-        <label className="field">
           <span>Blattbreite</span>
           <span className="hint" style={{ lineHeight: "34px" }}>
             {s.width} mm inkl. Rand
@@ -1445,6 +1487,15 @@ function DocProps({
         Für neue Projekte merken
       </button>
       {!company.is_admin && <p className="hint">Nur Admins ({company.admins.join(", ")}) dürfen den Firmen-Standard ändern.</p>}
+
+      <div className="color-grid">
+        <label className="color-field">
+          <input type="checkbox" checked={Boolean(s.frame_on)} onChange={(e) => setStyle({ frame_on: e.target.checked })} aria-label="Umrandung der Legende an" />
+          <input type="color" value={s.frame || "#000000"} onChange={(e) => setStyle({ frame: e.target.value })} aria-label="Farbe Umrandung der Legende" />
+          <span>Umrandung der ganzen Legende</span>
+        </label>
+      </div>
+      <p className="hint">Titel anklicken: Textgrösse, Farbe und Umrandung des Titels.</p>
 
       <div className="section">Export</div>
       <label className="field">

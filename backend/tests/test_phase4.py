@@ -559,3 +559,22 @@ def test_symbol_factor_enlarges_only_that_symbol_and_the_row_grows():
     rows = {h["id"]: round(h["h"] / 4.55) for h in boxes(lay)}
     assert rows["s0"] == 2 and rows["s1"] == 1
     assert normalize(doc)["blocks"][0]["items"][0]["symbol_factor"] == 1.5
+
+
+def test_title_size_and_border_and_a_frame_round_the_legend():
+    doc = normalize({"version": 3, "title": {"text": "Legende 1424", "scale": 1.6, "border_on": True},
+                     "style": {"frame_on": True}, "blocks": [block("A", 2)]})
+    lay = layout(doc)
+    title = next(p for p in lay["prims"] if p["t"] == "text" and p["text"] == "Legende 1424")
+    assert title["size"] == 4.0
+    frame = next(p for p in lay["prims"] if p.get("block") == "title" and p["t"] == "rect")
+    assert frame["y"] <= title["y"] - title["size"] and title["y"] <= frame["y"] + frame["h"]
+    hit = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")
+    assert hit["h"] == frame["h"]
+    outer = next(p for p in lay["prims"] if p.get("block") == "frame")
+    assert outer["x"] == 2.5 and abs(outer["y"] + outer["h"] - (lay["height"] - 2.5)) < 1e-6
+    first = boxes(lay, "block")[0]
+    assert first["y"] > frame["y"] + frame["h"]
+    doc["title"]["border_on"] = False
+    doc["style"]["frame_on"] = False
+    assert not [p for p in layout(doc)["prims"] if p["t"] == "rect" and p.get("block") in ("title", "frame")]

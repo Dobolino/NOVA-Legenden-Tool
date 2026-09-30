@@ -107,11 +107,12 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
     return {"font": "Arial", "text_size": text_size, "symbol_scale": symbol_scale,
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
-            "section_gap": 0.0}
+            "section_gap": 0.0, "frame_on": False, "frame": "#000000"}
 
 
 def empty_doc(title: str = "", style: dict | None = None) -> dict:
-    return {"version": DOC_VERSION, "style": style or default_style(), "title": {"text": title, "scale": 1.0},
+    return {"version": DOC_VERSION, "style": style or default_style(),
+            "title": {"text": title, "scale": 1.0, "color": "#000000", "border_on": False, "border": "#000000"},
             "blocks": []}
 
 
@@ -141,6 +142,8 @@ def normalize_style(value) -> dict:
     style["plan_scale"] = _num(v.get("plan_scale"), 50, 1, 1000)
     style["font"] = str(v.get("font") or "Arial")[:40]
     style["section_gap"] = _num(v.get("section_gap"), 0.0, 0, 50)
+    style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
+    style["frame"] = _hex(v.get("frame"), "#000000")
     return style
 
 
@@ -158,7 +161,9 @@ def normalize(doc: dict | None) -> dict:
     title = doc.get("title") or {}
     old = int(_num(doc.get("version"), 1))
     out = {"version": DOC_VERSION, "style": style,
-           "title": {"text": str(title.get("text", ""))[:200], "scale": _scale(title.get("scale"))},
+           "title": {"text": str(title.get("text", ""))[:200], "scale": _scale(title.get("scale")),
+                     "color": _hex(title.get("color"), "#000000"),
+                     "border_on": bool(title.get("border_on")), "border": _hex(title.get("border"), "#000000")},
            "blocks": []}
     seen: set[str] = set()
 

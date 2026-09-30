@@ -35,6 +35,12 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 - Symbole behalten die Farben aus der Nova-Zeichnung, in Vorschau und DXF. Eine eigene Farbe im Symbol bleibt. Was keine eigene Farbe hat, wird schwarz. Einzige Ausnahme: Eine Fläche ohne eigene Farbe in einem Symbol mit farbigen Teilen (schwarze Linien auf Fläche) wird hellgrau, damit die schwarzen Linien sichtbar bleiben. Die Abschnittsfarbe färbt Symbole nie um.
 - Legenden aus Version 2 verlieren beim Öffnen Fläche, Umrandung und die Symbolfärbung. Die Kopfleiste bleibt.
 
+## Titel und Umrandung
+
+- Titel anklicken (oder «T Titel» links): Text, Textgrösse als Faktor mit Anzeige in mm, Schriftfarbe, Umrandung an/aus mit Farbe.
+- Im Feld «Legende»: «Umrandung der ganzen Legende» an/aus mit Farbe. Der Rahmen liegt in der Mitte des Blattrands.
+- Beides ist voreingestellt aus und geht in den DXF-Export.
+
 ## Gemeinsame Werte
 
 - Eine Schriftgrösse für alle Texte (Titel, Kopfleisten, Einträge, freier Text). Jeder Text hat zusätzlich einen Faktor (Voreinstellung 1). 1,2 macht nur diesen Text grösser, die Zeile wächst mit. Der Firmen-Standard speichert nur die gemeinsame Grösse.

@@ -57,16 +57,18 @@ export interface LegendStyle {
   margin: number;
   plan_scale: number;
   section_gap: number;
+  frame_on: boolean; // border round the whole legend
+  frame: string;
 }
 
 export interface LegendDoc {
   version: number;
   style: LegendStyle;
-  title: { text: string; scale: number };
+  title: { text: string; scale: number; color: string; border_on: boolean; border: string };
   blocks: LegendBlock[];
 }
 
-export type Selection = { type: "item"; block: string; item: string } | { type: "block"; block: string } | { type: "legend" } | null;
+export type Selection = { type: "item"; block: string; item: string } | { type: "block"; block: string } | { type: "legend" } | { type: "title" } | null;
 
 // -- undo / redo ---------------------------------------------------------------
 

@@ -179,10 +179,20 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     text = str(title.get("text", "")).strip()
     if text and not only_block:
         tts = ts * float(title.get("scale") or 1.0)
-        for line in wrap(text, tts, inner, True):
-            prims.append({"t": "text", "x": margin, "y": y + tts, "size": tts, "text": line, "bold": True,
-                          "color": "#000000"})
+        framed = bool(title.get("border_on"))
+        pad = 1.5 if framed else 0.0          # room between the title and its border
+        top = y
+        y += pad
+        for line in wrap(text, tts, inner - 2 * pad, True):
+            prims.append({"t": "text", "x": margin + pad, "y": y + tts, "size": tts, "text": line, "bold": True,
+                          "color": title.get("color") or "#000000"})
             y += tts * LINE_FACTOR
+        y += pad
+        if framed:
+            prims.append({"t": "rect", "x": margin, "y": top, "w": inner, "h": y - top, "fill": None,
+                          "stroke": title.get("border") or "#000000", "role": "border", "block": "title"})
+        prims.append({"t": "hit", "kind": "title", "block": None, "id": "title",
+                      "x": margin, "y": top, "w": inner, "h": y - top})
         y += row * 0.5
 
     first = True
@@ -194,8 +204,12 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
         first = False
         y = _block(block, style, sizes, prims, margin, y, inner, cols, ts, row)
 
-    height = math.ceil((y + margin) * 10) / 10
-    return {"width": width, "height": max(height, 2 * margin + row), "prims": prims}
+    height = max(math.ceil((y + margin) * 10) / 10, 2 * margin + row)
+    if style.get("frame_on"):
+        # border round the whole legend, in the middle of the margin
+        prims.append({"t": "rect", "x": margin / 2, "y": margin / 2, "w": width - margin, "h": height - margin,
+                      "fill": None, "stroke": style.get("frame") or "#000000", "role": "border", "block": "frame"})
+    return {"width": width, "height": height, "prims": prims}
 
 
 def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
