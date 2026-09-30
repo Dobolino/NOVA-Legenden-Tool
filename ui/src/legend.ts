@@ -16,6 +16,7 @@ export interface LegendItem {
   line_style: LineStyle;
   line_length: number;
   text_scale: number; // factor on the common text size, 1 = common size
+  symbol_factor: number; // factor on the common symbol scale for this symbol only
   rotation: number; // 0, 90, 180, 270 (counter-clockwise, like the DXF)
   hidden: boolean; // the general part already shows it: hidden, not deleted
   keep: boolean; // shown again on purpose, not hidden a second time
@@ -210,6 +211,7 @@ export function makeItem(patch: Partial<LegendItem>): LegendItem {
     line_style: "solid",
     line_length: 8,
     text_scale: 1,
+    symbol_factor: 1,
     rotation: 0,
     hidden: false,
     keep: false,

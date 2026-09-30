@@ -10,12 +10,15 @@ of at most 200 mm width:
     line      x1, y1, x2, y2, color, style
     half      cx, cy, r, color            (AP note: half filled circle)
     hit       kind (item / block / section / general), block, id, x, y, w, h
+    grid      block, x, y, w, h, row, cols, colw, axis, text   (placeholders of a section body)
 
 Rules: sections span the full width with a coloured header bar; the area
 behind the entries is paper unless the section switches a background on.
 Entries fill 2 or 3 columns top to bottom. In every column of a section all
 symbol centres sit on one vertical axis and all texts start on one vertical
-text line right of the widest symbol. Symbol and text of a row share the same
+text line right of the widest symbol. Every entry takes a whole number of grid
+rows, so the entries sit exactly in the grid placeholders of their section.
+Symbol and text of a row share the same
 horizontal middle. Text wraps inside its column; a row grows with its text or
 symbol, so nothing overlaps the next entry or column. Symbols turn in steps of
 90 degrees around their centre; texts stay horizontal.
@@ -74,45 +77,88 @@ def wrap(text: str, size: float, width: float, bold: bool = False) -> list[str]:
     return lines or [""]
 
 
-def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool) -> float:
-    """Common scale, limited so a symbol fits its row height and symbol cell.
-    ``size`` is the drawing size at scale 1 as it stands on the sheet (after turning)."""
+SYMBOL_CLEARANCE = 0.5       # mm free above and below a symbol inside its grid rows
+TEXT_CLEARANCE = 0.4
+
+
+def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool, rows: int = 1) -> float:
+    """Common scale, limited so a symbol fits ``rows`` grid rows and its symbol cell.
+    ``size`` is (width, height) at scale 1 as it stands on the sheet (after turning); the
+    height counts twice the larger extent above or below the insertion point, because the
+    insertion point sits on the middle of the row."""
     s = style["symbol_scale"] * (50.0 / style["plan_scale"] if engine else 1.0)
     if not size or size[0] <= 0 or size[1] <= 0:
         return s
     w, h = size
-    max_h = style["row"] * 1.25
+    max_h = style["row"] * rows - SYMBOL_CLEARANCE
     max_w = (style["text_offset"] - 1.2) * 2 if not engine else style["text_offset"] * 4
     return round(min(s, max_h / h, max_w / w), 4)
 
 
-def _turned(size, rotation: int):
-    if size and rotation in (90, 270):
-        return (size[1], size[0], size[2])
-    return size
+def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
+    """(x0, y0, x1, y1, ax, ay, engine) of a drawing in mm, Nova axes (y up).
+
+    Horizontally the anchor is the insertion point (origin of the symbol) when it
+    lies in the middle half of the drawing, otherwise the middle of the drawing
+    (lines and some boxes have it at one end). Vertically it is always the middle,
+    so the drawing fills its row. Old callers give only
+    (width, height, engine): then the drawing is centred on its insertion point.
+    """
+    if len(size) == 3:
+        w, h, engine = size
+        return -w / 2, -h / 2, w / 2, h / 2, 0.0, 0.0, bool(engine)
+    x0, y0, x1, y1, engine = size
+    quarter = (x1 - x0) / 4
+    ax = 0.0 if x0 + quarter - 1e-6 <= 0 <= x1 - quarter + 1e-6 else (x0 + x1) / 2
+    ay = (y0 + y1) / 2          # vertically the drawing sits on the middle of its row
+    return x0, y0, x1, y1, ax, ay, bool(engine)
 
 
-def _symbol_box(item: dict, size, style: dict) -> tuple[float, float, float]:
-    """(width, height, scale) of the symbol cell of an entry on the sheet."""
+def _turn(left, right, up, down, rotation: int):
+    """Extents around the anchor after turning counter-clockwise."""
+    if rotation == 90:
+        return up, down, right, left
+    if rotation == 180:
+        return right, left, down, up
+    if rotation == 270:
+        return down, up, left, right
+    return left, right, up, down
+
+
+def _symbol_box(item: dict, size, style: dict) -> dict:
+    """Symbol cell of an entry on the sheet: extents around the point that sits on the
+    symbol axis (left, right, up, down in mm), the scale and the anchor in the drawing."""
     kind = item["kind"]
+
+    def box(left, right, up, down, scale=1.0, ax=0.0, ay=0.0):
+        return {"left": left, "right": right, "up": up, "down": down, "scale": scale, "ax": ax, "ay": ay}
+
     if kind == "symbol":
-        size = _turned(size, item.get("rotation", 0))
+        rot = item.get("rotation", 0)
+        factor = float(item.get("symbol_factor") or 1.0)
         if size:
-            scale = symbol_scale((size[0], size[1]), style, bool(size[2]))
-            return size[0] * scale, size[1] * scale, scale
-        side = 5.0 * style["symbol_scale"]
-        return side, side, 1.0
+            x0, y0, x1, y1, ax, ay, engine = _anchor(size)
+            left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
+            # a turned symbol may take two grid rows, every other symbol fits one;
+            # the factor of this symbol enlarges it beyond that (the row grows)
+            scale = symbol_scale((left + right, 2 * max(up, down)), style, engine,
+                                 rows=2 if rot in (90, 270) else 1) * factor
+            return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
+        half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
+        return box(half, half, half, half)
     if kind == "line":
-        return min(item["line_length"], style["text_offset"] * 2 - 2.4), 1.0, 1.0
+        half = min(item["line_length"], style["text_offset"] * 2 - 2.4) / 2
+        return box(half, half, 0.5, 0.5)
     if kind == "note":
-        return 3.6, 3.6, 1.0
-    return 0.0, 0.0, 1.0
+        half = min(3.6, style["row"] - SYMBOL_CLEARANCE) / 2
+        return box(half, half, half, half)
+    return box(0.0, 0.0, 0.0, 0.0)
 
 
 def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
            only_block: str | None = None, include_general: bool = True) -> dict:
-    """Place everything. ``sizes`` maps an item id to (width, height, engine) of its drawing
-    at scale 1. ``general`` is {"w", "h"} of the locked part in mm (already fitted)."""
+    """Place everything. ``sizes`` maps an item id to (x0, y0, x1, y1, engine) of its
+    drawing in mm at scale 1 around its insertion point (or the older (width, height, engine)). ``general`` is {"w", "h"} of the locked part in mm (already fitted)."""
     sizes = sizes or {}
     style = doc["style"]
     ts = style["text_size"]
@@ -167,10 +213,10 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     colw = (inner - 2 * pad) / cols
     items = [it for it in block["items"] if not it.get("hidden")]
     boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style) for it in items}
-    # one symbol axis and one text line for the section
-    widest = max((boxes[it["id"]][0] for it in items), default=0.0)
-    axis = max(off * 0.4, widest / 2 + 0.3)
-    text_x = max(off, axis + widest / 2 + 1.2)
+    # one symbol axis (insertion points) and one text line for the section,
+    # right of the symbol reaching furthest to the right of the axis
+    axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
+    text_x = max([off] + [axis + boxes[it["id"]]["right"] + 1.2 for it in items])
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     for c in range(cols):
@@ -181,6 +227,9 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
         col_heights.append(cy - (top + head_h + pad))
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
+    prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
+                  "w": inner - 2 * pad, "h": body_h, "row": row, "cols": cols, "colw": colw,
+                  "axis": axis, "text": text_x})
     if st.get("background_on"):
         prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": total_h, "fill": st["background"],
                       "stroke": None, "role": "background", "block": block["id"]})
@@ -203,26 +252,31 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
 def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st) -> float:
     """Draw one entry at the top of its slot, return the slot height."""
     kind = item["kind"]
-    sym_w, sym_h, scale = box
     its = ts * float(item.get("text_scale") or 1.0)
     lh = its * LINE_FACTOR
     tx = cx0 + text_x
     lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
     text_h = len(lines) * lh
-    h = max(row, text_h + max(0.0, row - ts * LINE_FACTOR), sym_h + 0.8)
+    # the insertion point sits on the middle of the row: room for the larger extent both ways
+    sym_h = 2 * max(box["up"], box["down"])
+    need = max(text_h + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
+    h = row * max(1, math.ceil(need / row - 1e-3))      # whole grid rows (the scale is rounded)
     mid = cy + h / 2
     sx = cx0 + axis
+    w = box["left"] + box["right"]
     if kind == "symbol":
         out.append({"t": "symbol", "id": item["id"], "key": item["symbol_key"], "family_key": item["family_key"],
                     "length_mm": item["length_mm"], "width_mm": item["width_mm"],
-                    "cx": round(sx, 3), "cy": round(mid, 3), "scale": scale, "rot": item.get("rotation", 0),
-                    "w": round(sym_w, 3), "h": round(sym_h, 3), "layer": block.get("layer") or ""})
+                    "cx": round(sx, 3), "cy": round(mid, 3), "scale": box["scale"], "rot": item.get("rotation", 0),
+                    "ax": round(box["ax"], 4), "ay": round(box["ay"], 4),
+                    "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
+                    "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or ""})
     elif kind == "line":
-        out.append({"t": "line", "x1": round(sx - sym_w / 2, 3), "x2": round(sx + sym_w / 2, 3),
+        out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
                     "layer": block.get("layer") or ""})
     elif kind == "note":
-        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": 1.8, "color": st["symbol"]})
+        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"]})
     # baseline so the middle of the text block sits on the middle of the row
     base = mid - (len(lines) - 1) * lh / 2 + its * 0.32
     for i, line in enumerate(lines):

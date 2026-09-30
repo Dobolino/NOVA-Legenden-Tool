@@ -171,8 +171,9 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                     continue
                 geo, engine, _, _ = geometry(it["symbol_key"], it["length_mm"], it["width_mm"])
                 if geo is not None:
+                    # drawing around its insertion point, in mm (the layout puts that point on the axis)
                     x0, y0, x1, y1 = geometry_bounds(geo)
-                    out[it["id"]] = ((x1 - x0) * 1000, (y1 - y0) * 1000, engine)
+                    out[it["id"]] = (x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000, engine)
         return out
 
     def load_general() -> general_part.GeneralPart:

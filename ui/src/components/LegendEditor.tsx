@@ -776,9 +776,9 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
               .map((p, i) => (
                 <Prim key={`bg${i}`} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} />
               ))}
-            {showGrid && <GridLines width={W} height={H} margin={style.margin} step={style.row} />}
+            {showGrid && (placed?.prims ?? []).filter((p) => p.t === "grid").map((g) => <GridLines key={`g${g.block}`} g={g} />)}
             {(placed?.prims ?? [])
-              .filter((p) => !(p.t === "rect" && p.role === "background"))
+              .filter((p) => !(p.t === "rect" && p.role === "background") && p.t !== "grid")
               .map((p, i) => (
                 <Prim key={i} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
               ))}
@@ -895,17 +895,20 @@ function Prim({
       if (!r?.svg || !r.box)
         return (
           <g pointerEvents="none">
-            <rect x={p.cx - p.w / 2} y={p.cy - p.h / 2} width={p.w} height={p.h} fill="none" stroke="#999" strokeWidth={0.15} strokeDasharray="0.6 0.4" />
+            <rect x={p.x0 ?? p.cx - p.w / 2} y={p.y0 ?? p.cy - p.h / 2} width={p.w} height={p.h} fill="none" stroke="#999" strokeWidth={0.15} strokeDasharray="0.6 0.4" />
             <title>{r ? "Keine Symbolvorschau verfügbar" : "lädt …"}</title>
           </g>
         );
-      // the drawing keeps its own colours; turned around its centre (counter-clockwise like the DXF)
-      const w = r.box[2] * p.scale;
-      const h = r.box[3] * p.scale;
+      // The drawing keeps its own colours. Its insertion point (ax, ay; Nova y up) sits on the
+      // symbol axis; turned around that point, counter-clockwise like the DXF.
+      const ax = p.ax ?? r.box[0] + r.box[2] / 2;
+      const ay = p.ay ?? -(r.box[1] + r.box[3] / 2);
       return (
-        <g transform={p.rot ? `rotate(${-p.rot} ${p.cx} ${p.cy})` : undefined} pointerEvents="none">
-          <svg x={p.cx - w / 2} y={p.cy - h / 2} width={w} height={h} viewBox={r.box.join(" ")} overflow="visible" dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }} />
-        </g>
+        <g
+          transform={`translate(${p.cx} ${p.cy}) rotate(${-(p.rot || 0)}) scale(${p.scale}) translate(${-ax} ${ay})`}
+          pointerEvents="none"
+          dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }}
+        />
       );
     }
     case "hit": {
@@ -971,19 +974,26 @@ function Prim({
   }
 }
 
-/** Grid lines in the chosen step, above the paper and below the entries. */
-function GridLines({ width, height, margin, step }: { width: number; height: number; margin: number; step: number }) {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (let x = margin; x <= width - margin + 1e-6; x += step) xs.push(x);
-  for (let y = margin; y <= height - margin + 1e-6; y += step) ys.push(y);
+/** Grid of one section: the placeholders the entries sit in (rows in the chosen step,
+ *  column edges, symbol axis and text line of every column). From the layout, so the
+ *  lines match the entries exactly. */
+function GridLines({ g }: { g: LegendPrim }) {
+  const rows: number[] = [];
+  for (let y = g.y; y <= g.y + g.h + 1e-6; y += g.row) rows.push(y);
+  const cols = Array.from({ length: g.cols }, (_, c) => g.x + c * g.colw);
   return (
-    <g className="lg-grid" stroke="#5b87b5" strokeOpacity={0.45} strokeWidth={0.07} pointerEvents="none" data-step={step}>
-      {xs.map((x) => (
-        <line key={`x${x}`} x1={x} y1={margin} x2={x} y2={height - margin} />
+    <g className="lg-grid" stroke="#5b87b5" strokeOpacity={0.45} strokeWidth={0.07} pointerEvents="none" data-step={g.row}>
+      {rows.map((y) => (
+        <line key={`y${y}`} x1={g.x} y1={y} x2={g.x + g.w} y2={y} />
       ))}
-      {ys.map((y) => (
-        <line key={`y${y}`} x1={margin} y1={y} x2={width - margin} y2={y} />
+      {[...cols, g.x + g.w].map((x) => (
+        <line key={`c${x}`} x1={x} y1={g.y} x2={x} y2={g.y + g.h} />
+      ))}
+      {cols.map((x) => (
+        <g key={`a${x}`} strokeDasharray="0.6 0.6">
+          <line x1={x + g.axis} y1={g.y} x2={x + g.axis} y2={g.y + g.h} />
+          <line x1={x + g.text} y1={g.y} x2={x + g.text} y2={g.y + g.h} />
+        </g>
       ))}
     </g>
   );
@@ -1162,6 +1172,12 @@ function ItemProps({
           <NumberInput label="Textgrösse Faktor" value={item.text_scale ?? 1} step={0.1} onCommit={(v) => set({ text_scale: Math.max(0.5, Math.min(3, v)) })} />
         </label>
         {item.kind === "symbol" && (
+          <label className="field">
+            <span>Symbolgrösse (Faktor)</span>
+            <NumberInput label="Symbolgrösse Faktor" value={item.symbol_factor ?? 1} step={0.1} onCommit={(v) => set({ symbol_factor: Math.max(0.3, Math.min(4, v)) })} />
+          </label>
+        )}
+        {item.kind === "symbol" && (
           <div className="field">
             <span>Drehung {item.rotation || 0}°</span>
             <button className="btn small" onClick={onRotate} title="Symbol um 90 Grad um seinen Mittelpunkt drehen. Der Text bleibt waagrecht.">
@@ -1170,7 +1186,9 @@ function ItemProps({
           </div>
         )}
       </div>
-      <p className="hint">Faktor 1 = gemeinsame Schriftgrösse. 1,2 macht nur diesen Text grösser.</p>
+      <p className="hint">
+        Faktor 1 = gemeinsame Schriftgrösse bzw. gemeinsamer Symbolmassstab. 1,2 macht nur diesen Eintrag grösser, die Zeile wächst um ganze Rasterzeilen.
+      </p>
       {item.kind === "symbol" && render?.engine && (
         <div className="form two">
           <label className="field">

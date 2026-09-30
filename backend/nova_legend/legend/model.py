@@ -32,7 +32,7 @@ DEFAULT_SYMBOL_SCALE = 1.0
 
 ITEM_KINDS = ("symbol", "line", "note", "text")
 ROTATIONS = (0, 90, 180, 270)
-ITEM_EXTRA = {"text_scale": 1.0, "rotation": 0, "hidden": False, "keep": False}
+ITEM_EXTRA = {"text_scale": 1.0, "symbol_factor": 1.0, "rotation": 0, "hidden": False, "keep": False}
 LINE_STYLES = ("solid", "dashed", "dotted", "dashdot")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -210,6 +210,8 @@ def _item(it, uid) -> dict | None:
             "line_style": it.get("line_style") if it.get("line_style") in LINE_STYLES else "solid",
             "line_length": _num(it.get("line_length"), 8, 1, 60),
             "text_scale": _scale(it.get("text_scale")),
+            # size of this one symbol relative to the common symbol scale
+            "symbol_factor": round(_num(it.get("symbol_factor"), 1.0, 0.3, 4.0), 3),
             "rotation": _rotation(it.get("rotation")),
             # hidden: the general part already shows it (hidden, not deleted); keep: shown on purpose
             "hidden": bool(it.get("hidden")), "keep": bool(it.get("keep"))}

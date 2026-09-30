@@ -101,8 +101,11 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                 if geo is None or not geo.primitives:
                     continue
                 name = _symbol_block(doc, blocks, p, geo)
-                x0, y0, x1, y1 = geometry_bounds(geo)
-                bcx, bcy = (x0 + x1) / 2 * 1000, (y0 + y1) / 2 * 1000
+                if "ax" in p:          # anchor on the axis: the insertion point of the symbol
+                    bcx, bcy = p["ax"], p["ay"]
+                else:
+                    x0, y0, x1, y1 = geometry_bounds(geo)
+                    bcx, bcy = (x0 + x1) / 2 * 1000, (y0 + y1) / 2 * 1000
                 s = p["scale"]
                 rot = int(p.get("rot") or 0)
                 # turn around the symbol centre: the centre stays on the axis of the column

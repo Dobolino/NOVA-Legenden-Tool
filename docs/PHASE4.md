@@ -17,8 +17,10 @@ Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Zi
 
 - Blatt höchstens 200 mm breit (Rand 5 mm). 2 oder 3 Spalten teilen die Breite.
 - Kein freies Millimeter-Schieben. Alles sitzt auf dem festen Raster. Einträge ziehst du mit der Maus an einen anderen Platz oder in einen anderen Abschnitt, auf dem Blatt und in der linken Liste. ↑ ↓ und die Pfeiltasten gehen auch.
-- Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Linien im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
-- In jeder Spalte eines Abschnitts liegen alle Symbol-Mittelpunkte auf einer senkrechten Achse. Alle Texte beginnen auf einer zweiten senkrechten Linie rechts vom breitesten Symbol. Symbol und Text teilen sich die waagrechte Mitte der Zeile.
+- Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Platzhalter im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
+- In jeder Spalte eines Abschnitts liegen alle Symbole mit ihrem Einfügepunkt auf einer senkrechten Achse. Liegt der Einfügepunkt nicht in der mittleren Hälfte des Symbols (Leitungen, Bus-Taster), gilt die Mitte des Symbols. Beschriftungen wie «2» oder «3» neben der Steckdose zählen nicht zur Mitte. Alle Texte beginnen auf einer zweiten senkrechten Linie rechts vom Symbol, das am weitesten nach rechts reicht. Symbol und Text teilen sich die waagrechte Mitte der Zeile.
+- Jeder Eintrag belegt ganze Rasterzeilen. «Raster anzeigen» zeichnet pro Abschnitt genau diese Platzhalter: Zeilen, Spaltenränder, Symbolachse und Textlinie (gestrichelt). Ein Symbol passt in eine Rasterzeile, gedreht in zwei.
+- Jedes Symbol hat einen eigenen Faktor «Symbolgrösse» (Voreinstellung 1) auf den gemeinsamen Symbolmassstab. Ein grösseres Symbol belegt mehr Rasterzeilen.
 - Ein Symbol dreht sich in Schritten von 90 Grad um seinen Mittelpunkt. Der Text bleibt waagrecht. Die Zeile wird so hoch wie das gedrehte Symbol.
 - Texte umbrechen in ihrer Spalte. Die Zeile wird höher, nie liegt ein Text auf dem nächsten Symbol oder in der nächsten Spalte.
 - «Abstand zwischen Abschnitten (mm)»: 0 (Voreinstellung) heisst, die Abschnitte stossen aneinander. Der Abstand gilt in Vorschau und Export.

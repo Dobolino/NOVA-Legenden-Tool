@@ -41,7 +41,7 @@ const style = {
 
 function item(id: string, family: string | null) {
   return { id, kind: "symbol" as const, family_key: family, symbol_key: family ? `s:${family}` : null, text: id,
-    length_mm: null, width_mm: null, line_style: "solid" as const, line_length: 8, text_scale: 1, rotation: 0, hidden: false, keep: false };
+    length_mm: null, width_mm: null, line_style: "solid" as const, line_length: 8, text_scale: 1, symbol_factor: 1, rotation: 0, hidden: false, keep: false };
 }
 
 function doc(): LegendDoc {
