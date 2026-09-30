@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .. import config
+from .. import config, updater
 from ..categories.store import CompanyStore, auto_categories
 from ..library.families import FamilyOptions
 from ..library.store import Library
@@ -126,6 +126,7 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     def status() -> dict:
         return {
             "version": config.APP_VERSION,
+            "version_label": updater.current_label(),
             "user": config.current_user(),
             "settings": asdict(st.settings),
             "company_db": str(st.company.db_path),
@@ -151,6 +152,26 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
         with st.lock:
             st.sync_report = st.library.sync(st.settings.dataset_paths)
         return st.sync_report
+
+    # -- program update ------------------------------------------------------------
+
+    @app.get("/api/update/check")
+    def update_check() -> dict:
+        return updater.check().to_dict()
+
+    @app.post("/api/update/install")
+    def update_install() -> dict:
+        info = updater.check()
+        if not info.available:
+            raise HTTPException(400, info.message or "Kein Update verfügbar")
+        if not info.can_install:
+            raise HTTPException(400, info.message)
+        try:
+            setup = updater.download(info)
+        except Exception as exc:  # noqa: BLE001 - report download problems
+            raise HTTPException(502, f"Download fehlgeschlagen: {exc}") from None
+        updater.install(setup, getattr(app.state, "shutdown", lambda: None))
+        return {"ok": True, "message": "Update wird installiert. Das Programm startet danach neu."}
 
     # -- options (company wide) ----------------------------------------------------
 

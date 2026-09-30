@@ -22,9 +22,21 @@ from pathlib import Path
 
 APP_NAME = "NOVA-Legenden"
 APP_VERSION = "0.1.0"
+GITHUB_REPO = "Dobolino/NOVA-Legenden-Tool"
+
+
+def build_number() -> int:
+    """Build number written by the Windows build (0 = started from source)."""
+    try:
+        from ._build import BUILD
+        return int(BUILD)
+    except (ImportError, ValueError):
+        return 0
+
 
 # Folders searched for Nova datasets (.nzp). Depth is limited.
 DATASET_SEARCH_ROOTS = [
+    r"C:\Users\Public\Documents\Trimble\Warehouse",  # confirmed location at edeco
     r"T:\_CAD\NovaDat",
     r"C:\ProgramData\Trimble",
     r"C:\ProgramData\Plancal",
@@ -98,7 +110,7 @@ def save_settings(settings: Settings) -> None:
     tmp.replace(path)
 
 
-def find_datasets(roots: list[str] | None = None, max_depth: int = 5) -> list[str]:
+def find_datasets(roots: list[str] | None = None, max_depth: int = 7) -> list[str]:
     """Search typical Nova folders for dataset archives."""
     found: list[str] = []
     for root in roots or DATASET_SEARCH_ROOTS:

@@ -46,6 +46,7 @@ jobs:
 
       - name: exe bauen (PyInstaller)
         run: |
+          Set-Content -Path backend/nova_legend/_build.py -Value "BUILD = ${{ github.run_number }}"
           python packaging/make_icon.py
           pyinstaller packaging/nova_legenden.spec --noconfirm
 
@@ -62,7 +63,8 @@ jobs:
           Stop-Process -Id $p.Id -Force
           if (-not $ok) { Get-Content "$env:NOVA_LEGENDEN_HOME\nova-legenden.log" -ErrorAction SilentlyContinue; throw "Server startet nicht" }
           if ($page.Content -notmatch "NOVA-Legenden") { throw "Oberfläche fehlt in der exe" }
-          Write-Host "Rauchtest ok, Version $($r.version)"
+          if ($r.version_label -notmatch "Build ${{ github.run_number }}") { throw "Build-Nummer fehlt: $($r.version_label)" }
+          Write-Host "Rauchtest ok, Version $($r.version_label)"
 
       - name: Setup bauen (Inno Setup)
         shell: pwsh

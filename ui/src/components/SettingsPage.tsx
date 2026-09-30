@@ -1,18 +1,46 @@
 import { useEffect, useState } from "react";
-import { api, DATASET_LABEL, Status } from "../api";
+import { api, DATASET_LABEL, Status, UpdateInfo } from "../api";
 
 interface Props {
   status: Status;
+  update: UpdateInfo | null;
+  onUpdate: (u: UpdateInfo) => void;
   notify: (text: string, error?: boolean) => void;
   onChanged: () => void;
 }
 
-export default function SettingsPage({ status, notify, onChanged }: Props) {
+export default function SettingsPage({ status, update, onUpdate, notify, onChanged }: Props) {
   const [paths, setPaths] = useState<string[]>(status.settings.dataset_paths);
   const [newPath, setNewPath] = useState("");
   const [company, setCompany] = useState(status.settings.company_folder);
   const [nova, setNova] = useState(status.settings.nova_version);
   const [busy, setBusy] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  async function checkUpdate() {
+    setBusy(true);
+    try {
+      const u = await api.updateCheck();
+      onUpdate(u);
+      if (!u.available) notify(u.message || "Du hast die neueste Version.", Boolean(u.message && !u.latest));
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function installUpdate() {
+    if (!window.confirm("Update jetzt installieren? Das Programm schliesst sich und startet danach neu.")) return;
+    setUpdating(true);
+    try {
+      const r = await api.updateInstall();
+      notify(r.message);
+    } catch (e) {
+      notify((e as Error).message, true);
+      setUpdating(false);
+    }
+  }
 
   useEffect(() => {
     setPaths(status.settings.dataset_paths);
@@ -52,6 +80,32 @@ export default function SettingsPage({ status, notify, onChanged }: Props) {
   return (
     <div className="page">
       <div className="page-inner">
+        <div className="card">
+          <h3>Programm-Update</h3>
+          <p className="desc">
+            Installiert: {status.version_label}.
+            {update?.latest ? ` Neueste Version: ${update.latest}.` : ""}
+          </p>
+          {update?.available && (
+            <p>
+              <span className="badge manual">neu</span> Version {update.latest} ist verfügbar
+              {update.size ? ` (${Math.round(update.size / 1e6)} MB)` : ""}.
+            </p>
+          )}
+          {update && !update.available && update.message && <p className="hint">{update.message}</p>}
+          {update?.available && !update.can_install && <p className="warn-text">{update.message}</p>}
+          <div className="row">
+            <button className="btn" disabled={busy || updating} onClick={checkUpdate}>
+              Nach Updates suchen
+            </button>
+            {update?.available && update.can_install && (
+              <button className="btn primary" disabled={updating} onClick={installUpdate}>
+                {updating ? "Update läuft …" : "Jetzt aktualisieren"}
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="card">
           <h3>Nova-Datensätze</h3>
           <p className="desc">
@@ -188,7 +242,7 @@ export default function SettingsPage({ status, notify, onChanged }: Props) {
           <h3>Info</h3>
           <dl className="kv">
             <dt>Version</dt>
-            <dd>{status.version}</dd>
+            <dd>{status.version_label}</dd>
             <dt>Benutzer</dt>
             <dd>{status.user}</dd>
             <dt>Lokale Daten</dt>

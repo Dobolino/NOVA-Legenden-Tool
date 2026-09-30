@@ -20,6 +20,8 @@ UninstallDisplayIcon={app}\NOVA-Legenden.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+CloseApplications=yes
+RestartApplications=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
@@ -38,3 +40,5 @@ Name: "{userdesktop}\NOVA-Legenden"; Filename: "{app}\NOVA-Legenden.exe"; Tasks:
 
 [Run]
 Filename: "{app}\NOVA-Legenden.exe"; Description: "NOVA-Legenden jetzt starten"; Flags: nowait postinstall skipifsilent
+; After a silent update started from the program: restart it
+Filename: "{app}\NOVA-Legenden.exe"; Flags: nowait; Check: WizardSilent

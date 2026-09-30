@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Category, Options, Status } from "./api";
+import { api, Category, Options, Status, UpdateInfo } from "./api";
 import Library from "./components/Library";
 import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
@@ -18,6 +18,7 @@ export default function App() {
   const [options, setOptions] = useState<Options | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [revision, setRevision] = useState(0); // bumps when library data changes
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -44,6 +45,11 @@ export default function App() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Look for a new program version once at start (silently, errors ignored)
+  useEffect(() => {
+    api.updateCheck().then(setUpdate).catch(() => undefined);
+  }, []);
 
   const noDatasets = status && status.datasets.length === 0;
 
@@ -76,6 +82,11 @@ export default function App() {
               {status.settings.company_folder ? "Firmenordner" : "Firmenordner fehlt"}
             </span>
             <span className="chip">Nova {status.settings.nova_version}</span>
+            {update?.available && (
+              <button className="chip update" onClick={() => setTab("settings")} title="Zum Update">
+                Update {update.latest} verfügbar
+              </button>
+            )}
           </>
         )}
       </header>
@@ -99,7 +110,9 @@ export default function App() {
             onChanged={reload}
           />
         )}
-        {tab === "settings" && status && <SettingsPage status={status} notify={notify} onChanged={reload} />}
+        {tab === "settings" && status && (
+          <SettingsPage status={status} update={update} onUpdate={setUpdate} notify={notify} onChanged={reload} />
+        )}
       </div>
       {toast && <div className={`toast ${toast.error ? "error" : ""}`}>{toast.text}</div>}
     </div>

@@ -13,6 +13,8 @@ Stand: 30.09.2026
 - Regeln der Firma: Beschriftungsvarianten zusammenfassen (Standard an), Ausrichtungen zusammenfassen (Standard aus), leere Kategorien anzeigen, Legende nach Kategorien gliedern.
 - Einstellungen: Datensätze (automatische Suche oder Pfad einfügen), Firmenordner, Nova-Version, Status des ODA File Converters.
 - Installation: Setup-exe ohne Adminrechte, eigenes Programmfenster (Edge WebView2), Symbol auf dem Desktop.
+- Update-Knopf: Das Programm prüft beim Start, ob auf GitHub eine neuere Version liegt, und zeigt oben rechts «Update verfügbar». Unter Einstellungen → Programm-Update lädt «Jetzt aktualisieren» das Setup, prüft die Prüfsumme, installiert still und startet das Programm neu. Braucht Internetzugang zu github.com.
+- Automatische Suche der Datensätze zuerst in `C:\Users\Public\Documents\Trimble\Warehouse`.
 
 ## Speicherorte
 
@@ -42,3 +44,5 @@ Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, fal
 - Das Setup ist nicht signiert (Windows-Warnung beim ersten Start).
 - SQLite im Netzwerkordner ist für seltene Änderungen ausgelegt. Viele gleichzeitige Schreibzugriffe können kurz warten (bis 10 Sekunden).
 - Firmeneigene Symbole (Makro\Symbole) sind noch nicht enthalten.
+- Der Update-Knopf erscheint erst ab Build 4. Wer Build 1 bis 3 installiert hat, installiert Build 4 einmal von Hand.
+- Blockiert die Firmen-Firewall github.com, meldet der Knopf «Keine Verbindung zu GitHub». Dann das Setup von Hand verteilen.

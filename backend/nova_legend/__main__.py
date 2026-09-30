@@ -93,14 +93,16 @@ def main(argv: list[str] | None = None) -> int:
         try:
             import webview  # pywebview, installed in the Windows build
 
-            webview.create_window(f"NOVA-Legenden {config.APP_VERSION}", url,
-                                  width=1400, height=900, min_size=(900, 600))
+            window = webview.create_window(f"NOVA-Legenden {config.APP_VERSION}", url,
+                                           width=1400, height=900, min_size=(900, 600))
+            app.state.shutdown = window.destroy  # used by the program update
             webview.start()
             server.should_exit = True
             return 0
         except Exception:  # noqa: BLE001 - fall back to the browser
             log.warning("Eigenes Fenster nicht möglich, öffne Browser:\n%s", traceback.format_exc())
 
+    app.state.shutdown = lambda: setattr(server, "should_exit", True)
     webbrowser.open(url)
     try:
         while thread.is_alive():

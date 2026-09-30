@@ -65,6 +65,7 @@ button, input, select { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .chip.warn { color: var(--warn); border-color: var(--warn); }
+.chip.update { cursor: pointer; color: #fff; background: var(--ok); border-color: var(--ok); font-weight: 600; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .dot.warn { background: var(--warn); }
 

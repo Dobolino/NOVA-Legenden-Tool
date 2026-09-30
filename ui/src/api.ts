@@ -69,8 +69,22 @@ export interface Settings {
   oda_path: string;
 }
 
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  can_install: boolean;
+  notes: string;
+  published: string;
+  asset_name: string;
+  size: number;
+  page_url: string;
+  message: string;
+}
+
 export interface Status {
   version: string;
+  version_label: string;
   user: string;
   settings: Settings;
   company_db: string;
@@ -132,6 +146,8 @@ export const api = {
   saveSettings: (s: Partial<Settings>) => request<Status>("PUT", "/api/settings", s),
   searchDatasets: () => request<{ found: string[] }>("POST", "/api/settings/search-datasets"),
   sync: () => request<Status["sync"]>("POST", "/api/library/sync"),
+  updateCheck: () => request<UpdateInfo>("GET", "/api/update/check"),
+  updateInstall: () => request<{ ok: boolean; message: string }>("POST", "/api/update/install"),
   options: () => request<Options>("GET", "/api/options"),
   saveOptions: (o: Partial<Options>) => request<Options>("PUT", "/api/options", o),
   families: (p: { q: string; category: string; dataset: string; mounting: string; all_variants: boolean }) =>
