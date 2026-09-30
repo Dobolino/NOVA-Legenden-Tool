@@ -94,22 +94,49 @@ def _paint(color: str | None, mixed: bool) -> str:
     return color
 
 
+# Legend: the colours of the Nova drawing, never the section colour.
+OWN_BLACK = "#000000"
+OWN_LAYER_FILL = "#b9c0c9"   # area without own colour next to explicitly coloured parts
+
+
+def own_paint(color: str | None, mixed: bool, filled: bool) -> str:
+    """Hex colour of a primitive in the legend (preview and DXF export).
+
+    An explicit colour stays. A part without own colour is black; only an area
+    without own colour in a symbol that also has coloured parts (black lines on
+    a coloured area) gets a light grey, so the black lines on it stay visible.
+    """
+    if color:
+        return color
+    return OWN_LAYER_FILL if (mixed and filled) else OWN_BLACK
+
+
+def is_mixed(geo: SymbolGeometry) -> bool:
+    return any(p.color for p in geo.primitives) and any(p.color is None for p in geo.primitives)
+
+
 def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
-               stroke_mm: float = 0.18, title: str | None = None, show_fill: bool = True) -> str:
+               stroke_mm: float = 0.18, title: str | None = None, show_fill: bool = True,
+               own_colors: bool = False) -> str:
     x0, y0, x1, y1 = geometry_bounds(geo)   # full symbol, also when the fill is hidden
     pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
     x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
     w, h = (x1 - x0) * MM, (y1 - y0) * MM
     # Large symbols (e.g. an 11 m PV array at 1:50) keep visible lines
     stroke_mm = max(stroke_mm, 0.012 * max(w, h))
-    mixed = any(p.color for p in geo.primitives) and any(p.color is None for p in geo.primitives)
+    mixed = is_mixed(geo)
     parts: list[str] = []
     for p in geo.primitives:
         if p.filled and not show_fill:
             continue
         d = p.data
-        paint = _paint(p.color, mixed)
-        stroke = f' stroke="{paint}"' if paint != "currentColor" else ""
+        if own_colors:
+            paint = own_paint(p.color, mixed, p.filled)
+            line = own_paint(p.color, mixed, False)
+            stroke = f' stroke="{line}"'
+        else:
+            paint = _paint(p.color, mixed)
+            stroke = f' stroke="{paint}"' if paint != "currentColor" else ""
         fill = paint if p.filled else "none"
         attrs = f' fill="{fill}"{stroke}'
         if p.kind == "hatch":

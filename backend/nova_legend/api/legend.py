@@ -17,7 +17,8 @@ from .. import config
 from ..legend import general as general_part
 from ..legend.export import build_dxf, dxf_to_dwg
 from ..legend.layout import layout as place
-from ..legend.model import GRIDS, MARGIN, SHEET_WIDTH, normalize, normalize_style, propose, template_texts
+from ..legend.general import norm_text
+from ..legend.model import AP_NOTE, GRIDS, MARGIN, SHEET_WIDTH, normalize, normalize_style, propose, template_texts
 from ..projects.store import Project, safe_folder_name
 from ..render.engine import engine_geometry
 from ..render.svg import geometry_bounds, render_svg
@@ -63,6 +64,29 @@ def export_name(meta: dict, part: str, ext: str) -> str:
     label = (meta.get("name") or "Projekt").strip() or "Projekt"
     part = (part or "Legende").strip() or "Legende"
     return f"{safe_folder_name('edeco ag-' + label + '-' + part)}.{ext}"
+
+
+def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set[str]:
+    """Family keys of project rows the general part already shows.
+
+    Template project: by symbol (or family). DXF / DWG: by the text next to
+    the symbol, compared with the company text and the library name of the
+    row. Only an exact match of the normalised text counts; an unsure entry
+    stays in the project sections.
+    """
+    if not gen or not gen.kind:
+        return set()
+    fams, syms, texts = set(gen.family_keys), set(gen.symbol_keys), set(gen.texts)
+    out: set[str] = set()
+    for row in rows:
+        fk = row.get("family_key")
+        if not fk:
+            continue
+        if fk in fams or (row.get("symbol_key") and row["symbol_key"] in syms):
+            out.add(fk)
+        elif texts and any(norm_text(t) in texts for t in (descriptions.get(fk), row.get("title")) if t):
+            out.add(fk)
+    return out
 
 
 def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
@@ -164,7 +188,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         if not stored:
             return None
         doc = normalize(stored["doc"])
-        return place(doc, sizes_of(doc), include_general=False), doc["style"]["margin"]
+        return place(doc, sizes_of(doc), include_general=False), doc["style"]["margin"], doc
 
     @app.post("/api/legend/symbols")
     def symbols(body: SymbolsIn) -> dict:
@@ -177,7 +201,8 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             if geo is None:
                 out.append({**base, "svg": "", "missing": st.library.symbol(req.symbol_key) is None})
                 continue
-            svg = render_svg(geo, None, show_points=False, show_fill=fills.get(req.family_key or "", True))
+            svg = render_svg(geo, None, show_points=False, show_fill=fills.get(req.family_key or "", True),
+                             own_colors=True)
             m = _VIEWBOX.search(svg)
             out.append({**base, "svg": svg, "box": [float(v) for v in m.groups()] if m else [0, 0, 5, 5]})
         return {"items": out}
@@ -197,7 +222,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         stored = p.legend()
         if stored:
             stored = {**stored, "doc": normalize(stored["doc"])}
-        return {"legend": stored, "template_texts": template_texts(), "descriptions": st.company.descriptions(),
+        gen = load_general()
+        descriptions = st.company.descriptions()
+        rows = evaluator().evaluate(p)["rows"] if gen.kind else []
+        in_general = {**gen.contents(), "covered": sorted(covered_families(gen, rows, descriptions))}
+        return {"legend": stored, "template_texts": template_texts(), "descriptions": descriptions,
+                "in_general": in_general,
                 "grids": [{"id": k, **v} for k, v in GRIDS.items()], "style": project_style(p),
                 "company": company_legend(), "oda": bool(st.settings.oda_path or config.find_oda_converter())}
 
@@ -215,8 +245,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         title = "Legende " + " ".join(x for x in (meta.get("project_number"), meta.get("name")) if x)
         colors = {c["id"]: c.get("color") for c in category_colors(p, ev)}
         style = body.style if body and body.style else project_style(p)
+        descriptions = st.company.descriptions()
+        gen = load_general()
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
-                      st.company.descriptions(), title.strip(), style=style, colors=colors)
+                      descriptions, title.strip(), style=style, colors=colors,
+                      covered=covered_families(gen, result["rows"], descriptions),
+                      ap_covered=norm_text(AP_NOTE) in set(gen.texts))
         return {"doc": doc}
 
     @app.post("/api/projects/{project_id}/legend/layout")
@@ -233,8 +267,20 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         gen = load_general()
         return {**gen.info(), "svg": gen.svg, "prims": gen.prims}
 
+    @app.get("/api/projects/{project_id}/legend/export-name")
+    def export_file_name(project_id: str, format: str = "dxf", block: str = "") -> dict:  # noqa: A002
+        p = project(project_id)
+        stored = p.legend()
+        doc = normalize(stored["doc"]) if stored else {"blocks": []}
+        target = next((b for b in doc["blocks"] if b["id"] == block), None) if block else None
+        return {"name": export_name(p.meta(), target["title"] if target else "Legende",
+                                    "dwg" if format.lower() == "dwg" else "dxf")}
+
+    # The file name is part of the path, so a browser that ignores the header still saves it right.
+    @app.get("/api/projects/{project_id}/legend/export/{file_name}")
     @app.get("/api/projects/{project_id}/legend/export")
-    def export_legend(project_id: str, format: str = "dxf", block: str = "", general: bool = True):  # noqa: A002
+    def export_legend(project_id: str, format: str = "dxf", block: str = "", general: bool = True,  # noqa: A002
+                      file_name: str = ""):
         p = project(project_id)
         stored = p.legend()
         if not stored:

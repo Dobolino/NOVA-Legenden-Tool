@@ -8,6 +8,7 @@ cannot be shown reliably. The file is read again whenever it changed.
 
 from __future__ import annotations
 
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -31,10 +32,25 @@ class GeneralPart:
     scale: float = 1.0                 # drawing units -> sheet mm
     ext_min: tuple[float, float] = (0.0, 0.0)
     ext_max: tuple[float, float] = (0.0, 0.0)
+    # what the general part already shows (to leave it out of the project sections)
+    texts: list[str] = field(default_factory=list)          # normalised texts (DXF / DWG)
+    symbol_keys: list[str] = field(default_factory=list)    # symbols (template project)
+    family_keys: list[str] = field(default_factory=list)
 
     def info(self) -> dict:
         return {"source": self.source, "kind": self.kind, "error": self.error,
                 "w": round(self.w, 2), "h": round(self.h, 2)}
+
+    def contents(self) -> dict:
+        return {"texts": self.texts, "symbol_keys": self.symbol_keys, "family_keys": self.family_keys}
+
+
+def norm_text(text: str) -> str:
+    """Compare texts without case, punctuation and extra spaces:
+    «Leitung, nach oben» and «Leitung nach oben» are the same text."""
+    t = re.sub(r"\\[A-Za-z][^;\\]*;|\\P|[{}]", " ", text or "")   # MTEXT codes
+    t = re.sub(r"[^0-9a-zäöüéèàß°/]+", " ", t.lower())
+    return " ".join(t.split())
 
 
 _cache: dict[tuple, GeneralPart] = {}
@@ -74,7 +90,7 @@ def _from_project(source: str, folder: Path, project_layout) -> GeneralPart:
     result = project_layout(folder)
     if result is None:
         return GeneralPart(source=source, error="Das Vorlagen-Projekt hat noch keine Legende.")
-    lay, margin = result
+    lay, margin, doc = result
     prims = []
     for prim in lay["prims"]:
         q = dict(prim)
@@ -86,8 +102,12 @@ def _from_project(source: str, folder: Path, project_layout) -> GeneralPart:
                 q[k] = round(q[k] - margin, 3)
         if q["t"] != "hit":
             prims.append(q)
+    items = [it for b in doc["blocks"] for it in b["items"] if not it.get("hidden")]
     return GeneralPart(source=source, kind="project", w=lay["width"] - 2 * margin,
-                       h=lay["height"] - 2 * margin, prims=prims)
+                       h=lay["height"] - 2 * margin, prims=prims,
+                       symbol_keys=sorted({it["symbol_key"] for it in items if it.get("symbol_key")}),
+                       family_keys=sorted({it["family_key"] for it in items if it.get("family_key")}),
+                       texts=sorted({norm_text(it["text"]) for it in items if it["kind"] == "note"}))
 
 
 def _from_dwg(source: str, dwg: Path, inner_width: float, oda_exe: str | None) -> GeneralPart:
@@ -128,7 +148,31 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     part = GeneralPart(source=source, kind="dxf", w=w_mm * fit, h=h_mm * fit, dxf_path=str(path),
                        scale=to_mm * fit, ext_min=(x0, y0), ext_max=(x1, y1))
     part.svg = _svg(doc, part.w, part.h)
+    part.texts = _texts(msp)
     return part
+
+
+def _texts(msp) -> list[str]:
+    """All texts of the drawing, also those inside blocks, normalised."""
+    from ezdxf import disassemble
+
+    out: set[str] = set()
+    try:
+        for e in disassemble.recursive_decompose(msp):
+            kind = e.dxftype()
+            if kind == "TEXT" or kind == "ATTRIB":
+                raw = e.dxf.text
+            elif kind == "MTEXT":
+                raw = e.plain_text()
+            else:
+                continue
+            for part in str(raw).splitlines():
+                t = norm_text(part)
+                if len(t) >= 3:
+                    out.add(t)
+    except Exception:  # noqa: BLE001 - no texts means nothing is left out
+        return sorted(out)
+    return sorted(out)
 
 
 def _svg(doc, w: float, h: float) -> str:

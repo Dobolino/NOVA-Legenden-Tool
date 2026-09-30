@@ -240,6 +240,15 @@ export interface LegendInfo {
   style: LegendDoc["style"];
   company: CompanyLegend;
   oda: boolean;
+  in_general: GeneralContents;
+}
+
+/** What the general part already shows (texts normalised like normText in legend.ts). */
+export interface GeneralContents {
+  texts: string[];
+  symbol_keys: string[];
+  family_keys: string[];
+  covered: string[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -458,8 +467,25 @@ export const api = {
     request<LegendLayout>("POST", `/api/projects/${encodeURIComponent(id)}/legend/layout`, { doc }, signal),
   legendGeneral: (id: string) =>
     request<GeneralInfo & { svg: string; prims: LegendPrim[] }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/general`),
-  legendExportUrl: (id: string, format: "dxf" | "dwg", block: string, general: boolean) =>
-    `/api/projects/${encodeURIComponent(id)}/legend/export?${qs({ format, block, general })}`,
+  legendExportName: (id: string, format: "dxf" | "dwg", block: string) =>
+    request<{ name: string }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/export-name?${qs({ format, block })}`),
+  /** The file name is part of the path, so the download keeps it even if the header is ignored. */
+  legendExportUrl: (id: string, name: string, format: "dxf" | "dwg", block: string, general: boolean) =>
+    `/api/projects/${encodeURIComponent(id)}/legend/export/${encodeURIComponent(name)}?${qs({ format, block, general })}`,
+  legendExportFile: async (url: string): Promise<Blob> => {
+    const res = await fetch(url);
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`;
+      try {
+        const data = await res.json();
+        if (data.detail) msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      } catch {
+        /* keep status text */
+      }
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
   rememberLegend: (id: string, doc: LegendDoc) =>
     request<CompanyLegend>("POST", `/api/projects/${encodeURIComponent(id)}/legend/remember`, { doc }),
   companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),

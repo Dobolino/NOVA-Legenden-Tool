@@ -15,7 +15,7 @@ import re
 import uuid
 from pathlib import Path
 
-DOC_VERSION = 2
+DOC_VERSION = 3
 AP_NOTE = "Unterscheidung UP / AP (halbausgefüllt)"
 SHEET_WIDTH = 200.0          # mm, including the margin
 MARGIN = 5.0
@@ -31,6 +31,8 @@ DEFAULT_TEXT_SIZE = 2.5
 DEFAULT_SYMBOL_SCALE = 1.0
 
 ITEM_KINDS = ("symbol", "line", "note", "text")
+ROTATIONS = (0, 90, 180, 270)
+ITEM_EXTRA = {"text_scale": 1.0, "rotation": 0, "hidden": False, "keep": False}
 LINE_STYLES = ("solid", "dashed", "dotted", "dashdot")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -70,18 +72,25 @@ def readable_on(color: str) -> str:
 
 
 def section_style(color: str | None) -> dict:
-    """Default look of a section from the plan colour of its legend layer."""
+    """Default look of a section from the plan colour of its legend layer.
+
+    Only the header bar takes the colour. The area behind the entries stays
+    white paper (background off), the border is off, texts are black. Symbols
+    keep the colours of their Nova drawing; ``symbol`` only colours lines and
+    notes of the section.
+    """
     c = _hex(color, "#6b7280")
     if c.lower() in ("#ffffff", "#000000"):
         c = "#6b7280" if c.lower() == "#ffffff" else c
-    return {"header": c, "header_text": readable_on(c), "background": tint(c, 0.9),
-            "border_on": True, "border": c, "symbol": c, "text": "#000000", "padding": 1.5}
+    return {"header": c, "header_text": readable_on(c), "background_on": False, "background": tint(c, 0.9),
+            "border_on": False, "border": c, "symbol": "#000000", "text": "#000000", "padding": 1.5}
 
 
 def _section_style(value, fallback: dict) -> dict:
     v = value if isinstance(value, dict) else {}
     return {"header": _hex(v.get("header"), fallback["header"]),
             "header_text": _hex(v.get("header_text"), fallback["header_text"]),
+            "background_on": bool(v.get("background_on", fallback["background_on"])),
             "background": _hex(v.get("background"), fallback["background"]),
             "border_on": bool(v.get("border_on", fallback["border_on"])),
             "border": _hex(v.get("border"), fallback["border"]),
@@ -97,11 +106,13 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
     grid = GRIDS["standard"]
     return {"font": "Arial", "text_size": text_size, "symbol_scale": symbol_scale,
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
-            "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50}
+            "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
+            "section_gap": 0.0}
 
 
 def empty_doc(title: str = "", style: dict | None = None) -> dict:
-    return {"version": DOC_VERSION, "style": style or default_style(), "title": {"text": title}, "blocks": []}
+    return {"version": DOC_VERSION, "style": style or default_style(), "title": {"text": title, "scale": 1.0},
+            "blocks": []}
 
 
 def _num(value, default: float, lo: float | None = None, hi: float | None = None) -> float:
@@ -129,7 +140,13 @@ def normalize_style(value) -> dict:
     style["text_offset"] = GRIDS[grid]["text_offset"]
     style["plan_scale"] = _num(v.get("plan_scale"), 50, 1, 1000)
     style["font"] = str(v.get("font") or "Arial")[:40]
+    style["section_gap"] = _num(v.get("section_gap"), 0.0, 0, 50)
     return style
+
+
+def _scale(value) -> float:
+    """Text factor of one text: 1 = the common text size."""
+    return round(_num(value, 1.0, 0.5, 3.0), 3)
 
 
 def normalize(doc: dict | None) -> dict:
@@ -139,8 +156,10 @@ def normalize(doc: dict | None) -> dict:
     old_style = doc.get("style") or {}
     style = normalize_style(old_style)
     title = doc.get("title") or {}
+    old = int(_num(doc.get("version"), 1))
     out = {"version": DOC_VERSION, "style": style,
-           "title": {"text": str(title.get("text", ""))[:200]}, "blocks": []}
+           "title": {"text": str(title.get("text", ""))[:200], "scale": _scale(title.get("scale"))},
+           "blocks": []}
     seen: set[str] = set()
 
     def uid(value) -> str:
@@ -155,8 +174,11 @@ def normalize(doc: dict | None) -> dict:
             continue
         block = {"id": uid(b.get("id")), "category_id": b.get("category_id") or None,
                  "title": str(b.get("title", ""))[:200], "layer": str(b.get("layer") or "")[:80],
-                 "collapsed": bool(b.get("collapsed")),
+                 "collapsed": bool(b.get("collapsed")), "title_scale": _scale(b.get("title_scale")),
                  "style": _section_style(b.get("style"), section_style(None)), "items": []}
+        if old < 3:
+            # v2 filled the area and drew the border by default and coloured symbols
+            block["style"].update(background_on=False, border_on=False, symbol="#000000")
         for it in b.get("items") or []:
             item = _item(it, uid)
             if item:
@@ -166,9 +188,14 @@ def normalize(doc: dict | None) -> dict:
     free = [t for t in doc.get("texts") or [] if isinstance(t, dict) and str(t.get("text", "")).strip()]
     if free:
         out["blocks"].append({"id": uid(None), "category_id": None, "title": "Zusatztext", "layer": "",
-                              "collapsed": False, "style": section_style(None),
+                              "collapsed": False, "title_scale": 1.0, "style": section_style(None),
                               "items": [_item({"kind": "text", "text": t["text"]}, uid) for t in free]})
     return out
+
+
+def _rotation(value) -> int:
+    r = int(_num(value, 0)) % 360
+    return r if r in ROTATIONS else 0
 
 
 def _item(it, uid) -> dict | None:
@@ -181,7 +208,11 @@ def _item(it, uid) -> dict | None:
             "length_mm": _num(it.get("length_mm"), 0, 0, 100000) or None,
             "width_mm": _num(it.get("width_mm"), 0, 0, 100000) or None,
             "line_style": it.get("line_style") if it.get("line_style") in LINE_STYLES else "solid",
-            "line_length": _num(it.get("line_length"), 8, 1, 60)}
+            "line_length": _num(it.get("line_length"), 8, 1, 60),
+            "text_scale": _scale(it.get("text_scale")),
+            "rotation": _rotation(it.get("rotation")),
+            # hidden: the general part already shows it (hidden, not deleted); keep: shown on purpose
+            "hidden": bool(it.get("hidden")), "keep": bool(it.get("keep"))}
     if kind == "symbol" and not item["symbol_key"]:
         return None
     return item
@@ -191,8 +222,12 @@ def _item(it, uid) -> dict | None:
 
 def propose(rows: list[dict], categories: list[dict], by_category: bool,
             descriptions: dict[str, str], title: str, style: dict | None = None,
-            colors: dict[str, str] | None = None) -> dict:
+            colors: dict[str, str] | None = None, covered: set[str] | None = None,
+            ap_covered: bool = False) -> dict:
     """New legend with every apparatus in use, grouped by the first visible category.
+
+    ``covered`` holds the family keys the general part already shows; they are
+    left out. ``ap_covered`` leaves out the AP note when the general part has it.
 
     ``colors`` maps a category id to the plan colour of its legend layer; it
     gives each section its default look.
@@ -211,6 +246,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             blocks[key] = {"id": new_id(), "category_id": cid if by_category else None,
                            "title": cat["title"] if cat else ("Ohne Kategorie" if by_category else "Legende"),
                            "layer": (cat.get("layer") or "") if cat else "", "collapsed": False,
+                           "title_scale": 1.0,
                            "style": section_style(colors.get(cid) if cat else None), "items": []}
         return blocks[key]
 
@@ -221,17 +257,19 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
         visible = [c for c in row.get("categories") or [] if c in cats and not cats[c].get("hidden")]
         if row.get("categories") and not visible:
             continue    # only in hidden categories
+        if covered and row["family_key"] in covered:
+            continue    # the general part already shows it
         cid = visible[0] if visible else None
         has_ap = has_ap or any(m in ("AP", "NAP") for m in (row.get("mountings") or {}))
         block_for(cid)["items"].append({
             "id": new_id(), "kind": "symbol", "family_key": row["family_key"],
             "symbol_key": row["symbol_key"],
             "text": descriptions.get(row["family_key"]) or row.get("title") or "",
-            "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0})
+            "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
     doc["blocks"] = sorted(blocks.values(), key=lambda b: order.get(b["category_id"], 999))
-    if has_ap and doc["blocks"]:
+    if has_ap and doc["blocks"] and not ap_covered:
         first = next((b for b in doc["blocks"] if b["category_id"] == "allgemein"), doc["blocks"][0])
         first["items"].append({"id": new_id(), "kind": "note", "family_key": None, "symbol_key": None,
                                "text": AP_NOTE, "length_mm": None, "width_mm": None,
-                               "line_style": "solid", "line_length": 8.0})
+                               "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
     return doc

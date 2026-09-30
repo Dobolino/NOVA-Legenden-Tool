@@ -1,8 +1,9 @@
 """Write a placed legend as DXF (R2013, AC1027) and, with the ODA converter, as DWG.
 
-Colours are true colours: header bar, background, border, symbols, lines and
-texts. Every symbol becomes a block (drawn BYBLOCK, the insert carries the
-section colour); filled areas get a lighter tint of it. Layers: symbols and
+Colours are true colours: header bar, background, border, lines and texts.
+Every symbol becomes a block whose entities keep the colours of the Nova
+drawing (black where the symbol has no own colour); the section colour does
+not recolour symbols. Layers: symbols and
 lines on the legend layer of their category, texts on X_Text, frames and bars
 on X_Geometrie (layer names of the existing edeco legend).
 """
@@ -18,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 from ..parser.geometry import flex_points, sample_arc, sample_ellipse, sample_spline
-from ..render.svg import geometry_bounds
+from ..render.svg import geometry_bounds, is_mixed, own_paint
 from .general import GeneralPart
 from .model import tint
 
@@ -103,9 +104,13 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                 x0, y0, x1, y1 = geometry_bounds(geo)
                 bcx, bcy = (x0 + x1) / 2 * 1000, (y0 + y1) / 2 * 1000
                 s = p["scale"]
-                ins = msp.add_blockref(name, (p["cx"] + dx - bcx * s, Y(p["cy"] + dy) - bcy * s), dxfattribs={
-                    "xscale": s, "yscale": s, "layer": _layer(doc, p.get("layer") or "0")})
-                ins.rgb = _rgb(p["color"])
+                rot = int(p.get("rot") or 0)
+                # turn around the symbol centre: the centre stays on the axis of the column
+                a = math.radians(rot)
+                ox = (bcx * math.cos(a) - bcy * math.sin(a)) * s
+                oy = (bcx * math.sin(a) + bcy * math.cos(a)) * s
+                msp.add_blockref(name, (p["cx"] + dx - ox, Y(p["cy"] + dy) - oy), dxfattribs={
+                    "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, p.get("layer") or "0")})
 
     if general and general.kind == "project":
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
@@ -134,26 +139,34 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float) -
 
 
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
-    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|{prim['color']}"
+    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}"
     if key in cache:
         return cache[key]
     base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
     name = f"{base}_{len(cache) + 1}"
     blk = doc.blocks.new(name)
-    fill = _rgb(tint(prim["color"], 0.45))
+    mixed = is_mixed(geo)
+
+    def colored(entity, color: str):
+        entity.rgb = _rgb(color)
+        return entity
+
     for p in geo.primitives:
         d = p.data
         pts: list = []
         closed = False
+        line = own_paint(p.color, mixed, False)
+        fill = own_paint(p.color, mixed, True)
+        if p.kind == "hatch":
+            fill = tint(fill, 0.65)       # the preview shows hatches at 35 % opacity
         if p.kind == "line":
-            blk.add_line(_mm(d["start"]), _mm(d["end"]), dxfattribs={"color": 0})
+            colored(blk.add_line(_mm(d["start"]), _mm(d["end"])), line)
             continue
         if p.kind == "arc" and d.get("full"):
-            e = blk.add_circle(_mm(d["center"]), d["radius"] * 1000, dxfattribs={"color": 0})
             if p.filled:
-                h = blk.add_hatch()
-                h.rgb = fill
+                h = colored(blk.add_hatch(), fill)
                 h.paths.add_polyline_path([_mm(q) for q in sample_arc(d, 48)], is_closed=True)
+            colored(blk.add_circle(_mm(d["center"]), d["radius"] * 1000), line)
             continue
         if p.kind == "arc":
             pts = sample_arc(d)
@@ -168,17 +181,17 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
             pts = sample_spline(d)
         elif p.kind == "text":
             t = blk.add_text(d["text"], height=d["height"] * 1000, rotation=d.get("rotation", 0.0),
-                             dxfattribs={"color": 0, "style": "Arial"})
+                             dxfattribs={"style": "Arial"})
             t.set_placement(_mm(d["position"]))
+            colored(t, fill if p.filled else line)
             continue
         if len(pts) < 2:
             continue
         mm = [_mm(q) for q in pts]
         if p.filled and len(mm) >= 3:
-            h = blk.add_hatch()
-            h.rgb = _rgb(tint(prim["color"], 0.7)) if p.kind == "hatch" else fill
+            h = colored(blk.add_hatch(), fill)
             h.paths.add_polyline_path(mm, is_closed=True)
-        blk.add_lwpolyline(mm, close=closed, dxfattribs={"color": 0})
+        colored(blk.add_lwpolyline(mm, close=closed), line)
     cache[key] = name
     return name
 

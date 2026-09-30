@@ -48,7 +48,8 @@ def test_proposal_groups_by_first_visible_category_with_section_colours():
     assert [b["title"] for b in doc["blocks"]] == ["Allgemein", "Schalter und Taster", "Ohne Kategorie"]
     assert [i["text"] for i in doc["blocks"][0]["items"]] == ["UP-Abzweigdose Decke / Wand"]
     sch = doc["blocks"][1]
-    assert sch["style"]["header"] == "#0000ff" and sch["style"]["symbol"] == "#0000ff"
+    assert sch["style"]["header"] == "#0000ff" and sch["style"]["symbol"] == "#000000"
+    assert sch["style"]["background_on"] is False and sch["style"]["border_on"] is False
     assert sch["style"]["header_text"] == "#ffffff" and sch["layer"] == "E_Licht"
     assert doc["style"]["columns"] == 3 and doc["style"]["text_size"] == 3
     keys = {i["family_key"] for b in doc["blocks"] for i in b["items"]}
@@ -69,7 +70,7 @@ def test_v1_document_is_migrated_free_texts_become_entries():
                {"id": "i", "kind": "symbol", "symbol_key": "k", "x": 1, "y": 2, "scale": 3, "text_size": 7}]}],
            "texts": [{"id": "t", "text": "Hinweis Baustelle", "x": 1, "y": 1, "size": 9}]}
     doc = normalize(old)
-    assert doc["version"] == 2 and doc["style"]["text_size"] == 3.0 and doc["style"]["columns"] == 2
+    assert doc["version"] == 3 and doc["style"]["text_size"] == 3.0 and doc["style"]["columns"] == 2
     assert "x" not in doc["blocks"][0]["items"][0] and "scale" not in doc["blocks"][0]["items"][0]
     assert doc["blocks"][-1]["title"] == "Zusatztext"
     assert doc["blocks"][-1]["items"][0] == {**doc["blocks"][-1]["items"][0], "kind": "text", "text": "Hinweis Baustelle"}
@@ -107,17 +108,124 @@ def test_height_grows_with_the_number_of_symbols_and_general_part_is_on_top():
     assert lay["height"] > small["height"] + 30
 
 
-def test_sections_have_header_background_and_border_in_their_colours():
-    doc = normalize({"blocks": [{"id": "k", "title": "Kraft", "style": section_style("#e03131"),
-                                 "items": [{"id": "l", "kind": "line", "text": "AP-Leitung"}]}]})
+def test_sections_by_default_have_only_a_header_bar_on_white_paper():
+    doc = normalize({"version": 3, "blocks": [{"id": "k", "title": "Kraft", "style": section_style("#e03131"),
+                                               "items": [{"id": "l", "kind": "line", "text": "AP-Leitung"}]}]})
     lay = layout(doc)
     roles = {p.get("role"): p for p in lay["prims"] if p["t"] == "rect"}
-    assert roles["header"]["fill"] == "#e03131" and roles["border"]["stroke"] == "#e03131"
-    assert roles["background"]["fill"] != "#ffffff"
-    line = next(p for p in lay["prims"] if p["t"] == "line")
-    assert line["color"] == "#e03131"
-    doc["blocks"][0]["style"]["border_on"] = False
-    assert "border" not in {p.get("role") for p in layout(doc)["prims"]}
+    assert roles["header"]["fill"] == "#e03131" and set(roles) == {"header"}
+    head_text = next(p for p in lay["prims"] if p["t"] == "text" and p["bold"])
+    assert head_text["color"] == "#ffffff"
+    assert all(p["color"] == "#000000" for p in lay["prims"] if p["t"] == "text" and not p["bold"])
+    doc["blocks"][0]["style"].update(background_on=True, border_on=True)
+    roles = {p.get("role"): p for p in layout(doc)["prims"] if p["t"] == "rect"}
+    assert roles["background"]["fill"] == section_style("#e03131")["background"]
+    assert roles["border"]["stroke"] == "#e03131"
+    light = section_style("#ffd43b")
+    assert light["header_text"] == "#000000"
+
+
+def test_v2_documents_lose_the_filled_area_and_the_coloured_symbols():
+    old = {"version": 2, "blocks": [{"id": "a", "title": "Leitungen", "style": {
+        "header": "#707888", "background": "#f0f1f3", "border_on": True, "symbol": "#707888"}, "items": []}]}
+    st = normalize(old)["blocks"][0]["style"]
+    assert st["background_on"] is False and st["border_on"] is False and st["symbol"] == "#000000"
+    assert st["header"] == "#707888"
+
+
+def _sym_block(sizes_list, rotation=None):
+    items = [{"id": f"s{k}", "kind": "symbol", "symbol_key": f"k{k}", "text": f"Symbol {k} mit Text"}
+             for k in range(len(sizes_list))]
+    if rotation:
+        items[rotation[0]]["rotation"] = rotation[1]
+    doc = normalize({"version": 3, "style": {"columns": 2},
+                     "blocks": [{"id": "S", "title": "Schalter und Taster", "items": items}]})
+    sizes = {f"s{k}": sz for k, sz in enumerate(sizes_list)}
+    return doc, sizes
+
+
+def _columns(lay):
+    syms = [p for p in lay["prims"] if p["t"] == "symbol"]
+    texts = [p for p in lay["prims"] if p["t"] == "text" and not p["bold"]]
+    return syms, texts
+
+
+def test_symbol_centres_share_one_axis_and_texts_one_line_per_column():
+    # Bewegungsmelder, Drehschalter, Präsenzmelder: different widths
+    doc, sizes = _sym_block([(4.0, 4.0, False), (9.0, 4.0, False), (2.0, 3.5, False), (6.0, 4.5, False),
+                             (3.0, 3.0, False), (7.5, 4.0, False)])
+    lay = layout(doc, sizes)
+    syms, texts = _columns(lay)
+    hits = boxes(lay)
+    for col_x in {round(h["x"], 3) for h in hits}:
+        col = [h["id"] for h in hits if round(h["x"], 3) == col_x]
+        cxs = {s["cx"] for s in syms if s["id"] in col}
+        txs = {t["x"] for t in texts if t["item"] in col}
+        assert len(cxs) == 1 and len(txs) == 1
+        cx, tx = cxs.pop(), txs.pop()
+        assert all(tx >= s["cx"] + s["w"] / 2 + 1.0 for s in syms if s["id"] in col)   # wide one pushes nobody
+    for s in syms:
+        t = next(t for t in texts if t["item"] == s["id"])
+        mid_text = t["y"] - t["size"] * 0.32
+        assert abs(mid_text - s["cy"]) < 0.01                         # same horizontal middle
+
+
+def test_turning_a_symbol_keeps_centre_and_text_line_and_grows_the_row():
+    doc, sizes = _sym_block([(12.0, 2.0, False), (4.0, 4.0, False), (4.0, 4.0, False), (4.0, 4.0, False)])
+    flat = layout(doc, sizes)
+    doc_t, _ = _sym_block([(12.0, 2.0, False), (4.0, 4.0, False), (4.0, 4.0, False), (4.0, 4.0, False)], rotation=(0, 90))
+    turned = layout(doc_t, sizes)
+    a = next(p for p in flat["prims"] if p["t"] == "symbol" and p["id"] == "s0")
+    b = next(p for p in turned["prims"] if p["t"] == "symbol" and p["id"] == "s0")
+    assert b["rot"] == 90 and b["w"] < b["h"] and b["cx"] == next(
+        p for p in turned["prims"] if p["t"] == "symbol" and p["id"] == "s1")["cx"]
+    hit = next(h for h in boxes(turned) if h["id"] == "s0")
+    assert hit["h"] >= b["h"] and b["cy"] - b["h"] / 2 >= hit["y"] - 1e-6
+    t = next(p for p in turned["prims"] if p["t"] == "text" and p.get("item") == "s0")
+    assert t["x"] >= b["cx"] + b["w"] / 2 and abs(t["y"] - t["size"] * 0.32 - b["cy"]) < 0.01
+    assert a["h"] < b["h"]
+    items = boxes(turned)
+    for i, x in enumerate(items):
+        for y in items[i + 1:]:
+            assert not overlap(x, y)
+
+
+def test_text_factor_changes_only_that_text_and_the_row_grows():
+    doc = normalize({"version": 3, "blocks": [block("A", 3)]})
+    base = layout(doc)
+    doc["blocks"][0]["items"][1]["text_scale"] = 1.2
+    big = layout(doc)
+    sizes = {t["item"]: t["size"] for t in big["prims"] if t["t"] == "text" and t.get("item")}
+    assert sizes["A1"] == 3.0 and sizes["A0"] == 2.5 and sizes["A2"] == 2.5
+    doc["blocks"][0]["items"][1]["text"] = "Langer Text " * 8
+    grown = layout(doc)
+    h = {b["id"]: b["h"] for b in boxes(grown)}
+    assert h["A1"] > h["A0"]
+    doc["style"]["text_size"] = 3.0
+    common = {t["item"]: t["size"] for t in layout(doc)["prims"] if t["t"] == "text" and t.get("item")}
+    assert common["A0"] == 3.0 and common["A1"] == 3.6
+    assert base["height"] <= big["height"]
+
+
+def test_gap_between_sections_moves_only_the_sections():
+    doc = normalize({"version": 3, "blocks": [block("A", 4), block("B", 4)]})
+
+    def sections(d):
+        return {s["id"]: s for s in boxes(layout(d), "section")}
+
+    s0 = sections(doc)
+    assert abs(s0["B"]["y"] - (s0["A"]["y"] + s0["A"]["h"])) < 1e-6           # 0: they touch
+    doc["style"]["section_gap"] = 6
+    s6 = sections(doc)
+    assert abs(s6["B"]["y"] - (s6["A"]["y"] + s6["A"]["h"]) - 6) < 1e-6
+    assert s6["A"]["h"] == s0["A"]["h"] and s6["B"]["h"] == s0["B"]["h"]     # rows inside unchanged
+
+
+def test_hidden_entries_are_not_placed():
+    doc = normalize({"version": 3, "blocks": [block("A", 3)]})
+    doc["blocks"][0]["items"][0]["hidden"] = True
+    assert "A0" not in {b["id"] for b in boxes(layout(doc))}
+    assert normalize(doc)["blocks"][0]["items"][0]["hidden"] is True
 
 
 def test_wrap_keeps_words_and_cuts_only_long_ones():
@@ -290,3 +398,111 @@ def test_empty_doc_defaults():
     doc = empty_doc()
     assert doc["style"]["width"] == 200 and doc["style"]["grid"] == "standard"
     assert doc["style"]["row"] == 4.55 and doc["style"]["text_offset"] == 9.75 and doc["style"]["columns"] == 2
+
+
+# -- symbol colours, general part contents, export details ---------------------------------
+
+def _coloured_symbol():
+    from nova_legend.parser.geometry import Primitive, SymbolGeometry
+
+    square = {"points": [(-0.002, -0.002), (0.002, -0.002), (0.002, 0.002), (-0.002, 0.002)],
+              "closed": True, "segments": []}
+    return SymbolGeometry(primitives=[
+        Primitive("line", "X", False, {"start": (-0.003, 0.0), "end": (0.003, 0.0)}),            # no own colour
+        Primitive("polygon", "X", True, square, color="#ff0000"),                                 # red area
+    ])
+
+
+def test_symbols_keep_their_own_colours_in_preview_and_dxf():
+    from nova_legend.legend.export import build_dxf
+    from nova_legend.render.svg import render_svg
+
+    geo = _coloured_symbol()
+    svg = render_svg(geo, None, show_points=False, own_colors=True)
+    assert 'stroke="#000000"' in svg and 'fill="#ff0000"' in svg
+    assert "currentColor\"" not in svg.split("<g", 1)[1].split(">", 1)[1] and "var(--sym" not in svg
+    doc = normalize({"version": 3, "blocks": [{"id": "b", "title": "Licht", "style": section_style("#0000ff"),
+                                               "items": [{"id": "i", "kind": "symbol", "symbol_key": "k",
+                                                          "text": "Leuchte", "rotation": 90}]}]})
+    lay = layout(doc, {"i": (6.0, 4.0, False)})
+    dxf = build_dxf(lay, None, lambda prim: geo)
+    ins = next(e for e in dxf.modelspace().query("INSERT"))
+    assert not ins.dxf.hasattr("true_color") and ins.dxf.rotation == 90
+    colours = {e.rgb for e in dxf.blocks[ins.dxf.name] if e.dxf.hasattr("true_color")}
+    assert (0, 0, 0) in colours and (255, 0, 0) in colours and (0, 0, 255) not in colours
+    sym = next(p for p in lay["prims"] if p["t"] == "symbol")
+    # the turned block keeps its centre on the axis of the column
+    x0, y0, x1, y1 = geometry_bounds(geo)
+    assert abs(ins.dxf.insert.x - sym["cx"]) < 1e-3 and abs(ins.dxf.insert.y - (lay["height"] - sym["cy"])) < 1e-3
+
+
+def test_covered_by_the_general_part_by_text_or_symbol():
+    from nova_legend.api.legend import covered_families
+    from nova_legend.legend.general import GeneralPart, norm_text
+
+    rows = [row("oben", ["allgemein"]), row("dose", ["allgemein"]), row("fast", ["allgemein"])]
+    rows[0]["title"] = "Leitung, nach oben"
+    rows[2]["title"] = "Leitung nach oben rechts"      # only similar: stays
+    dxf = GeneralPart(kind="dxf", texts=[norm_text("Leitung nach oben"), norm_text("Abzweigdose")])
+    assert covered_families(dxf, rows, {"dose": "Abzweigdose"}) == {"oben", "dose"}
+    proj = GeneralPart(kind="project", symbol_keys=["sym:fast"])
+    assert covered_families(proj, rows, {}) == {"fast"}
+    doc = propose(rows, CATS, True, {}, "L", covered={"oben", "dose"})
+    assert [i["family_key"] for b in doc["blocks"] for i in b["items"]] == ["fast"]
+
+
+def test_general_part_entries_are_left_out_of_the_proposal(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    pid = _project(client, tmp)
+    first = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]["blocks"][0]["items"][0]
+    tpl = ezdxf.new("R2013", units=4)
+    blk = tpl.blocks.new("Zeile")
+    blk.add_text(first["text"].upper() + ",", height=2.5).set_placement((10, 0))
+    tpl.modelspace().add_blockref("Zeile", (0, 0))
+    tpl.modelspace().add_line((0, -5), (180, -5))
+    tpl.saveas(tmp_path / "allg.dxf")
+    client.put("/api/company/legend", json={"general_path": str(tmp_path / "allg.dxf")})
+    info = client.get(f"/api/projects/{pid}/legend").json()
+    assert first["family_key"] in info["in_general"]["covered"]
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    assert first["family_key"] not in {i["family_key"] for b in doc["blocks"] for i in b["items"]}
+
+
+def test_export_without_general_has_no_general_block_and_a_named_path(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    client.put("/api/company/legend", json={"general_path": str(_template_dxf(tmp_path / "a.dxf"))})
+    pid = _project(client, tmp)
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    doc = client.put(f"/api/projects/{pid}/legend", json={"doc": doc}).json()["legend"]["doc"]
+    block_id = doc["blocks"][0]["id"]
+    name = client.get(f"/api/projects/{pid}/legend/export-name", params={"block": block_id}).json()["name"]
+    assert name == f"edeco ag-Test-{doc['blocks'][0]['title']}.dxf"
+    assert client.get(f"/api/projects/{pid}/legend/export-name").json()["name"] == "edeco ag-Test-Legende.dxf"
+    res = client.get(f"/api/projects/{pid}/legend/export/{name}", params={"block": block_id, "general": "false"})
+    assert res.status_code == 200
+    (tmp_path / "o.dxf").write_bytes(res.content)
+    out = ezdxf.readfile(tmp_path / "o.dxf")
+    assert "Allgemeinteil" not in out.blocks
+    res = client.get(f"/api/projects/{pid}/legend/export/x.dxf", params={"general": "true"})
+    (tmp_path / "g.dxf").write_bytes(res.content)
+    assert "Allgemeinteil" in ezdxf.readfile(tmp_path / "g.dxf").blocks
+
+
+def test_gap_is_the_same_in_the_dxf(tmp_path):
+    from nova_legend.legend.export import build_dxf
+
+    def header_tops(gap):
+        doc = normalize({"version": 3, "style": {"section_gap": gap},
+                         "blocks": [block("A", 2), block("B", 2)]})
+        for b in doc["blocks"]:
+            b["style"]["header"] = "#e03131"
+        lay = layout(doc)
+        dxf = build_dxf(lay, None, lambda p: None)
+        tops = sorted(max(v[1] for v in h.paths[0].vertices) for h in dxf.modelspace().query("HATCH")
+                      if h.rgb == (0xE0, 0x31, 0x31))
+        return [lay["height"] - t for t in tops][::-1]
+
+    a, b = header_tops(0), header_tops(4)
+    assert abs((b[1] - b[0]) - (a[1] - a[0]) - 4) < 1e-3

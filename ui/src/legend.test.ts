@@ -7,17 +7,26 @@ import {
   beginSave,
   blockForCategory,
   commit,
+  coveredRows,
   describe,
+  duplicateItems,
+  hideCovered,
   historyOf,
+  inGeneral,
+  inLegend,
+  insertItem,
   isCurrentSave,
   missingRows,
   moveBlockInOrder,
   moveItemInOrder,
+  moveItemTo,
   moveItemToBlock,
+  normText,
   push,
   redo,
   removeItem,
   replace,
+  rotateItem,
   sectionStyle,
   staleItems,
   undo,
@@ -27,23 +36,23 @@ import type { LegendDoc } from "./legend.ts";
 
 const style = {
   font: "Arial", text_size: 2.5, symbol_scale: 1, grid: "standard", row: 4.55, text_offset: 9.75,
-  columns: 2, width: 200, margin: 5, plan_scale: 50,
+  columns: 2, width: 200, margin: 5, plan_scale: 50, section_gap: 0,
 };
 
 function item(id: string, family: string | null) {
   return { id, kind: "symbol" as const, family_key: family, symbol_key: family ? `s:${family}` : null, text: id,
-    length_mm: null, width_mm: null, line_style: "solid" as const, line_length: 8 };
+    length_mm: null, width_mm: null, line_style: "solid" as const, line_length: 8, text_scale: 1, rotation: 0, hidden: false, keep: false };
 }
 
 function doc(): LegendDoc {
   return {
     version: 2,
     style,
-    title: { text: "Legende" },
+    title: { text: "Legende", scale: 1 },
     blocks: [
-      { id: "a", category_id: "licht", title: "Licht", layer: "E_Licht", collapsed: false, style: sectionStyle("#1971c2"),
+      { id: "a", category_id: "licht", title: "Licht", layer: "E_Licht", collapsed: false, title_scale: 1, style: sectionStyle("#1971c2"),
         items: [item("i1", "lampe"), item("i2", "spot")] },
-      { id: "b", category_id: "bma", title: "BMA", layer: "", collapsed: false, style: sectionStyle(null), items: [item("i3", "melder")] },
+      { id: "b", category_id: "bma", title: "BMA", layer: "", collapsed: false, title_scale: 1, style: sectionStyle(null), items: [item("i3", "melder")] },
     ],
   };
 }
@@ -97,7 +106,9 @@ test("new entries and sections, company text wins over the library name", () => 
   const s = nb.doc.blocks[2].style;
   assert.equal(s.header, "#e03131");
   assert.equal(s.header_text, "#ffffff");
-  assert.equal(s.symbol, "#e03131");
+  assert.equal(s.symbol, "#000000", "symbols keep their own colours");
+  assert.equal(s.background_on, false);
+  assert.equal(s.border_on, false);
   assert.equal(describe("lampe", "Lampe", { lampe: "Decken- / Wandlampenstelle" }), "Decken- / Wandlampenstelle");
   assert.equal(describe("spot", "Spot", {}), "Spot");
   assert.equal(sectionStyle("#ffffff").header, "#6b7280");
@@ -113,4 +124,42 @@ test("project comparison: missing and no longer used entries", () => {
   assert.deepEqual([...staleItems(doc(), rows)].sort(), ["i1", "i2"]);
   assert.equal(blockForCategory(doc(), ["bma"], null), "b");
   assert.equal(blockForCategory(doc(), ["unbekannt"], "a"), "a");
+});
+
+test("drag and drop: move in front of an entry, into another section, insert new", () => {
+  let d = moveItemTo(doc(), "a", "i2", "a", "i1");
+  assert.deepEqual(d.blocks[0].items.map((i) => i.id), ["i2", "i1"]);
+  d = moveItemTo(doc(), "a", "i1", "b", "i3");
+  assert.deepEqual(d.blocks[1].items.map((i) => i.id), ["i1", "i3"]);
+  d = moveItemTo(doc(), "a", "i1", "b", null);
+  assert.deepEqual(d.blocks[1].items.map((i) => i.id), ["i3", "i1"]);
+  const r = insertItem(doc(), "b", { kind: "symbol", family_key: "neu", symbol_key: "s:neu", text: "Neu" }, "i3");
+  assert.deepEqual(r.doc.blocks[1].items.map((i) => i.id), [r.id, "i3"]);
+  assert.equal(rotateItem(rotateItem(doc(), "a", "i1"), "a", "i1").blocks[0].items[0].rotation, 180);
+});
+
+test("duplicates are marked, the first one is not", () => {
+  const r = insertItem(doc(), "b", { kind: "symbol", family_key: "lampe", symbol_key: "s:lampe", text: "Lampe 2" }, null);
+  assert.deepEqual([...duplicateItems(r.doc)], [r.id]);
+  assert.equal(inLegend(doc(), "lampe", null), true);
+  assert.equal(inLegend(doc(), "neu", null), false);
+});
+
+test("the general part: same text rule as the backend, hidden not deleted", () => {
+  assert.equal(normText("Leitung, nach oben"), "leitung nach oben");
+  assert.equal(normText("Unterscheidung UP / AP (halbausgefüllt)"), "unterscheidung up / ap halbausgefüllt");
+  const g = { texts: ["decken melder"], symbol_keys: ["s:spot"], family_keys: [], covered: [] };
+  const d = hideCovered(updateItem(doc(), "b", "i3", { text: "Decken-Melder" }), g);
+  const hidden = d.blocks.flatMap((b) => b.items.filter((i) => i.hidden).map((i) => i.id));
+  assert.deepEqual(hidden.sort(), ["i2", "i3"]);
+  assert.equal(d.blocks.flatMap((b) => b.items).length, 3, "nothing deleted");
+  const kept = updateItem(d, "b", "i3", { hidden: false, keep: true });
+  assert.equal(hideCovered(kept, g), kept, "shown again on purpose stays");
+  assert.equal(inGeneral({ ...d.blocks[0].items[0], kind: "text", text: "melder" }, g), false);
+  const rows = [
+    { family_key: "melder", title: "Melder", total: 1, categories: [] },
+    { family_key: "neu", title: "Neu", total: 1, categories: [] },
+  ];
+  assert.deepEqual(missingRows(d, rows, new Set(["neu"])).map((r) => r.family_key), ["melder"]);
+  assert.deepEqual(coveredRows(rows, new Set(["neu"])).map((r) => r.family_key), ["neu"]);
 });

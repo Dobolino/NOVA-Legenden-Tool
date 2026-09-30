@@ -337,6 +337,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   <tr>
                     <th>Geschoss</th>
                     <th>Plandatei</th>
+                    <th className="type-col">Typ</th>
                     <th>Letzter Import</th>
                     <th className="num-col">Apparate</th>
                     <th />
@@ -373,13 +374,13 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                           <span title={p.file_name}>{p.file_name}</span>
                         ) : (
                           <span className="hint">Plandatei entfernt</span>
-                        )}{" "}
-                        {p.format && <span className="badge">{p.format.toUpperCase()}</span>}
+                        )}
                         <div className="hint">
                           {p.versions === 1 ? "1 Importversion" : `${p.versions} Importversionen`}
                           {p.versions > 1 && p.change_summary ? ` · ${changeHint(p.change_summary)}` : ""}
                         </div>
                       </td>
+                      <td className="type-col">{p.format ? p.format.toUpperCase() : ""}</td>
                       <td>
                         {p.imported_at ? formatDateTime(p.imported_at) : ""}
                         <div className="hint">{p.imported_by}</div>
@@ -567,16 +568,15 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               >
                 Nicht berücksichtigt ({data.ignored.length})
               </button>
+              {tab !== "legend" && (
+                <button className="btn primary tabs-end" onClick={() => setTab("legend")} title="Legenden-Editor öffnen">
+                  Legende bearbeiten
+                </button>
+              )}
             </div>
 
             {tab === "list" && (
               <>
-              <div className="list-toolbar">
-                <span className="hint">Eine Zeile pro Apparat, eine Spalte pro Geschoss.</span>
-                <button className="btn primary" onClick={() => setTab("legend")} title="Legenden-Editor öffnen">
-                  Legende bearbeiten →
-                </button>
-              </div>
               <div className="table-scroll sticky">
                 <table className="list-table summary">
                   <thead>
