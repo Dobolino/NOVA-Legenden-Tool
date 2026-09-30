@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, DATASET_LABEL, Status, UpdateInfo } from "../api";
+import { TrashIcon } from "./Icons";
 
 interface Props {
   status: Status;
@@ -148,23 +149,24 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               const doubled = (status.sync.doppelt ?? []).some((x) => norm(x) === norm(p));
               return (
                 <div key={p} className="path-item">
-                  <span>{p}</span>
-                  {ds && (
-                    <span className="badge up" style={{ flex: "none" }} title={`Stand des Datensatzes: ${ds.version}`}>
-                      Symbol-Datensatz {DATASET_LABEL(ds.id)} · Stand {ds.version} · {ds.symbol_count} Symbole
-                    </span>
-                  )}
-                  {!ds && doubled && (
-                    <span className="badge warn" style={{ flex: "none" }}>
-                      doppelt, übersprungen
-                    </span>
-                  )}
+                  <span className="path" title={p}>{p}</span>
+                  <span className="info">
+                    {ds && (
+                      <span className="badge up" title={`Stand des Datensatzes: ${ds.version}`}>
+                        Symbol-Datensatz {DATASET_LABEL(ds.id)} · Stand {ds.version} · {ds.symbol_count} Symbole
+                      </span>
+                    )}
+                    {!ds && doubled && <span className="badge warn">doppelt, übersprungen</span>}
+                    {!ds && !doubled && <span className="hint">nicht geladen</span>}
+                  </span>
                   <button
-                    className="btn small danger"
+                    className="btn icon danger"
                     disabled={busy}
+                    aria-label={`${p} entfernen`}
+                    title="Aus der Liste entfernen. Die Datei selbst bleibt unverändert."
                     onClick={() => save({ dataset_paths: paths.filter((x) => x !== p) }, "Entfernt")}
                   >
-                    Entfernen
+                    <TrashIcon />
                   </button>
                 </div>
               );

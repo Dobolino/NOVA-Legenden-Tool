@@ -128,133 +128,134 @@ export default function Library(props: Props) {
   }
 
   return (
-    <>
-      <aside className="sidebar">
-        <div className="side-title">Kategorien</div>
-        <button className={`cat-btn ${category === "" ? "active" : ""}`} onClick={() => setCategory("")}>
-          Alle Symbole
-        </button>
-        {visibleCats.map(({ cat, child }) => (
-          <button
-            key={cat.id}
-            className={`cat-btn ${child ? "child" : ""} ${category === cat.id ? "active" : ""}`}
-            onClick={() => setCategory(cat.id)}
-          >
-            {cat.title}
-            <span className="count">{countOf(cat)}</span>
-          </button>
-        ))}
-      </aside>
-      <section className="content">
-        <div className="toolbar search-only">
-          <input
-            className="search"
-            placeholder="Suche nach Name oder Katalogcode, z. B. «Steckdose T13» oder «230-10»"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoFocus
-          />
-        </div>
-        <div className="toolbar">
-          <label className="filter-label">
-            Symbol-Datensatz
-            <select className="select" value={dataset} onChange={(e) => setDataset(e.target.value)}>
-              <option value="">Alle Datensätze</option>
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {DATASET_LABEL(d.id)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="filter-label">
-            Montage
-            <select className="select" value={mounting} onChange={(e) => setMounting(e.target.value)}>
-              <option value="">Alle Montagearten</option>
-              {MOUNTINGS.map((m) => (
-                <option key={m} value={m}>
-                  {m === "-" ? "ohne Angabe" : m}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="toggle" title="Zeigt jede Variante (UP, AP, ohne Text …) als eigene Kachel">
-            <input type="checkbox" checked={allVariants} onChange={(e) => setAllVariants(e.target.checked)} />
-            Alle Varianten anzeigen
-          </label>
-          <label className="range-field">
-            Symbolgrösse
-            <input type="range" min={110} max={260} value={tile} onChange={(e) => setTile(Number(e.target.value))} />
-          </label>
-          <span className="result-count">{loading ? "lädt …" : `${total} Einträge`}</span>
-        </div>
-        <div className="grid-wrap">
-          {items.length === 0 && !loading && <div className="empty">Keine Symbole für diese Auswahl.</div>}
-          <div className="grid" style={{ ["--tile" as string]: `${tile}px` }}>
-            {items.slice(0, shown).map((it) => (
-              <div
-                key={it.id}
-                className={`tile ${selected === it.id ? "selected" : ""}`}
-                onClick={() => setSelected(it.id)}
-                title={`${it.representative.name} · ${it.representative.item}`}
-              >
-                <div className="pic">
-                  <SymbolPic sym={it.representative} />
-                </div>
-                <div className="name">{allVariants ? it.representative.name : it.title}</div>
-                <div className="meta">
-                  <span style={{ fontWeight: 600, color: "var(--fg)" }}>{it.representative.item}</span>
-                  {allVariants ? (
-                    <span className={`badge ${it.representative.mounting === "UP" ? "up" : ""}`}>
-                      {it.representative.mounting ?? "–"}
-                    </span>
-                  ) : (
-                    it.mountings.map((m) => (
-                      <span key={m} className={`badge ${m === "UP" ? "up" : ""}`}>
-                        {m === "-" ? "–" : m}
-                      </span>
-                    ))
-                  )}
-                  {it.representative.kind === "Engine" && it.representative.svg && (
-                    <span className="badge" title="Nova zeichnet dieses Symbol aus Parametern. Die Vorschau ist vereinfacht.">
-                      vereinfacht
-                    </span>
-                  )}
-                  {it.category_source === "manuell" && <span className="badge manual">zugeordnet</span>}
-                  {it.conflicts.length > 0 && <span className="badge warn">prüfen</span>}
-                </div>
-                {!category && (
-                  <div className="meta">{it.categories.map((c) => catTitle[c] ?? c).join(", ")}</div>
-                )}
-              </div>
-            ))}
-          </div>
-          {shown < items.length && (
-            <div className="more" ref={moreRef}>
-              weitere laden …
-            </div>
-          )}
-        </div>
-      </section>
-      {selected && (
-        <FamilyDetail
-          id={selected}
-          categories={categories}
-          notify={notify}
-          onClose={() => setSelected(null)}
-          onFillChanged={() => setRefresh((r) => r + 1)}
-          onAssigned={(updated) => {
-            setItems((list) =>
-              list.map((x) =>
-                x.id.split("#")[0] === updated.id
-                  ? { ...x, categories: updated.categories, category_source: updated.category_source }
-                  : x,
-              ),
-            );
-            props.onCategoriesChanged();
-          }}
+    <div className="lib">
+      <div className="toolbar lib-bar">
+        <input
+          className="search"
+          aria-label="Symbole suchen"
+          placeholder="Suche nach Name oder Katalogcode, z. B. «Steckdose T13» oder «230-10»"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          autoFocus
         />
-      )}
-    </>
+        <label className="filter-label">
+          Symbol-Datensatz
+          <select className="select" value={dataset} onChange={(e) => setDataset(e.target.value)}>
+            <option value="">Alle Datensätze</option>
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id}>
+                {DATASET_LABEL(d.id)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-label">
+          Montage
+          <select className="select" value={mounting} onChange={(e) => setMounting(e.target.value)}>
+            <option value="">Alle Montagearten</option>
+            {MOUNTINGS.map((m) => (
+              <option key={m} value={m}>
+                {m === "-" ? "ohne Angabe" : m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="toggle" title="Zeigt jede Variante (UP, AP, ohne Text …) als eigene Kachel">
+          <input type="checkbox" checked={allVariants} onChange={(e) => setAllVariants(e.target.checked)} />
+          Alle Varianten anzeigen
+        </label>
+        <label className="range-field">
+          Symbolgrösse
+          <input type="range" min={110} max={260} value={tile} onChange={(e) => setTile(Number(e.target.value))} />
+        </label>
+        <span className="result-count">{loading ? "lädt …" : `${total} Einträge`}</span>
+      </div>
+      <div className="lib-body">
+        <aside className="sidebar">
+          <div className="side-title">Kategorien</div>
+          <button className={`cat-btn ${category === "" ? "active" : ""}`} onClick={() => setCategory("")}>
+            Alle Symbole
+          </button>
+          {visibleCats.map(({ cat, child }) => (
+            <button
+              key={cat.id}
+              className={`cat-btn ${child ? "child" : ""} ${category === cat.id ? "active" : ""}`}
+              onClick={() => setCategory(cat.id)}
+            >
+              {cat.title}
+              <span className="count">{countOf(cat)}</span>
+            </button>
+          ))}
+        </aside>
+        <section className="content">
+          <div className="grid-wrap">
+            {items.length === 0 && !loading && <div className="empty">Keine Symbole für diese Auswahl.</div>}
+            <div className="grid" style={{ ["--tile" as string]: `${tile}px` }}>
+              {items.slice(0, shown).map((it) => (
+                <div
+                  key={it.id}
+                  className={`tile ${selected === it.id ? "selected" : ""}`}
+                  onClick={() => setSelected(it.id)}
+                  title={`${it.representative.name} · ${it.representative.item}`}
+                >
+                  <div className="pic">
+                    <SymbolPic sym={it.representative} />
+                  </div>
+                  <div className="name">{allVariants ? it.representative.name : it.title}</div>
+                  <div className="meta">
+                    <span style={{ fontWeight: 600, color: "var(--fg)" }}>{it.representative.item}</span>
+                    {allVariants ? (
+                      <span className={`badge ${it.representative.mounting === "UP" ? "up" : ""}`}>
+                        {it.representative.mounting ?? "–"}
+                      </span>
+                    ) : (
+                      it.mountings.map((m) => (
+                        <span key={m} className={`badge ${m === "UP" ? "up" : ""}`}>
+                          {m === "-" ? "–" : m}
+                        </span>
+                      ))
+                    )}
+                    {it.representative.kind === "Engine" && it.representative.svg && (
+                      <span className="badge" title="Nova zeichnet dieses Symbol aus Parametern. Die Vorschau ist vereinfacht.">
+                        vereinfacht
+                      </span>
+                    )}
+                    {it.category_source === "manuell" && <span className="badge manual">zugeordnet</span>}
+                    {it.conflicts.length > 0 && <span className="badge warn">prüfen</span>}
+                  </div>
+                  {!category && (
+                    <div className="meta">{it.categories.map((c) => catTitle[c] ?? c).join(", ")}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {shown < items.length && (
+              <div className="more" ref={moreRef}>
+                weitere laden …
+              </div>
+            )}
+          </div>
+        </section>
+        {selected && (
+          <FamilyDetail
+            id={selected}
+            categories={categories}
+            notify={notify}
+            onClose={() => setSelected(null)}
+            onFillChanged={() => setRefresh((r) => r + 1)}
+            onAssigned={(updated) => {
+              setItems((list) =>
+                list.map((x) =>
+                  x.id.split("#")[0] === updated.id
+                    ? { ...x, categories: updated.categories, category_source: updated.category_source }
+                    : x,
+                ),
+              );
+              props.onCategoriesChanged();
+            }}
+          />
+        )}
+      </div>
+    </div>
   );
 }

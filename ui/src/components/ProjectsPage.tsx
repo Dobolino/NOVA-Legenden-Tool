@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, Category, ProjectSummary } from "../api";
 import { formatDateTime } from "../uiState";
+import { TrashIcon } from "./Icons";
 import ProjectView from "./ProjectView";
 
 interface Props {
@@ -85,7 +86,7 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                   <th>Geschosse</th>
                   <th>Geändert</th>
                   <th>Angelegt von</th>
-                  <th />
+                  <th style={{ width: 52 }} />
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +103,9 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                     <td>{p.created_by}</td>
                     <td style={{ textAlign: "right" }}>
                       <button
-                        className="btn small danger"
+                        className="btn icon danger"
+                        aria-label={`Projekt ${p.name} nach ‚Gelöscht‘ verschieben`}
+                        title="Nach ‚Gelöscht‘ verschieben (Ordner _Geloescht, nichts wird endgültig gelöscht)"
                         onClick={async (e) => {
                           e.stopPropagation();
                           if (!window.confirm(`Projekt «${p.name}» in den Ordner _Geloescht verschieben?`)) return;
@@ -116,7 +119,7 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                           }
                         }}
                       >
-                        Nach ‚Gelöscht‘ verschieben
+                        <TrashIcon />
                       </button>
                     </td>
                   </tr>
