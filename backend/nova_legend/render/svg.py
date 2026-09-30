@@ -1,0 +1,116 @@
+"""Render a SymbolGeometry as a standalone SVG string.
+
+Coordinates are metres at plot scale (0.005 = 5 mm). The SVG uses mm as
+user unit and flips the Y axis (Nova: Y up, SVG: Y down).
+"""
+
+from __future__ import annotations
+
+import html
+import math
+
+from ..parser.geometry import (SymbolGeometry, flex_points, sample_arc,
+                               sample_ellipse, sample_spline)
+
+MM = 1000.0  # metres -> millimetres
+
+
+def _pt(p: tuple[float, float] | list[float]) -> str:
+    return f"{p[0] * MM:.4f},{-p[1] * MM:.4f}"
+
+
+def _path(points: list, closed: bool) -> str:
+    if not points:
+        return ""
+    d = "M" + " L".join(_pt(p) for p in points)
+    return d + (" Z" if closed else "")
+
+
+def geometry_bounds(geo: SymbolGeometry) -> tuple[float, float, float, float]:
+    """Bounds in metres from the actual primitives (bbox field may be missing)."""
+    xs: list[float] = []
+    ys: list[float] = []
+
+    def add(pts):
+        for x, y in pts:
+            xs.append(x)
+            ys.append(y)
+
+    for p in geo.primitives:
+        d = p.data
+        if p.kind == "line":
+            add([d["start"], d["end"]])
+        elif p.kind == "arc":
+            add(sample_arc(d, 32))
+        elif p.kind == "ellipse_arc":
+            add(sample_ellipse(d, 32))
+        elif p.kind in ("polygon", "polyline", "hatch"):
+            add(flex_points(d))
+        elif p.kind == "spline":
+            add(sample_spline(d, 24))
+        elif p.kind == "text":
+            x, y = d["position"]
+            w = d["height"] * 0.6 * max(len(d["text"]), 1)
+            add([(x, y), (x + w, y + d["height"])])
+    for v in geo.points.values():
+        add([(v[0], v[1])])
+    if not xs:
+        if geo.bbox:
+            return tuple(geo.bbox)  # type: ignore[return-value]
+        return (-0.0025, -0.0025, 0.0025, 0.0025)
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def render_svg(geo: SymbolGeometry, size_px: int = 96, show_points: bool = True,
+               stroke_mm: float = 0.18, title: str | None = None) -> str:
+    x0, y0, x1, y1 = geometry_bounds(geo)
+    pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
+    x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
+    w, h = (x1 - x0) * MM, (y1 - y0) * MM
+    parts: list[str] = []
+    for p in geo.primitives:
+        d = p.data
+        fill = "currentColor" if p.filled else "none"
+        opacity = ' fill-opacity="0.35"' if p.kind == "hatch" else ""
+        if p.kind == "line":
+            parts.append(f'<path d="M{_pt(d["start"])} L{_pt(d["end"])}"/>')
+        elif p.kind == "arc":
+            if d.get("full"):
+                cx, cy = d["center"]
+                parts.append(f'<circle cx="{cx * MM:.4f}" cy="{-cy * MM:.4f}" '
+                             f'r="{d["radius"] * MM:.4f}" fill="{fill}"/>')
+            else:
+                parts.append(f'<path d="{_path(sample_arc(d), False)}" fill="{fill}"/>')
+        elif p.kind == "ellipse_arc":
+            closed = abs(abs(d["sweep"]) - 2 * math.pi) < 1e-6
+            parts.append(f'<path d="{_path(sample_ellipse(d), closed)}" fill="{fill}"/>')
+        elif p.kind in ("polygon", "hatch"):
+            parts.append(f'<path d="{_path(flex_points(d), True)}" fill="{fill}"{opacity}/>')
+        elif p.kind == "polyline":
+            parts.append(f'<path d="{_path(flex_points(d), False)}" fill="{fill}"/>')
+        elif p.kind == "spline":
+            parts.append(f'<path d="{_path(sample_spline(d), False)}"/>')
+        elif p.kind == "text":
+            x, y = d["position"]
+            size = d["height"] * MM
+            rot = -d["rotation"]
+            parts.append(
+                f'<text x="{x * MM:.4f}" y="{-y * MM:.4f}" font-size="{size:.3f}" '
+                f'font-family="Arial, sans-serif" stroke="none" fill="currentColor" '
+                f'transform="rotate({rot:.3f} {x * MM:.4f} {-y * MM:.4f})">'
+                f'{html.escape(d["text"])}</text>')
+    if show_points:
+        r = max(w, h) * 0.025
+        for name, v in geo.points.items():
+            color = "#d9480f" if name.startswith("NP") else "#1971c2"
+            parts.append(f'<circle cx="{v[0] * MM:.4f}" cy="{-v[1] * MM:.4f}" r="{r:.4f}" '
+                         f'fill="{color}" stroke="none"><title>{html.escape(name)}</title></circle>')
+    title_tag = f"<title>{html.escape(title)}</title>" if title else ""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size_px}" height="{size_px}" '
+        f'viewBox="{x0 * MM:.4f} {-y1 * MM:.4f} {w:.4f} {h:.4f}" '
+        f'preserveAspectRatio="xMidYMid meet">{title_tag}'
+        f'<g fill="none" stroke="currentColor" stroke-width="{stroke_mm:.3f}" '
+        f'stroke-linecap="round" stroke-linejoin="round">'
+        + "".join(parts) + "</g></svg>"
+    )
