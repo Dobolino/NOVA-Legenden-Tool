@@ -47,6 +47,18 @@ DEFAULT_OPTIONS = {
 CATEGORY_FIELDS = ("title", "parent", "layer", "columns", "spacing", "hidden", "sheets")
 
 
+def normalize_sheets(values: list[str] | str) -> list[str]:
+    """Clean number ranges: split on commas, trim, drop empty and duplicates."""
+    parts = values.split(",") if isinstance(values, str) else [
+        p for v in values for p in str(v).split(",")]
+    out: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
@@ -128,7 +140,7 @@ class CompanyStore:
             if key in values:
                 value = values[key]
                 if key == "sheets":
-                    value = json.dumps(value)
+                    value = json.dumps(normalize_sheets(value))
                 if key == "hidden":
                     value = int(bool(value))
                 sets.append(f"{key}=?")

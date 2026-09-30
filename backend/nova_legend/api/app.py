@@ -209,8 +209,11 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
                     if not all_variants and mounting not in fam.mountings:
                         continue
                 if words:
-                    hay = " ".join([sym.name, sym.item, fam.title, sym.folder,
-                                    sym.part_name]).lower()
+                    # Variant list: search the variant itself. Family list: search
+                    # name and catalogue code of every member (e.g. the AP code).
+                    searched = [sym] if all_variants else fam.members
+                    hay = " ".join([fam.title] + [
+                        f"{m.name} {m.item} {m.folder} {m.part_name}" for m in searched]).lower()
                     if not all(w in hay for w in words):
                         continue
                 if all_variants:
@@ -259,11 +262,15 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     # -- categories ----------------------------------------------------------------
 
     @app.get("/api/categories")
-    def categories() -> dict:
+    def categories(dataset: str = "") -> dict:
+        """Categories with the number of families. With ``dataset`` only that
+        dataset is counted, so the numbers match the visible tiles."""
         cats = st.company.categories()
         assignments = st.company.assignments()
         counts = {c["id"]: 0 for c in cats}
         for fam in st.library.families(st.family_options()).values():
+            if dataset and fam.representative.dataset != dataset:
+                continue
             for cid in family_categories(fam, cats, assignments)[0]:
                 if cid in counts:
                     counts[cid] += 1
@@ -280,7 +287,13 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     @app.put("/api/categories/{cat_id}")
     def update_category(cat_id: str, body: CategoryIn) -> dict:
         try:
-            return st.company.update_category(cat_id, body.model_dump(exclude_none=True))
+            # Only fields the client sent. An explicit "parent": null makes the
+            # category a main category again; null for other fields is ignored.
+            values = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+                      if v is not None or k == "parent"}
+            if values.get("parent") == cat_id:
+                raise HTTPException(400, "Eine Kategorie kann nicht unter sich selbst liegen")
+            return st.company.update_category(cat_id, values)
         except KeyError:
             raise HTTPException(404, "Kategorie nicht gefunden") from None
         except ValueError as exc:

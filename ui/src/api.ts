@@ -156,7 +156,8 @@ export const api = {
   symbol: (key: string) => request<SymbolDetail>("GET", `/api/library/symbol?${qs({ key })}`),
   assign: (id: string, categories: string[] | null) =>
     request<FamilyItem>("PUT", `/api/library/family/categories?${qs({ id })}`, { categories }),
-  categories: () => request<{ items: Category[] }>("GET", "/api/categories"),
+  categories: (dataset = "") =>
+    request<{ items: Category[] }>("GET", dataset ? `/api/categories?${qs({ dataset })}` : "/api/categories"),
   createCategory: (title: string, parent: string | null) =>
     request<Category>("POST", "/api/categories", { title, parent }),
   updateCategory: (id: string, values: Partial<Category>) =>

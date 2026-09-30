@@ -14,13 +14,22 @@ interface Props {
 }
 
 const PAGE = 240;
+
+/** Newest dataset (V2) if present, else the first one, else all. */
+function defaultDataset(datasets: DatasetInfo[]): string {
+  if (!datasets.length) return "";
+  return (datasets.find((d) => d.id.includes(".V2.")) ?? datasets[0]).id;
+}
 const MOUNTINGS = ["UP", "AP", "NUP", "NAP", "EB", "-"];
 
 export default function Library(props: Props) {
   const { categories, options, revision, datasets, notify } = props;
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("");
-  const [dataset, setDataset] = useState("");
+  // "" means all datasets. The default (V2, else the first) is set only once.
+  const [dataset, setDataset] = useState(() => defaultDataset(datasets));
+  const datasetInitialized = useRef(datasets.length > 0);
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [mounting, setMounting] = useState("");
   const [allVariants, setAllVariants] = useState(false);
   const [tile, setTile] = useState(150);
@@ -31,13 +40,28 @@ export default function Library(props: Props) {
   const [loading, setLoading] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
-  // Default to the newest dataset (V2) once datasets are known
+  // Datasets can arrive after the first render: apply the default once,
+  // later an empty value stays "all datasets".
   useEffect(() => {
-    if (!dataset && datasets.length) {
-      const v2 = datasets.find((d) => d.id.includes(".V2."));
-      setDataset((v2 ?? datasets[0]).id);
+    if (!datasetInitialized.current && datasets.length) {
+      datasetInitialized.current = true;
+      setDataset(defaultDataset(datasets));
     }
-  }, [datasets, dataset]);
+  }, [datasets]);
+
+  // Category counts for the chosen dataset, so they match the visible tiles
+  useEffect(() => {
+    let alive = true;
+    api
+      .categories(dataset)
+      .then((res) => alive && setCounts(Object.fromEntries(res.items.map((c) => [c.id, c.family_count ?? 0]))))
+      .catch(() => alive && setCounts(null));
+    return () => {
+      alive = false;
+    };
+  }, [dataset, categories, revision, options]);
+
+  const countOf = (cat: Category) => (counts ? (counts[cat.id] ?? 0) : (cat.family_count ?? 0));
 
   useEffect(() => {
     const handle = window.setTimeout(async () => {
@@ -75,9 +99,11 @@ export default function Library(props: Props) {
       for (const ch of categories.filter((x) => x.parent === c.id)) out.push({ cat: ch, child: true });
     }
     return out.filter(
-      ({ cat }) => !cat.hidden && (options.show_empty_categories || (cat.family_count ?? 0) > 0),
+      ({ cat }) =>
+        !cat.hidden &&
+        (options.show_empty_categories || (counts ? (counts[cat.id] ?? 0) : (cat.family_count ?? 0)) > 0),
     );
-  }, [categories, options.show_empty_categories]);
+  }, [categories, options.show_empty_categories, counts]);
 
   const catTitle = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c.title])), [categories]);
 
@@ -114,7 +140,7 @@ export default function Library(props: Props) {
             onClick={() => setCategory(cat.id)}
           >
             {cat.title}
-            <span className="count">{cat.family_count ?? ""}</span>
+            <span className="count">{countOf(cat)}</span>
           </button>
         ))}
       </aside>

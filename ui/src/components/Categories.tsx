@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, Category, Options } from "../api";
+import { parseSheets } from "../sheets";
 
 interface Props {
   categories: Category[];
@@ -33,6 +34,8 @@ const OPTION_TEXT: { key: keyof Options; title: string; desc: string }[] = [
 
 export default function Categories({ categories, options, notify, onChanged }: Props) {
   const [rows, setRows] = useState<Category[]>(categories);
+  // Raw text of the number range fields while typing (saved on blur)
+  const [sheetsDraft, setSheetsDraft] = useState<Record<string, string>>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -66,6 +69,21 @@ export default function Categories({ categories, options, notify, onChanged }: P
       return;
     }
     run(() => api.updateCategory(id, { [field]: row[field] }), "Gespeichert");
+  }
+
+  function saveSheets(id: string) {
+    const text = sheetsDraft[id];
+    if (text === undefined) return;
+    setSheetsDraft((d) => {
+      const next = { ...d };
+      delete next[id];
+      return next;
+    });
+    const sheets = parseSheets(text);
+    const orig = categories.find((c) => c.id === id);
+    if (!orig || JSON.stringify(sheets) === JSON.stringify(orig.sheets)) return;
+    edit(id, "sheets", sheets);
+    run(() => api.updateCategory(id, { sheets }), "Gespeichert");
   }
 
   function drop(targetId: string) {
@@ -209,18 +227,9 @@ export default function Categories({ categories, options, notify, onChanged }: P
                   <td>
                     <input
                       className="input"
-                      value={c.sheets.join(", ")}
-                      onChange={(e) =>
-                        edit(
-                          c.id,
-                          "sheets",
-                          e.target.value
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean),
-                        )
-                      }
-                      onBlur={() => commit(c.id, "sheets")}
+                      value={sheetsDraft[c.id] ?? c.sheets.join(", ")}
+                      onChange={(e) => setSheetsDraft((d) => ({ ...d, [c.id]: e.target.value }))}
+                      onBlur={() => saveSheets(c.id)}
                     />
                   </td>
                   <td className="hint">{c.family_count ?? ""}</td>

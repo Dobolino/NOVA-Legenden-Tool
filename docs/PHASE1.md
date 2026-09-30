@@ -38,6 +38,14 @@ Jede Änderung an den Firmendaten speichert Benutzer und Zeit (Tabelle `log` in 
 
 Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, falsche Kategorien und ob der Start auf den Firmen-PCs klappt.
 
+## Korrekturen nach der Code-Prüfung
+
+- Datensatzfilter: «Alle Datensätze» bleibt stehen. Der Standard V2 gilt nur beim ersten Laden.
+- Kategorien: «Unter» auf «–» macht eine Unterkategorie wieder zur Hauptkategorie.
+- Nummernkreise: Das Feld hält den Text während der Eingabe und speichert beim Verlassen. «230, 240» ergibt zwei Kreise, leere und doppelte Einträge fallen weg.
+- Zähler in der Seitenleiste zählen nur den gewählten Datensatz.
+- Die Suche in der Familienansicht findet Name und Katalogcode aller Varianten (z. B. den AP-Code).
+
 ## Bekannte Grenzen
 
 - 141 parametrische Leuchten (Engine) und 22 Bibliothekssymbole (.nsb) zeigen einen Platzhalter. Lösung in Phase 2 über den DXF-Import.
