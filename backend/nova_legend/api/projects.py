@@ -300,3 +300,6 @@ def register(app: FastAPI, st) -> None:
     @app.get("/api/layer-colors")
     def layer_colors() -> dict:
         return st.company.layer_colors()
+
+    from .legend import register as register_legend
+    register_legend(app, st, project, evaluator)

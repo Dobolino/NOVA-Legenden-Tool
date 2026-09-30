@@ -4,6 +4,7 @@ import Library from "./components/Library";
 import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
 import ProjectsPage from "./components/ProjectsPage";
+import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
 
 type Tab = "projects" | "library" | "categories" | "settings";
 
@@ -20,6 +21,12 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [revision, setRevision] = useState(0); // bumps when library data changes
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [theme, setThemeState] = useState<ThemeMode>(loadTheme);
+  const setTheme = useCallback((mode: ThemeMode) => {
+    applyTheme(mode);
+    setThemeState(mode);
+    api.saveTheme(mode).catch(() => undefined); // localStorage is empty after a restart of the window
+  }, []);
 
   const notify = useCallback((text: string, error = false) => {
     setToast({ text, error });
@@ -31,6 +38,11 @@ export default function App() {
       const [s, c, o] = await Promise.all([api.status(), api.categories(), api.options()]);
       setDatasetNames(s.datasets);
       setStatus(s);
+      const saved = s.settings.ui_theme;
+      if (saved === "light" || saved === "dark" || saved === "system") {
+        applyTheme(saved);
+        setThemeState(saved);
+      }
       setCategories(c.items);
       setOptions(o);
       setRevision((r) => r + 1);
@@ -89,6 +101,14 @@ export default function App() {
             <span className="chip" title="Standard für neue Projekte. Jedes Projekt speichert seine eigene Nova-Version.">
               Nova-Version {status.settings.nova_version}
             </span>
+            <button
+              className="chip theme-btn"
+              onClick={() => setTheme(effectiveDark(theme) ? "light" : "dark")}
+              title={effectiveDark(theme) ? "Zum hellen Modus wechseln" : "Zum dunklen Modus wechseln"}
+              aria-label={effectiveDark(theme) ? "Heller Modus" : "Dunkler Modus"}
+            >
+              {effectiveDark(theme) ? "☀ Hell" : "☾ Dunkel"}
+            </button>
             {update?.available && (
               <button className="chip update" onClick={() => setTab("settings")} title="Zum Update">
                 Update {update.latest} verfügbar
@@ -121,7 +141,15 @@ export default function App() {
           />
         )}
         {tab === "settings" && status && (
-          <SettingsPage status={status} update={update} onUpdate={setUpdate} notify={notify} onChanged={reload} />
+          <SettingsPage
+            status={status}
+            update={update}
+            onUpdate={setUpdate}
+            notify={notify}
+            onChanged={reload}
+            theme={theme}
+            onTheme={setTheme}
+          />
         )}
       </div>
       {toast && <div className={`toast ${toast.error ? "error" : ""}`}>{toast.text}</div>}

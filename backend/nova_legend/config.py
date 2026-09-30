@@ -123,6 +123,7 @@ class Settings:
     projects_folder: str = DEFAULT_PROJECTS_FOLDER
     nova_version: str = "19.2"
     oda_path: str = ""
+    ui_theme: str = "system"          # "system", "light" or "dark" (this computer)
 
     @property
     def company_db(self) -> Path:

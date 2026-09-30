@@ -3,6 +3,7 @@ import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary
 import { floorNameFromFilename } from "../floors";
 import { formatDateTime, layerStateText, plansOpen, rememberPlansOpen } from "../uiState";
 import ChangesTab, { changeHint } from "./ChangesTab";
+import LegendEditor from "./LegendEditor";
 import Menu from "./Menu";
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
   onOpenProject: (id: string) => void;
 }
 
-type Tab = "list" | "unknown" | "layers" | "ignored" | "changes";
+type Tab = "list" | "legend" | "unknown" | "layers" | "ignored" | "changes";
 
 interface ImportStatus {
   kind: "busy" | "ok" | "error";
@@ -536,6 +537,13 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 Gesamtliste ({data.rows.length})
               </button>
               <button
+                className={`tab ${tab === "legend" ? "active" : ""}`}
+                onClick={() => setTab("legend")}
+                title="Legenden-Editor: Symbole anordnen, Texte bearbeiten, Abschnitte nach Kategorien"
+              >
+                Legende
+              </button>
+              <button
                 className={`tab ${tab === "changes" ? "active" : ""}`}
                 onClick={() => setTab("changes")}
                 title="Vergleich von Importversionen. Die Zahl zählt geänderte Zeilen zum vorigen Import, über alle Geschosse."
@@ -660,6 +668,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {tab === "legend" && (
+              <LegendEditor projectId={projectId} data={data} categories={categories} notify={notify} />
             )}
 
             {tab === "changes" && (

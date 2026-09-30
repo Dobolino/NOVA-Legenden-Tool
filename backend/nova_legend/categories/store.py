@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS layer_colors (
 CREATE TABLE IF NOT EXISTS symbol_options (
     family_key TEXT PRIMARY KEY, show_fill INTEGER,
     updated_by TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS descriptions (
+    family_key TEXT PRIMARY KEY, text TEXT NOT NULL, updated_by TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS log (ts TEXT, user TEXT, action TEXT, detail TEXT);
 """
 
@@ -270,6 +272,22 @@ class CompanyStore:
                 if color:
                     con.execute("INSERT OR REPLACE INTO layer_colors VALUES (?,?,?)",
                                 (name, color, _now()))
+
+    # -- legend descriptions per family (company-wide) ----------------------------
+
+    def descriptions(self) -> dict[str, str]:
+        with self._tx() as con:
+            return {r["family_key"]: r["text"] for r in con.execute("SELECT * FROM descriptions")}
+
+    def set_description(self, family_key: str, text: str | None) -> None:
+        """Standard legend text of a family. Empty or None goes back to the library name."""
+        with self._tx() as con:
+            if not (text or "").strip():
+                con.execute("DELETE FROM descriptions WHERE family_key=?", (family_key,))
+            else:
+                con.execute("INSERT OR REPLACE INTO descriptions VALUES (?,?,?,?)",
+                            (family_key, text.strip(), current_user(), _now()))
+            self._log(con, "description", f"{family_key} -> {text}")
 
     # -- per family display options ----------------------------------------------
 

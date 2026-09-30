@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, DATASET_LABEL, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
+import type { ThemeMode } from "../theme";
 
 interface Props {
   status: Status;
@@ -8,9 +9,11 @@ interface Props {
   onUpdate: (u: UpdateInfo) => void;
   notify: (text: string, error?: boolean) => void;
   onChanged: () => void;
+  theme: ThemeMode;
+  onTheme: (mode: ThemeMode) => void;
 }
 
-export default function SettingsPage({ status, update, onUpdate, notify, onChanged }: Props) {
+export default function SettingsPage({ status, update, onUpdate, notify, onChanged, theme, onTheme }: Props) {
   const [paths, setPaths] = useState<string[]>(status.settings.dataset_paths);
   const [newPath, setNewPath] = useState("");
   const [company, setCompany] = useState(status.settings.company_folder);
@@ -109,6 +112,25 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   return (
     <div className="page">
       <div className="page-inner">
+        <div className="card">
+          <h3>Darstellung</h3>
+          <p className="desc">Gilt nur auf diesem Computer. Die Legende bleibt immer weiss wie auf dem Plan.</p>
+          <div className="row" role="radiogroup" aria-label="Darstellung">
+            {(
+              [
+                ["light", "Hell"],
+                ["dark", "Dunkel"],
+                ["system", "Wie Windows"],
+              ] as [ThemeMode, string][]
+            ).map(([mode, label]) => (
+              <label key={mode} className="toggle" style={{ color: "var(--fg)" }}>
+                <input type="radio" name="theme" checked={theme === mode} onChange={() => onTheme(mode)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div className="card">
           <h3>Programm-Update</h3>
           <p className="desc">

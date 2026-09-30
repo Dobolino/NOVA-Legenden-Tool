@@ -1,3 +1,4 @@
+import type { LegendDoc } from "./legend";
 // Thin client for the local Python API.
 
 export interface SymbolBrief {
@@ -71,6 +72,7 @@ export interface Settings {
   projects_folder: string;
   nova_version: string;
   oda_path: string;
+  ui_theme?: string;
 }
 
 export interface UpdateInfo {
@@ -206,9 +208,20 @@ export interface PlanChanges {
   summary: ChangeSummary;
 }
 
+export interface SymbolRender {
+  svg: string;
+  box?: [number, number, number, number];
+  kind?: string;
+  engine?: boolean;
+  length_mm?: number | null;
+  width_mm?: number | null;
+  missing?: boolean;
+}
+
 export interface SummaryRow {
   family_id: string;
   family_key: string;
+  symbol_key: string;
   datasets: string[];
   title: string;
   item: string;
@@ -364,6 +377,7 @@ export const api = {
     request<{ items: Suggestion[] }>("GET", `/api/projects/${encodeURIComponent(id)}/suggestions?${qs({ source_key: sourceKey })}`),
   setMapping: (sourceKey: string, symbolKey: string | null, name = "") =>
     request<{ ok: boolean }>("PUT", "/api/mappings", { source_key: sourceKey, symbol_key: symbolKey, name }),
+  saveTheme: (mode: "system" | "light" | "dark") => request<{ mode: string }>("PUT", "/api/settings/theme", { mode }),
   saveSettings: (s: Partial<Settings>) => request<Status>("PUT", "/api/settings", s),
   searchDatasets: () => request<{ found: string[]; folders: string[] }>("POST", "/api/settings/search-datasets"),
   sync: () => request<Status["sync"]>("POST", "/api/library/sync"),
@@ -389,6 +403,29 @@ export const api = {
   reorder: (ids: string[]) => request<{ items: Category[] }>("POST", "/api/categories/reorder", { ids }),
   dialog: (kind: "dataset" | "folder", start = "") =>
     request<{ available: boolean; path: string | null }>("POST", `/api/dialog/${kind}`, { start }),
+  legend: (id: string) =>
+    request<{ legend: { doc: LegendDoc; updated_at: string; updated_by: string } | null; template_texts: string[] }>(
+      "GET",
+      `/api/projects/${encodeURIComponent(id)}/legend`,
+    ),
+  saveLegend: (id: string, doc: LegendDoc) =>
+    request<{ legend: { doc: LegendDoc; updated_at: string; updated_by: string } }>(
+      "PUT",
+      `/api/projects/${encodeURIComponent(id)}/legend`,
+      { doc },
+    ),
+  proposeLegend: (id: string) =>
+    request<{ doc: LegendDoc }>("POST", `/api/projects/${encodeURIComponent(id)}/legend/propose`),
+  layoutLegend: (doc: LegendDoc) => request<{ doc: LegendDoc }>("POST", "/api/legend/layout", { doc }),
+  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[]) =>
+    request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items }),
+  legendTexts: (q: string, familyKey = "") =>
+    request<{ items: { text: string; score: number; source: string }[] }>(
+      "GET",
+      `/api/legend/texts?${qs({ q, family_key: familyKey })}`,
+    ),
+  setDescription: (familyKey: string, text: string | null) =>
+    request<{ ok: boolean; text: string | null }>("PUT", "/api/descriptions", { family_key: familyKey, text }),
   resetCategories: () => request<{ items: Category[] }>("POST", "/api/categories/reset"),
 };
 

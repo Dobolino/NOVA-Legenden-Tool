@@ -102,3 +102,14 @@ def test_dialog_returns_chosen_path_and_none_on_cancel(env, fake_webview):  # no
     window.answer = None                     # cancelled
     assert client.post("/api/dialog/folder", json={}).json() == {"available": True, "path": None}
     assert window.calls[1][0] == 20
+
+
+def test_theme_is_saved_in_local_settings(env):  # noqa: F811
+    from nova_legend import config
+
+    client, _ = env
+    assert client.get("/api/status").json()["settings"]["ui_theme"] == "system"
+    assert client.put("/api/settings/theme", json={"mode": "light"}).json() == {"mode": "light"}
+    assert config.load_settings().ui_theme == "light"
+    assert client.get("/api/status").json()["settings"]["ui_theme"] == "light"
+    assert client.put("/api/settings/theme", json={"mode": "rosa"}).status_code == 400

@@ -100,6 +100,10 @@ class DialogIn(BaseModel):
     start: str = ""
 
 
+class ThemeIn(BaseModel):
+    mode: str
+
+
 # -- app factory -----------------------------------------------------------------
 
 def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> FastAPI:
@@ -171,6 +175,16 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     def put_settings(body: SettingsIn) -> dict:
         st.apply_settings(body.model_dump())
         return status()
+
+    @app.put("/api/settings/theme")
+    def put_theme(body: ThemeIn) -> dict:
+        """Light or dark mode. Saved without reloading datasets or company files."""
+        if body.mode not in ("system", "light", "dark"):
+            raise HTTPException(400, "Unbekannte Darstellung")
+        with st.lock:
+            st.settings.ui_theme = body.mode
+            config.save_settings(st.settings)
+        return {"mode": body.mode}
 
     @app.post("/api/settings/search-datasets")
     def search_datasets() -> dict:

@@ -80,6 +80,7 @@ class ProjectEvaluator:
                         rows[row_key] = {
                             "family_id": fam_id,
                             "family_key": row_key,
+                            "symbol_key": rep.key,
                             "title": fam.title if fam else sym.name,
                             "item": rep.item,
                             "dataset": rep.dataset,

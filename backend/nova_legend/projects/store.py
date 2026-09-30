@@ -45,7 +45,13 @@ CREATE TABLE IF NOT EXISTS plan_elements (
     layers TEXT, features TEXT, PRIMARY KEY (version_id, source_key));
 CREATE TABLE IF NOT EXISTS layers (
     name TEXT PRIMARY KEY, color TEXT, linetype TEXT, source TEXT);
+CREATE TABLE IF NOT EXISTS legend (
+    id INTEGER PRIMARY KEY CHECK (id = 1), doc TEXT NOT NULL, updated_at TEXT, updated_by TEXT);
 """
+
+# Added after the first release: created on first use in older project files.
+LEGEND_TABLE = ("CREATE TABLE IF NOT EXISTS legend (id INTEGER PRIMARY KEY CHECK (id = 1), "
+                "doc TEXT NOT NULL, updated_at TEXT, updated_by TEXT)")
 
 TEMPLATE_SETTINGS_EXCLUDE = {"name"}
 
@@ -335,6 +341,24 @@ class Project:
         if not row:
             return {}
         return {name: int(count) for name, count in json.loads(row["ignored"] or "{}").items()}
+
+    # -- legend (Phase 4) ------------------------------------------------------------
+
+    def legend(self) -> dict | None:
+        """Stored legend document with who saved it last, or None."""
+        with self.tx() as con:
+            con.execute(LEGEND_TABLE)
+            row = con.execute("SELECT * FROM legend WHERE id=1").fetchone()
+        if not row:
+            return None
+        return {"doc": json.loads(row["doc"]), "updated_at": row["updated_at"], "updated_by": row["updated_by"]}
+
+    def set_legend(self, doc: dict) -> dict:
+        with self.tx() as con:
+            con.execute(LEGEND_TABLE)
+            con.execute("INSERT OR REPLACE INTO legend VALUES (1,?,?,?)",
+                        (json.dumps(doc, ensure_ascii=False), _now(), current_user()))
+        return self.legend() or {}
 
     def versions(self, plan_id: int) -> list[dict]:
         with self.tx() as con:

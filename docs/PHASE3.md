@@ -39,4 +39,4 @@ Die Zuordnung ist der gespeicherte Schlüssel des Elements (Katalogcode, Bezeich
 
 - Verglichen werden Anzahlen pro Apparat, nicht die Position im Plan.
 - Zwei Importe, die das Programm nicht als denselben Apparat erkennt, erscheinen als «weg» und «neu» statt als eine geänderte Zeile.
-- Der Legenden-Editor folgt in Phase 4.
+- Der Legenden-Editor: [Phase 4](PHASE4.md).
