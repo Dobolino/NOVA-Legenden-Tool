@@ -43,7 +43,10 @@ def new_id() -> str:
 def template_texts() -> list[str]:
     """Texts of the existing edeco legend, offered as descriptions."""
     path = Path(__file__).with_name("template_texts.json")
-    return json.loads(path.read_text(encoding="utf-8"))["texts"]
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))["texts"]
+    except (OSError, ValueError, KeyError):
+        return []
 
 
 def empty_doc(title: str = "Legende") -> dict:
