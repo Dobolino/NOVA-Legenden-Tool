@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Suggestion, UnknownElement } from "../api";
+import { floorNameFromFilename } from "../floors";
 
 interface Props {
   projectId: string;
@@ -12,8 +13,6 @@ interface Props {
 
 type Tab = "list" | "unknown" | "layers" | "ignored";
 
-const MOUNT_ORDER = ["UP", "NUP", "AP", "NAP", "EB", "-"];
-
 export default function ProjectView({ projectId, projects, categories, notify, onBack, onOpenProject }: Props) {
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [tab, setTab] = useState<Tab>("list");
@@ -22,10 +21,17 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const fileRef = useRef<HTMLInputElement>(null);
   const reimportRef = useRef<HTMLInputElement>(null);
   const [reimportPlan, setReimportPlan] = useState<number | null>(null);
+  const [number, setNumber] = useState("");
+  const [title, setTitle] = useState("");
+  const [dragPlan, setDragPlan] = useState<number | null>(null);
+  const [dropHot, setDropHot] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setData(await api.project(projectId));
+      const next = await api.project(projectId);
+      setData(next);
+      setNumber(next.meta.project_number || "");
+      setTitle(next.meta.name || "");
     } catch (e) {
       notify((e as Error).message, true);
     }
@@ -49,8 +55,9 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     }
   }
 
-  async function importFile(file: File, planId?: number) {
-    const name = planId ? "" : planName.trim() || file.name.replace(/\.[^.]+$/, "");
+  async function importFile(file: File, planId?: number, explicitName?: string) {
+    const typed = explicitName !== undefined ? explicitName.trim() : planName.trim();
+    const name = planId ? "" : typed || file.name.replace(/\.[^.]+$/, "");
     const result = await run(() => api.importPlan(projectId, name, file, planId), `«${file.name}» importiert`);
     if (result) {
       setData(result);
@@ -60,8 +67,8 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   }
 
   const catById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
-  const layerColor = useMemo(
-    () => Object.fromEntries((data?.layers ?? []).map((l) => [l.name, l.color])),
+  const colorById = useMemo(
+    () => Object.fromEntries((data?.category_colors ?? []).map((c) => [c.id, c])),
     [data],
   );
 
@@ -96,7 +103,30 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               <button className="btn small" onClick={onBack}>
                 ← Alle Projekte
               </button>
-              <h2 style={{ margin: "10px 0 2px" }}>{data.meta.name}</h2>
+              <div className="row" style={{ marginTop: 10 }}>
+                <input className="input" style={{ width: 140 }} value={number} placeholder="Projektnummer" onChange={(e) => setNumber(e.target.value)} />
+                <input className="input" style={{ width: 280 }} value={title} placeholder="Bezeichnung" onChange={(e) => setTitle(e.target.value)} />
+                <button
+                  className="btn small"
+                  disabled={busy || (number === (data.meta.project_number || "") && title === data.meta.name)}
+                  onClick={async () => {
+                    if (!title.trim()) {
+                      notify("Bezeichnung fehlt", true);
+                      return;
+                    }
+                    const r = await run(
+                      () => api.updateProject(projectId, { name: title.trim(), project_number: number.trim() }),
+                      "Projekt gespeichert",
+                    );
+                    if (r) {
+                      if (r.id !== projectId) onOpenProject(r.id);
+                      else setData(r);
+                    }
+                  }}
+                >
+                  Speichern
+                </button>
+              </div>
               <div className="hint">
                 {data.folder} · angelegt {data.meta.created_at?.slice(0, 10)} von {data.meta.created_by}
                 {data.meta.template_from ? ` · Vorlage: ${data.meta.template_from}` : ""}
@@ -131,18 +161,6 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 className="btn"
                 disabled={busy}
                 onClick={async () => {
-                  const name = window.prompt("Neuer Projektname", data.meta.name);
-                  if (!name || name === data.meta.name) return;
-                  const r = await run(() => api.updateProject(projectId, { name }), "Projekt umbenannt");
-                  if (r) onOpenProject(r.id);
-                }}
-              >
-                Umbenennen
-              </button>
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
                   const name = window.prompt("Name der Kopie", `${data.meta.name} Kopie`);
                   if (!name) return;
                   const r = await run(() => api.copyProject(projectId, name), "Projekt kopiert");
@@ -151,9 +169,28 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               >
                 Kopieren
               </button>
-              <a className="btn" href={api.exportUrl(projectId)} download title="Projekt als eine ZIP-Datei sichern">
+              <a
+                className="btn"
+                href={api.exportUrl(projectId)}
+                download={data.export_name}
+                title="Sichert das Projekt als eine ZIP-Datei mit der Projektdatenbank und einer Plandatei pro Geschoss."
+              >
                 Exportieren
               </a>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={async () => {
+                  const next = data.meta.use_as_template === false;
+                  const r = await run(
+                    () => api.updateProject(projectId, { use_as_template: next }),
+                    next ? "Wieder als Vorlage wählbar" : "Nicht mehr als Vorlage angeboten",
+                  );
+                  if (r) setData(r);
+                }}
+              >
+                {data.meta.use_as_template === false ? "Als Vorlage anbieten" : "Vorlage ausblenden"}
+              </button>
               <button
                 className="btn danger"
                 disabled={busy}
@@ -169,9 +206,29 @@ export default function ProjectView({ projectId, projects, categories, notify, o
           </div>
         </div>
 
-        <div className="card">
+        <div
+          className={`card ${dropHot ? "drop-hot" : ""}`}
+          onDragOver={(e) => {
+            if (![...e.dataTransfer.types].includes("Files")) return;
+            e.preventDefault();
+            setDropHot(true);
+          }}
+          onDragLeave={() => setDropHot(false)}
+          onDrop={(e) => {
+            if (!e.dataTransfer.files?.length) return;
+            e.preventDefault();
+            setDropHot(false);
+            const file = e.dataTransfer.files[0];
+            const guess = floorNameFromFilename(file.name);
+            if (guess) setPlanName(guess);
+            importFile(file, undefined, guess ?? "");
+          }}
+        >
           <h3>Pläne</h3>
-          <p className="desc">Ein Plan pro Geschoss. Formate: DXF und N4D, DWG mit ODA File Converter.</p>
+          <p className="desc">
+            Ein Plan pro Geschoss. Datei hierher ziehen oder unten wählen. Formate: DXF und N4D, DWG mit ODA File Converter.
+            Exportieren sichert das Projekt als eine ZIP-Datei mit der Projektdatenbank und einer Plandatei pro Geschoss.
+          </p>
           {plans.length > 0 && (
             <table className="list-table">
               <thead>
@@ -185,8 +242,27 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               </thead>
               <tbody>
                 {plans.map((p, i) => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    draggable
+                    onDragStart={() => setDragPlan(p.id)}
+                    onDragOver={(e) => {
+                      if ([...e.dataTransfer.types].includes("Files")) return;
+                      e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      if (e.dataTransfer.files?.length || dragPlan == null || dragPlan === p.id) return;
+                      e.preventDefault();
+                      const ids = plans.map((x) => x.id);
+                      const from = ids.indexOf(dragPlan);
+                      ids.splice(from, 1);
+                      ids.splice(i, 0, dragPlan);
+                      setDragPlan(null);
+                      run(() => api.reorderPlans(projectId, ids)).then((r) => r && setData(r));
+                    }}
+                  >
                     <td>
+                      <span className="hint" title="Ziehen zum Sortieren" style={{ cursor: "grab", marginRight: 6 }}>⠿</span>
                       <b>{p.name}</b>
                     </td>
                     <td>
@@ -236,14 +312,15 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                       </button>{" "}
                       <button
                         className="btn small danger"
-                        disabled={busy}
+                        disabled={busy || !p.file_name}
+                        title="Löscht nur die Plandatei. Liste, Symbole und Anzahlen bleiben."
                         onClick={async () => {
-                          if (!window.confirm(`Plan «${p.name}» aus dem Projekt entfernen?`)) return;
-                          const r = await run(() => api.deletePlan(projectId, p.id), "Plan entfernt");
+                          if (!window.confirm(`Datei von «${p.name}» entfernen? Liste, Symbole und Anzahlen bleiben.`)) return;
+                          const r = await run(() => api.detachPlan(projectId, p.id), "Datei entfernt, Liste bleibt");
                           if (r) setData(r);
                         }}
                       >
-                        Entfernen
+                        Datei entfernen
                       </button>
                     </td>
                   </tr>
@@ -270,7 +347,18 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               onChange={(e) => setPlanName(e.target.value)}
               style={{ width: 200 }}
             />
-            <input ref={fileRef} type="file" accept=".dxf,.dwg,.n4d" disabled={busy} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".dxf,.dwg,.n4d"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const guess = floorNameFromFilename(file.name);
+                if (guess) setPlanName(guess);
+              }}
+            />
             <button
               className="btn primary"
               disabled={busy}
@@ -310,7 +398,6 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                       <th style={{ width: 52 }} />
                       <th>Symbol</th>
                       <th>Code</th>
-                      <th>Montage</th>
                       {plans.map((p) => (
                         <th key={p.id} className="num-col">
                           {p.name}
@@ -320,13 +407,29 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                     </tr>
                   </thead>
                   <tbody>
-                    {groups.map((g) => (
+                    {groups.map((g) => {
+                      const info = g.cat ? colorById[g.cat.id] : undefined;
+                      return (
                       <GroupRows
                         key={g.cat?.id ?? "none"}
                         title={g.cat?.title ?? "Ohne Kategorie"}
-                        color={g.cat?.layer ? layerColor[g.cat.layer] : undefined}
-                        layer={g.cat?.layer ?? ""}
-                        colSpan={5 + plans.length}
+                        color={info?.color || undefined}
+                        layer={info?.layer || g.cat?.layer || ""}
+                        reason={info?.reason || ""}
+                        colSpan={4 + plans.length}
+                        picker={
+                          g.cat ? (
+                            <LayerSelect
+                              value={info?.manual ? info.layer : ""}
+                              layers={data.layers}
+                              disabled={busy}
+                              onChange={async (layer) => {
+                                const r = await run(() => api.setCategoryLayer(projectId, g.cat!.id, layer));
+                                if (r) setData(r);
+                              }}
+                            />
+                          ) : undefined
+                        }
                       >
                         {g.rows.map((r) => (
                           <tr key={r.family_key}>
@@ -343,15 +446,6 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                               {r.item}
                               <div className="hint">{r.datasets.map(DATASET_LABEL).join(", ")}</div>
                             </td>
-                            <td>
-                              {Object.entries(r.mountings)
-                                .sort((a, b) => MOUNT_ORDER.indexOf(a[0]) - MOUNT_ORDER.indexOf(b[0]))
-                                .map(([m, n]) => (
-                                  <span key={m} className={`badge ${m === "UP" ? "up" : ""}`}>
-                                    {m === "-" ? "–" : m} {n}
-                                  </span>
-                                ))}
-                            </td>
                             {plans.map((p) => (
                               <td key={p.id} className="num-col">
                                 {r.counts[p.id] ?? ""}
@@ -359,11 +453,30 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                             ))}
                             <td className="num-col">
                               <b>{r.total}</b>
+                              {r.total === 0 && r.sources.length > 0 && (
+                                <>
+                                  {" "}
+                                  <button
+                                    className="btn small danger"
+                                    disabled={busy}
+                                    onClick={async () => {
+                                      const next = await run(
+                                        () => api.deleteRows(projectId, r.sources),
+                                        "Zeile gelöscht",
+                                      );
+                                      if (next) setData(next);
+                                    }}
+                                  >
+                                    Zeile löschen
+                                  </button>
+                                </>
+                              )}
                             </td>
                           </tr>
                         ))}
                       </GroupRows>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -380,33 +493,71 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "layers" && (
-              <table className="list-table">
-                <thead>
-                  <tr>
-                    <th>Farbe</th>
-                    <th>Ebene</th>
-                    <th>Linienart</th>
-                    <th>Kategorien mit dieser Ebene</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.layers.map((l) => (
-                    <tr key={l.name}>
-                      <td>
-                        <span className="swatch" style={{ background: l.color || "transparent" }} title={l.color} />
-                      </td>
-                      <td>{l.name}</td>
-                      <td>{l.linetype}</td>
-                      <td className="hint">
-                        {categories
-                          .filter((c) => c.layer === l.name)
-                          .map((c) => c.title)
-                          .join(", ")}
-                      </td>
+              <>
+                <p className="desc">
+                  Die Kategorie behält ihre Legendenebene. Passt der Name nicht zum Plan (E_Licht gegenüber
+                  E_232.5_Licht), wird der gleiche Namensteil gesucht. Sonst die Ebene hier wählen.
+                </p>
+                <table className="list-table">
+                  <thead>
+                    <tr>
+                      <th>Kategorie</th>
+                      <th>Farbe</th>
+                      <th>Ebene im Plan</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.category_colors.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          {c.title}
+                          <div className="hint">Legende: {c.legend_layer || "–"}</div>
+                        </td>
+                        <td>
+                          {c.color ? (
+                            <span className="swatch" style={{ background: c.color }} title={c.color} />
+                          ) : (
+                            "–"
+                          )}
+                          {c.reason && <div className="hint">{c.reason}</div>}
+                        </td>
+                        <td>
+                          <LayerSelect
+                            value={c.manual ? c.layer : ""}
+                            layers={data.layers}
+                            disabled={busy}
+                            onChange={async (layer) => {
+                              const next = await run(() => api.setCategoryLayer(projectId, c.id, layer));
+                              if (next) setData(next);
+                            }}
+                          />
+                          {c.layer && <span className="hint"> · {c.layer}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <table className="list-table" style={{ marginTop: 16 }}>
+                  <thead>
+                    <tr>
+                      <th>Farbe</th>
+                      <th>Ebene</th>
+                      <th>Linienart</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.layers.map((l) => (
+                      <tr key={l.name}>
+                        <td>
+                          <span className="swatch" style={{ background: l.color || "transparent" }} title={l.color} />
+                        </td>
+                        <td>{l.name}</td>
+                        <td>{l.linetype}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
 
             {tab === "ignored" && (
@@ -450,17 +601,51 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   );
 }
 
+function LayerSelect({
+  value,
+  layers,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  layers: ProjectDetail["layers"];
+  disabled?: boolean;
+  onChange: (layer: string | null) => void;
+}) {
+  return (
+    <select
+      className="select"
+      style={{ maxWidth: 240, marginLeft: 8 }}
+      value={value}
+      disabled={disabled}
+      title="Ebene für die Farbe dieser Kategorie. «automatisch» sucht den passenden Namen."
+      onChange={(e) => onChange(e.target.value || null)}
+    >
+      <option value="">automatisch</option>
+      {layers.map((l) => (
+        <option key={l.name} value={l.name}>
+          {l.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function GroupRows({
   title,
   color,
   layer,
+  reason,
   colSpan,
+  picker,
   children,
 }: {
   title: string;
   color?: string;
   layer: string;
+  reason: string;
   colSpan: number;
+  picker?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -469,6 +654,8 @@ function GroupRows({
         <td colSpan={colSpan}>
           {color && <span className="swatch" style={{ background: color }} title={`${layer} ${color}`} />} {title}
           {layer && <span className="hint"> · {layer}</span>}
+          {reason && <span className="hint"> · {reason}</span>}
+          {picker}
         </td>
       </tr>
       {children}

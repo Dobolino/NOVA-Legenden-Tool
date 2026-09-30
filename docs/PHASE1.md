@@ -22,10 +22,10 @@ Stand: 30.09.2026
 | Was | Wo |
 |---|---|
 | Einstellungen, Bibliotheks-Cache, Protokoll | `%LOCALAPPDATA%\NOVA-Legenden` |
-| Kategorien, Zuordnungen, Regeln (gemeinsam) | `<Firmenordner>\firma.sqlite` |
+| Kategorien, Zuordnungen, Regeln (gemeinsam) | `<Firmenordner>\edeco ag-Legenden-firma.sqlite` |
 | Programm | `%LOCALAPPDATA%\Programs\NOVA-Legenden` |
 
-Jede Änderung an den Firmendaten speichert Benutzer und Zeit (Tabelle `log` in firma.sqlite).
+Jede Änderung an den Firmendaten speichert Benutzer und Zeit (Tabelle `log` in edeco ag-Legenden-firma.sqlite). Eine ältere Datei `firma.sqlite` wird beim Öffnen einmal umbenannt.
 
 ## So testest du Phase 1
 
@@ -59,7 +59,7 @@ Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, fal
 - Die automatische Suche nimmt alle Elektro-Datensätze (DataFormat «…_elo»). HLKS- und Sanitär-Datensätze im Warehouse-Ordner bleiben draussen.
 - Geprüft: Niederspannung CH (983 Symbole), Niederspannung VT (1619, Verteiler-Schema), Schwachstrom CH (438), Elektro-Trassen (keine Symbole, nur Trassen-Bauteile).
 - 6 Symbole in den Niederspannung-Datensätzen haben abgeschnittene Grafiken (Fehler in den Trimble-Daten). Das Tool liest den vollständigen Teil und lädt den Rest des Datensatzes normal.
-- Alle Nummernkreise der neuen Datensätze haben eine Kategorie. Niederspannung VT kommt in die neue Kategorie «Schema Verteiler (Niederspannung)». Bestehende firma.sqlite-Dateien werden einmal ergänzt. Eigene Zuordnungen bleiben unverändert.
+- Alle Nummernkreise der neuen Datensätze haben eine Kategorie. Niederspannung VT kommt in die neue Kategorie «Schema Verteiler (Niederspannung)». Bestehende Firmendateien werden einmal ergänzt. Eigene Zuordnungen bleiben unverändert.
 
 ## Bekannte Grenzen
 

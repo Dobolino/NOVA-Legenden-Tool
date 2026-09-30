@@ -60,6 +60,84 @@ def safe_folder_name(name: str) -> str:
     return cleaned or "Projekt"
 
 
+def export_filename(meta: dict) -> str:
+    """ZIP name: edeco ag-<Bezeichnung>-projekt.zip."""
+    label = (meta.get("name") or "Projekt").strip() or "Projekt"
+    return f"{safe_folder_name('edeco ag-' + label + '-projekt')}.zip"
+
+
+def _norm(text: str | None) -> str:
+    return (text or "").strip().lower()
+
+
+def _match_previous(found, pool: list[dict], used: set[int]) -> int | None:
+    """Index of an existing row: catalogue code, then Bezeichnung, then name."""
+
+    def free() -> list[int]:
+        return [i for i in range(len(pool)) if i not in used]
+
+    def pick(indices: list[int]) -> int | None:
+        if not indices:
+            return None
+        used.add(indices[0])
+        return indices[0]
+
+    if found.item:
+        by_code = [i for i in free() if (pool[i].get("item") or "") == found.item]
+        if len(by_code) == 1:
+            return pick(by_code)
+        if len(by_code) > 1:
+            if found.graphic_name:
+                same = [i for i in by_code if _norm(pool[i].get("graphic_name")) == _norm(found.graphic_name)]
+                if len(same) == 1:
+                    return pick(same)
+                if same and found.name:
+                    named = [i for i in same if _norm(pool[i].get("name")) == _norm(found.name)]
+                    if named:
+                        return pick(named)
+            if found.name:
+                named = [i for i in by_code if _norm(pool[i].get("name")) == _norm(found.name)]
+                if named:
+                    return pick(named)
+            return pick(by_code)
+    if found.graphic_name:
+        same = [i for i in free() if _norm(pool[i].get("graphic_name")) == _norm(found.graphic_name)]
+        if same:
+            return pick(same)
+    if found.name:
+        named = [i for i in free() if _norm(pool[i].get("name")) == _norm(found.name)]
+        if named:
+            return pick(named)
+    same_key = [i for i in free() if pool[i].get("source_key") == found.source_key]
+    return pick(same_key)
+
+
+def merge_found(previous: list[dict], found_list) -> list[dict]:
+    """Keep existing rows. New counts overwrite a match; missing rows stay at 0."""
+    used: set[int] = set()
+    merged: list[dict] = []
+    for found in found_list:
+        index = _match_previous(found, previous, used)
+        old = previous[index] if index is not None else None
+        merged.append({
+            "source_key": old["source_key"] if old else found.source_key,
+            "name": found.name or (old or {}).get("name") or "",
+            "count": found.count,
+            "dataset": found.dataset or (old or {}).get("dataset") or "",
+            "item": found.item or (old or {}).get("item") or "",
+            "sheet": found.sheet or (old or {}).get("sheet") or "",
+            "graphic_name": found.graphic_name or (old or {}).get("graphic_name") or "",
+            "graphic_id": found.graphic_id or (old or {}).get("graphic_id") or "",
+            "layers": found.layers,
+            "features": found.features,
+        })
+    for index, old in enumerate(previous):
+        if index in used:
+            continue
+        merged.append({**old, "count": 0})
+    return merged
+
+
 class Project:
     """Access to one project file."""
 
@@ -142,13 +220,37 @@ class Project:
             con.execute("DELETE FROM plan_versions WHERE plan_id=?", (plan_id,))
             con.execute("DELETE FROM plans WHERE id=?", (plan_id,))
 
+    def _current_version_id(self, plan_id: int) -> int | None:
+        with self.tx() as con:
+            row = con.execute("SELECT current_version FROM plans WHERE id=?", (plan_id,)).fetchone()
+        if not row or not row["current_version"]:
+            return None
+        return int(row["current_version"])
+
     def store_import(self, plan_id: int, source: Path, original_name: str, result) -> int:
-        """Save an import as a new version of the plan (the file is copied)."""
+        """Replace the one plan file of this floor and keep rows that the new file lacks.
+
+        A new version is recorded, but only one file stays in Plaene. Counts of
+        elements that disappeared become 0; their source key stays so a later
+        import can fill the same row again.
+        """
+        previous_id = self._current_version_id(plan_id)
+        previous = self.elements(previous_id) if previous_id else []
+        old_stored = ""
+        if previous_id:
+            with self.tx() as con:
+                row = con.execute("SELECT stored_file FROM plan_versions WHERE id=?",
+                                  (previous_id,)).fetchone()
+                old_stored = (row["stored_file"] or "") if row else ""
         plans_dir = self.folder / PLANS_DIR
         plans_dir.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        stored = plans_dir / f"{stamp}_{safe_folder_name(original_name)}"
+        stored = plans_dir / f"{plan_id}_{safe_folder_name(original_name)}"
         shutil.copy2(source, stored)
+        if old_stored:
+            old_path = self.folder / old_stored
+            if old_path.is_file() and old_path.resolve() != stored.resolve():
+                old_path.unlink()
+        rows = merge_found(previous, result.found)
         with self.tx() as con:
             cur = con.execute(
                 "INSERT INTO plan_versions (plan_id, file_name, stored_file, format, imported_at, "
@@ -159,14 +261,54 @@ class Project:
             vid = int(cur.lastrowid)
             con.executemany(
                 "INSERT INTO plan_elements VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                [(vid, f.source_key, f.name, f.count, f.dataset, f.item, f.sheet, f.graphic_name,
-                  f.graphic_id, json.dumps(f.layers, ensure_ascii=False),
-                  json.dumps(f.features)) for f in result.found])
+                [(vid, row["source_key"], row["name"], row["count"], row["dataset"], row["item"],
+                  row["sheet"], row["graphic_name"], row["graphic_id"],
+                  json.dumps(row["layers"], ensure_ascii=False),
+                  json.dumps(row["features"])) for row in rows])
             con.execute("UPDATE plans SET current_version=? WHERE id=?", (vid, plan_id))
             for layer in result.layers:
                 con.execute("INSERT OR REPLACE INTO layers VALUES (?,?,?,?)",
                             (layer.name, layer.color, layer.linetype, result.format))
         return vid
+
+    def detach_file(self, plan_id: int) -> None:
+        """Delete the plan file. Elements, counts and the floor stay."""
+        version_id = self._current_version_id(plan_id)
+        if not version_id:
+            return
+        with self.tx() as con:
+            row = con.execute("SELECT stored_file FROM plan_versions WHERE id=?", (version_id,)).fetchone()
+            stored = (row["stored_file"] or "") if row else ""
+            con.execute("UPDATE plan_versions SET file_name='', stored_file='' WHERE id=?", (version_id,))
+        if stored:
+            path = self.folder / stored
+            if path.is_file():
+                path.unlink()
+
+    def delete_sources(self, source_keys: list[str]) -> None:
+        """Remove rows from the current version of every floor."""
+        if not source_keys:
+            return
+        with self.tx() as con:
+            versions = [r["current_version"] for r in con.execute(
+                "SELECT current_version FROM plans WHERE current_version IS NOT NULL")]
+            for version_id in versions:
+                for key in source_keys:
+                    con.execute("DELETE FROM plan_elements WHERE version_id=? AND source_key=?",
+                                (version_id, key))
+
+    def import_ignored(self) -> dict[str, int]:
+        """Non-apparatus counts of the current file of every floor, summed by name."""
+        totals: dict[str, int] = {}
+        with self.tx() as con:
+            rows = con.execute("""
+                SELECT v.ignored FROM plans p
+                JOIN plan_versions v ON v.id = p.current_version
+            """).fetchall()
+        for row in rows:
+            for name, count in json.loads(row["ignored"] or "{}").items():
+                totals[name] = totals.get(name, 0) + int(count)
+        return totals
 
     def versions(self, plan_id: int) -> list[dict]:
         with self.tx() as con:
@@ -217,9 +359,11 @@ class ProjectManager:
             except sqlite3.Error:
                 continue
             out.append({"id": p.id, "name": meta.get("name", p.id),
+                        "project_number": meta.get("project_number", ""),
                         "nova_version": meta.get("nova_version", ""),
                         "created_at": meta.get("created_at", ""), "created_by": meta.get("created_by", ""),
                         "template_from": meta.get("template_from", ""),
+                        "use_as_template": meta.get("use_as_template", True) is not False,
                         "plan_count": len(plans),
                         "modified": datetime.fromtimestamp((folder / PROJECT_FILE).stat().st_mtime)
                         .isoformat(timespec="seconds")})
@@ -241,7 +385,8 @@ class ProjectManager:
             n += 1
         return folder
 
-    def create(self, name: str, nova_version: str, template: str | None = None) -> Project:
+    def create(self, name: str, nova_version: str, template: str | None = None,
+               project_number: str = "") -> Project:
         name = name.strip()
         if not name:
             raise ValueError("Projektname fehlt")
@@ -252,9 +397,10 @@ class ProjectManager:
         project = Project(folder)
         with project.tx() as con:
             con.executescript(SCHEMA)
-        project.set_meta(name=name, nova_version=nova_version, created_at=_now(),
+        project.set_meta(name=name, project_number=(project_number or "").strip(),
+                         nova_version=nova_version, created_at=_now(),
                          created_by=current_user(), schema=SCHEMA_VERSION,
-                         template_from=template or "")
+                         template_from=template or "", use_as_template=True)
         if src is not None:
             project.set_settings({k: v for k, v in src.settings().items()
                                   if k not in TEMPLATE_SETTINGS_EXCLUDE})

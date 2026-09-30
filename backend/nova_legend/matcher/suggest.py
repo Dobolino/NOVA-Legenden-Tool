@@ -56,16 +56,26 @@ def suggest(found: Found, symbols: list, feature_of, layer_category: dict[str, s
     """
     query = found.graphic_name or found.name
     names = [s.name for s in symbols]
-    pre = process.extract(query, names, scorer=fuzz.WRatio, limit=40)
+    pre = list(process.extract(query, names, scorer=fuzz.WRatio, limit=40))
     if found.name and found.graphic_name and found.name != found.graphic_name:
-        pre += process.extract(found.name, names, scorer=fuzz.WRatio, limit=20)
+        pre += list(process.extract(found.name, names, scorer=fuzz.WRatio, limit=20))
+    chosen = {idx for _name, _score, idx in pre}
+    # A renamed element can still surface by geometry, not only by a similar name.
+    if found.features:
+        geometric = []
+        for idx, sym in enumerate(symbols):
+            score = geometry_similarity(found.features, feature_of(sym))
+            if score >= 0.45:
+                geometric.append((score, idx))
+        geometric.sort(reverse=True)
+        chosen.update(idx for _score, idx in geometric[:40])
     seen: set[int] = set()
     ranked = []
     element_cats: set[str] = set()
     for layer in found.layers:
         element_cats |= layer_category.get(layer, set())
     sheet = found.item.split("-")[0] if "-" in found.item else ""
-    for _name, name_score, idx in pre:
+    for idx in chosen:
         if idx in seen:
             continue
         seen.add(idx)

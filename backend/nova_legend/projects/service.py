@@ -7,7 +7,7 @@ from collections import defaultdict
 from ..categories.store import auto_categories
 from ..importer.model import Found
 from ..importer.recognize import LibraryIndex, resolve
-from ..matcher.suggest import suggest, symbol_features
+from ..matcher.suggest import suggest
 from .store import Project
 
 
@@ -15,6 +15,19 @@ def _found_from_row(row: dict) -> Found:
     return Found(row["source_key"], row["name"] or "", row["count"] or 0, row["dataset"] or "",
                  row["item"] or "", row["sheet"] or "", row["graphic_name"] or "",
                  row["graphic_id"] or "", row["layers"] or {}, row["features"] or {})
+
+
+def _import_reason(name: str) -> str:
+    low = name.lower()
+    if "leitung" in low:
+        return "Leitung"
+    if low.startswith("maß") or low.startswith("mass") or "bemass" in low:
+        return "Mass"
+    if "beschrift" in low or low in {"text", "bezeichnung", "kurzbezeichnung"}:
+        return "Beschriftung"
+    if low.startswith("plankopf") or low.startswith("planrahmen"):
+        return "Plankopf"
+    return "kein Apparat"
 
 
 class ProjectEvaluator:
@@ -47,6 +60,7 @@ class ProjectEvaluator:
         unknown: dict[str, dict] = {}
         ignored: dict[str, dict] = {}
         stats = defaultdict(int)
+        self.layer_usage: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         for plan in plans:
             pid = plan["id"]
             for el in per_plan.get(pid, []):
@@ -81,9 +95,13 @@ class ProjectEvaluator:
                         }
                     row = rows[row_key]
                     row["datasets"].add(sym.dataset)
-                    row["counts"][pid] += found.count
-                    row["mountings"][sym.mounting or "-"] += found.count
+                    row["counts"][pid] = row["counts"].get(pid, 0) + found.count
                     row["total"] += found.count
+                    if found.count:
+                        row["mountings"][sym.mounting or "-"] += found.count
+                        for layer, amount in found.layers.items():
+                            for cid in row["categories"]:
+                                self.layer_usage[cid][layer] += amount
                     if found.name and found.name.lower() != (row["title"] or "").lower():
                         row["names"].add(found.name)
                     row["methods"].add(res.method)
@@ -121,6 +139,10 @@ class ProjectEvaluator:
             u["layers"] = dict(u["layers"])
             out_unknown.append(u)
         out_unknown.sort(key=lambda u: -u["total"])
+        for name, count in project.import_ignored().items():
+            ignored[f"import:{name}"] = {
+                "source_key": f"import:{name}", "name": name, "reason": _import_reason(name),
+                "manual": False, "total": count}
         return {
             "plans": plans,
             "rows": out_rows,
@@ -146,17 +168,10 @@ class ProjectEvaluator:
         for c in self.categories:
             if c.get("layer"):
                 layer_category[c["layer"]].add(c["id"])
-        feature_cache: dict[str, dict] = {}
+        features = self.library.geometry_features()
 
         def feature_of(sym):
-            if sym.key not in feature_cache:
-                detail = self.library.symbol_detail(sym.key) or {}
-                geo = detail.get("geometry") or {}
-                stats: dict[str, int] = {}
-                for p in geo.get("primitives", []):
-                    stats[p["kind"]] = stats.get(p["kind"], 0) + 1
-                feature_cache[sym.key] = symbol_features(stats, geo.get("bbox"))
-            return feature_cache[sym.key]
+            return features.get(sym.key) or {}
 
         def category_of(sym):
             fam = self.families.get(self.family_of.get(sym.key, ""))

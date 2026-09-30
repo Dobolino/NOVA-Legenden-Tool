@@ -223,7 +223,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <div className="card">
           <h3>Firmenordner</h3>
           <p className="desc">
-            Hier liegen die gemeinsamen Kategorien und Zuordnungen (Datei firma.sqlite). Alle Mitarbeitenden tragen
+            Hier liegen die gemeinsamen Kategorien und Zuordnungen (Datei edeco ag-Legenden-firma.sqlite). Alle Mitarbeitenden tragen
             denselben Ordner ein, zum Beispiel T:\_CAD\NOVA-Legenden. Ohne Eintrag speichert das Programm nur lokal.
           </p>
           <div className="row">

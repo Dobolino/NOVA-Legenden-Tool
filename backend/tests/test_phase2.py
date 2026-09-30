@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import zipfile
 from pathlib import Path
+from urllib.parse import unquote
 
 import ezdxf
 import pytest
@@ -16,8 +17,12 @@ from fastapi.testclient import TestClient
 from nova_legend import config
 from nova_legend.api.app import AppState, create_app
 from nova_legend.importer.dxf import display_name, read_dxf
+from nova_legend.importer.model import Found
 from nova_legend.importer.n4d import n4d_layer_colors
-from nova_legend.projects.store import ProjectManager, safe_folder_name
+from nova_legend.matcher.suggest import suggest
+from nova_legend.projects.colors import pick_category_layer
+from nova_legend.projects.floors import floor_name_from_filename, resolve_plan_name
+from nova_legend.projects.store import ProjectManager, export_filename, safe_folder_name
 
 from synthetic import make_nzp
 
@@ -209,10 +214,160 @@ def test_project_api_copy_template_export_delete(env):
     assert client.post("/api/projects", json={"name": "X", "template": "gibt-es-nicht"}).status_code == 400
     renamed = client.put(f"/api/projects/{new['id']}", json={"name": "Neu 2", "nova_version": "19.2"}).json()
     assert renamed["meta"]["name"] == "Neu 2" and renamed["meta"]["nova_version"] == "19.2"
-    zip_bytes = client.get(f"/api/projects/{pid}/export").content
+    exported = client.get(f"/api/projects/{pid}/export")
+    assert "edeco ag-Vorlage-projekt.zip" in unquote(exported.headers["content-disposition"])
+    zip_bytes = exported.content
     assert any(n.endswith("projekt.nlproj") for n in zipfile.ZipFile(io.BytesIO(zip_bytes)).namelist())
     assert client.delete(f"/api/projects/{pid}").json()["ok"]
     assert [p["name"] for p in client.get("/api/projects").json()["items"]] == ["Neu 2"]
+
+
+def test_floor_names_and_export_filename():
+    assert floor_name_from_filename("3_1.OG.dxf") == "1. OG"
+    assert floor_name_from_filename("EG.dxf") == "EG"
+    assert floor_name_from_filename("1. OG.n4d") == "1. OG"
+    assert floor_name_from_filename("2.Stock.dxf") == "2. Stock"
+    assert floor_name_from_filename("plan_EG_1.OG.dxf") == "1. OG"
+    assert floor_name_from_filename("Lageplan.dxf") is None
+    assert resolve_plan_name("3_1.OG.dxf", "") == "1. OG"
+    assert resolve_plan_name("3_1.OG.dxf", "3_1.OG") == "1. OG"
+    assert resolve_plan_name("3_1.OG.dxf", "Keller") == "Keller"
+    assert export_filename({"name": "Vorlage"}) == "edeco ag-Vorlage-projekt.zip"
+
+
+def test_category_layer_matches_tail_not_a_different_light_layer():
+    layers = [
+        {"name": "E_232.5_Licht", "color": "#0080ff"},
+        {"name": "E_Leitung_Licht", "color": "#ff0000"},
+        {"name": "E_233_Leuchten", "color": "#00ff00"},
+    ]
+    picked = pick_category_layer("E_Licht", layers, {}, None)
+    assert picked["layer"] == "E_232.5_Licht" and picked["color"] == "#0080ff" and not picked["manual"]
+    both = layers + [{"name": "E_232_Licht", "color": "#111111"}]
+    busier = pick_category_layer("E_Licht", both, {"E_232_Licht": 4, "E_232.5_Licht": 1}, None)
+    assert busier["layer"] == "E_232_Licht"
+    leitung = pick_category_layer("E_Leitung_Licht", layers, {}, None)
+    assert leitung["layer"] == "E_Leitung_Licht"
+    missing = pick_category_layer("E_Licht", [layers[2]], {}, None)
+    assert missing["color"] == "" and "E_Licht" in missing["reason"]
+    chosen = pick_category_layer("E_Licht", layers, {}, "E_233_Leuchten")
+    assert chosen["manual"] and chosen["layer"] == "E_233_Leuchten" and chosen["color"] == "#00ff00"
+
+
+def test_gruppenzuleitung_is_not_filtered(tmp_path):
+    doc = ezdxf.new("R2013")
+    doc.layers.add("E_Licht", color=5)
+    blk = doc.blocks.new("Gruppenzuleitung_A0TEST0001")
+    blk.add_circle((0, 0), 50)
+    doc.modelspace().add_blockref(blk.name, (0, 0), dxfattribs={"layer": "E_Licht"})
+    path = tmp_path / "g.dxf"
+    doc.saveas(path)
+    result = read_dxf(path)
+    assert any(f.name == "Gruppenzuleitung" for f in result.found)
+    assert "Gruppenzuleitung" not in result.ignored
+
+
+def test_geometry_can_suggest_a_renamed_symbol():
+    class Sym:
+        def __init__(self, name, key):
+            self.name = name
+            self.key = key
+            self.item = "1-1"
+            self.dataset = "d"
+            self.mounting = None
+            self.svg = ""
+            self.sheet = "1"
+
+    symbols = [Sym(f"Xyzzqq Variante {i}", f"n{i}") for i in range(45)]
+    symbols.append(Sym("Kreisding", "circle"))
+
+    def feature_of(sym):
+        return {"arc": 1} if sym.key == "circle" else {"line": 6}
+
+    found = Found("name:xyzzqq", "Xyzzqq", features={"arc": 1})
+    ranked = suggest(found, symbols, feature_of, {}, lambda _sym: [], limit=50)
+    assert any(row["symbol_key"] == "circle" for row in ranked)
+
+
+def test_filename_becomes_floor_name(env):
+    client, tmp = env
+    pid = client.post("/api/projects", json={"name": "Haus", "project_number": "2026-1"}).json()["id"]
+    path = nova_like_dxf(tmp / "3_1.OG.dxf")
+    data = import_dxf(client, pid, path, name=path.stem).json()
+    assert data["plans"][0]["name"] == "1. OG"
+    assert data["meta"]["project_number"] == "2026-1"
+    assert data["export_name"] == "edeco ag-Haus-projekt.zip"
+    hidden = client.put(f"/api/projects/{pid}", json={"use_as_template": False}).json()
+    assert hidden["meta"]["use_as_template"] is False
+    listed = next(p for p in client.get("/api/projects").json()["items"] if p["id"] == pid)
+    assert listed["use_as_template"] is False and listed["project_number"] == "2026-1"
+
+
+def test_bkp_layer_colour_and_project_override(env):
+    client, tmp = env
+    doc = ezdxf.new("R2013")
+    doc.layers.add("E_232.5_Licht", color=5)
+    doc.layers.add("E_233_Leuchten", color=3)
+    blk = doc.blocks.new("Schalter_A0TEST0001")
+    blk.add_circle((0, 0), 125)
+    ins = doc.modelspace().add_blockref(blk.name, (0, 0), dxfattribs={"layer": "E_232.5_Licht"})
+    ins.add_attrib("TypID", "10-10")
+    ins.add_attrib("Bez", "Schalter, Schema 0, UP")
+    ins.add_attrib("Herkunft", f"{V2_LONG} edeco AG")
+    path = tmp / "bkp.dxf"
+    doc.saveas(path)
+    pid = client.post("/api/projects", json={"name": "Farben"}).json()["id"]
+    data = import_dxf(client, pid, path).json()
+    licht = next(c for c in data["category_colors"] if c["id"] == "licht")
+    assert licht["layer"] == "E_232.5_Licht" and licht["color"] == "#0000ff"
+    leitung = next(c for c in data["category_colors"] if c["id"] == "leitungen")
+    assert leitung["layer"] == "" and "E_Leitung_Licht" in leitung["reason"]
+    changed = client.put(f"/api/projects/{pid}/category-layer",
+                         json={"category_id": "licht", "layer": "E_233_Leuchten"}).json()
+    licht = next(c for c in changed["category_colors"] if c["id"] == "licht")
+    assert licht["manual"] and licht["color"] == "#00ff00"
+    copy = client.post("/api/projects", json={"name": "Kopie Farbe", "template": pid}).json()
+    again = next(c for c in copy["category_colors"] if c["id"] == "licht")
+    assert again["manual"] and again["layer"] == "E_233_Leuchten"
+
+
+def test_reimport_keeps_rows_and_one_file_then_detach(env):
+    client, tmp = env
+    pid = client.post("/api/projects", json={"name": "Test"}).json()["id"]
+    data = import_dxf(client, pid, nova_like_dxf(tmp / "eg.dxf"), "EG").json()
+    plan_id = data["plans"][0]["id"]
+    names = {g["name"]: g for g in data["ignored"]}
+    assert names["Leitung"]["manual"] is False and names["Leitung"]["reason"] == "Leitung"
+    assert names["Plankopf edeco18"]["reason"] == "Plankopf"
+    switch_key = next(k for k in next(r["sources"] for r in data["rows"] if r["title"] == "Schalter, Schema 0")
+                      if "10-10" in k)
+    brand_key = next(r["sources"][0] for r in data["rows"] if r["title"] == "Brandmelder")
+
+    doc = ezdxf.new("R2013")
+    doc.layers.add("E_Licht", color=5)
+    blk = doc.blocks.new("Schalter_ Schema 0_ UP_A0NEU00001")
+    blk.add_circle((0, 0), 125)
+    ins = doc.modelspace().add_blockref(blk.name, (0, 0), dxfattribs={"layer": "E_Licht"})
+    ins.add_attrib("TypID", "10-10")
+    ins.add_attrib("Bez", "Schalter, Schema 0, UP")
+    ins.add_attrib("Herkunft", "andere Herkunft")
+    second = tmp / "eg-neu.dxf"
+    doc.saveas(second)
+    data = import_dxf(client, pid, second, plan_id=plan_id).json()
+    assert data["plans"][0]["versions"] == 2
+    switch = next(r for r in data["rows"] if r["title"] == "Schalter, Schema 0")
+    assert switch_key in switch["sources"] and switch["total"] == 1
+    brand = next(r for r in data["rows"] if r["title"] == "Brandmelder")
+    assert brand["total"] == 0 and brand_key in brand["sources"]
+    stored = list((tmp / "Legenden" / pid / "Plaene").iterdir())
+    assert len(stored) == 1 and stored[0].name.endswith("eg-neu.dxf")
+
+    data = client.post(f"/api/projects/{pid}/plans/{plan_id}/detach").json()
+    assert data["plans"][0]["file_name"] == ""
+    assert next(r for r in data["rows"] if r["title"] == "Brandmelder")["total"] == 0
+    assert list((tmp / "Legenden" / pid / "Plaene").iterdir()) == []
+    data = client.post(f"/api/projects/{pid}/rows/delete", json={"source_keys": [brand_key]}).json()
+    assert not any(r["title"] == "Brandmelder" for r in data["rows"])
 
 
 # -- real files (skipped without samples) -----------------------------------------------------

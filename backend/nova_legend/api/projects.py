@@ -16,21 +16,26 @@ from ..importer.dwg import ConverterMissing, read_dwg
 from ..importer.dxf import read_dxf
 from ..importer.n4d import read_n4d
 from ..importer.recognize import IGNORE
+from ..projects.colors import pick_category_layer
+from ..projects.floors import resolve_plan_name
 from ..projects.service import ProjectEvaluator
-from ..projects.store import ProjectManager
+from ..projects.store import ProjectManager, export_filename
 
 FORMATS = {".dxf": "dxf", ".dwg": "dwg", ".n4d": "n4d"}
 
 
 class ProjectIn(BaseModel):
     name: str
+    project_number: str = ""
     nova_version: str = "19.2"
     template: str | None = None
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
+    project_number: str | None = None
     nova_version: str | None = None
+    use_as_template: bool | None = None
 
 
 class CopyIn(BaseModel):
@@ -43,6 +48,15 @@ class PlanUpdate(BaseModel):
 
 class ReorderPlans(BaseModel):
     ids: list[int]
+
+
+class CategoryLayerIn(BaseModel):
+    category_id: str
+    layer: str | None = None
+
+
+class SourcesIn(BaseModel):
+    source_keys: list[str]
 
 
 class MappingIn(BaseModel):
@@ -67,9 +81,20 @@ def register(app: FastAPI, st) -> None:
 
     def detail(project_id: str) -> dict:
         p = project(project_id)
-        result = evaluator().evaluate(p)
-        colors = {l["name"]: l for l in p.layers()}
-        return {"id": p.id, "meta": p.meta(), "settings": p.settings(), "layers": list(colors.values()),
+        ev = evaluator()
+        result = ev.evaluate(p)
+        layers = p.layers()
+        chosen = (p.settings().get("category_layers") or {})
+        usage = getattr(ev, "layer_usage", {})
+        category_colors = []
+        for cat in ev.categories:
+            picked = pick_category_layer(cat.get("layer") or "", layers, usage.get(cat["id"], {}),
+                                         chosen.get(cat["id"]) or None)
+            category_colors.append({"id": cat["id"], "title": cat["title"],
+                                    "legend_layer": cat.get("layer") or "", **picked})
+        meta = p.meta()
+        return {"id": p.id, "meta": meta, "settings": p.settings(), "layers": layers,
+                "category_colors": category_colors, "export_name": export_filename(meta),
                 "folder": str(p.folder), **result}
 
     @app.get("/api/projects")
@@ -80,7 +105,7 @@ def register(app: FastAPI, st) -> None:
     @app.post("/api/projects")
     def create_project(body: ProjectIn) -> dict:
         try:
-            p = manager().create(body.name, body.nova_version, body.template or None)
+            p = manager().create(body.name, body.nova_version, body.template or None, body.project_number)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         except KeyError:
@@ -99,8 +124,12 @@ def register(app: FastAPI, st) -> None:
         try:
             if body.name is not None:
                 pid = manager().rename(project_id, body.name).id
+            if body.project_number is not None:
+                project(pid).set_meta(project_number=body.project_number.strip())
             if body.nova_version is not None:
                 project(pid).set_meta(nova_version=body.nova_version)
+            if body.use_as_template is not None:
+                project(pid).set_meta(use_as_template=body.use_as_template)
         except KeyError:
             raise HTTPException(404, "Projekt nicht gefunden") from None
         except (ValueError, OSError) as exc:
@@ -127,7 +156,7 @@ def register(app: FastAPI, st) -> None:
     def export_project(project_id: str):
         p = project(project_id)
         tmp = Path(tempfile.mkdtemp(prefix="nl_export_"))
-        target = tmp / f"{p.folder.name}.zip"
+        target = tmp / export_filename(p.meta())
         manager().export_zip(project_id, target)
         return FileResponse(target, filename=target.name, media_type="application/zip",
                             background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True))
@@ -158,6 +187,7 @@ def register(app: FastAPI, st) -> None:
             except Exception as exc:  # noqa: BLE001 - any unreadable file
                 raise HTTPException(400, f"Datei konnte nicht gelesen werden: {exc}") from None
             if plan_id is None:
+                name = resolve_plan_name(file.filename or "", name)
                 if not name.strip():
                     raise HTTPException(400, "Name des Plans fehlt (z. B. EG)")
                 plan_id = p.add_plan(name.strip())
@@ -182,6 +212,27 @@ def register(app: FastAPI, st) -> None:
     @app.delete("/api/projects/{project_id}/plans/{plan_id}")
     def delete_plan(project_id: str, plan_id: int) -> dict:
         project(project_id).delete_plan(plan_id)
+        return detail(project_id)
+
+    @app.post("/api/projects/{project_id}/plans/{plan_id}/detach")
+    def detach_plan_file(project_id: str, plan_id: int) -> dict:
+        project(project_id).detach_file(plan_id)
+        return detail(project_id)
+
+    @app.post("/api/projects/{project_id}/rows/delete")
+    def delete_rows(project_id: str, body: SourcesIn) -> dict:
+        project(project_id).delete_sources(body.source_keys)
+        return detail(project_id)
+
+    @app.put("/api/projects/{project_id}/category-layer")
+    def category_layer(project_id: str, body: CategoryLayerIn) -> dict:
+        p = project(project_id)
+        chosen = dict(p.settings().get("category_layers") or {})
+        if body.layer:
+            chosen[body.category_id] = body.layer
+        else:
+            chosen.pop(body.category_id, None)
+        p.set_settings({"category_layers": chosen})
         return detail(project_id)
 
     @app.get("/api/projects/{project_id}/plans/{plan_id}/versions")

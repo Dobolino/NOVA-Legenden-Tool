@@ -29,7 +29,7 @@ NON_SYMBOLS = {
     "maß", "mass", "polygon", "einfuegepunkt", "durchbruch beschriften", "0.0 arc",
     "text", "linie", "bemassung",
 }
-NON_SYMBOL_PREFIXES = ("plankopf", "planrahmen", "s&a", "gruppe", "a_")
+NON_SYMBOL_PREFIXES = ("plankopf", "planrahmen", "s&a", "a_")
 
 
 def block_base_name(name: str) -> str:

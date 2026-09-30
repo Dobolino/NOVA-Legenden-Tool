@@ -1,4 +1,4 @@
-"""Company-wide categories and symbol assignments (firma.sqlite).
+"""Company-wide categories and symbol assignments (edeco ag-Legenden-firma.sqlite).
 
 The file lives in the company folder (for example T:\\_CAD\\NOVA-Legenden)
 so every user shares the same categories. SQLite on a network share is

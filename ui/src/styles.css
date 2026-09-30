@@ -95,9 +95,10 @@ button, input, select { font: inherit; color: inherit; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px;
   border-bottom: 1px solid var(--line); background: var(--panel);
 }
+.toolbar.search-only { padding-bottom: 0; border-bottom: 0; }
 .search {
-  flex: 1; min-width: 200px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--panel-2);
+  flex: 1 1 100%; width: 100%; min-width: 0; padding: 8px 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel-2);
 }
 .search:focus, .input:focus, .select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .select, .input {
@@ -218,6 +219,8 @@ a.btn { text-decoration: none; color: inherit; display: inline-block; }
 .list-table td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
 .list-table tr.clickable { cursor: pointer; }
 .list-table tr.clickable:hover td { background: var(--panel-2); }
+.list-table tr.drop-target td { outline: 1px dashed var(--accent); }
+.drop-hot { outline: 2px dashed var(--accent); outline-offset: -6px; }
 .list-table .num-col { text-align: right; white-space: nowrap; }
 .list-table.summary td { padding: 4px 8px; }
 .group-row td { background: var(--panel-2); font-weight: 600; padding-top: 10px !important; }

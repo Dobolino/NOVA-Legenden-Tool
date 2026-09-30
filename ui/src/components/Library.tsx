@@ -146,7 +146,7 @@ export default function Library(props: Props) {
         ))}
       </aside>
       <section className="content">
-        <div className="toolbar">
+        <div className="toolbar search-only">
           <input
             className="search"
             placeholder="Suche nach Name oder Katalogcode, z. B. «Steckdose T13» oder «230-10»"
@@ -154,6 +154,8 @@ export default function Library(props: Props) {
             onChange={(e) => setQ(e.target.value)}
             autoFocus
           />
+        </div>
+        <div className="toolbar">
           <select className="select" value={dataset} onChange={(e) => setDataset(e.target.value)} title="Datensatz">
             <option value="">Alle Datensätze</option>
             {datasets.map((d) => (

@@ -59,7 +59,7 @@ backend/nova_legend/
   api/         REST-Schnittstelle (FastAPI) für die Oberfläche
   parser/      Nova-Datensatz (.nzp): Baumformat, Geometrie, Symbolkatalog
   library/     Bibliotheks-Cache (SQLite) und Symbolfamilien
-  categories/  Kategorien und Zuordnungen der Firma (firma.sqlite)
+  categories/  Kategorien und Zuordnungen der Firma (edeco ag-Legenden-firma.sqlite)
   importer/    Plan-Import DXF, DWG (ODA), N4D und Erkennung
   matcher/     Vorschläge für unbekannte Elemente
   projects/    Projekte (Ordner pro Projekt, projekt.nlproj) und Gesamtliste

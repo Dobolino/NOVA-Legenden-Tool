@@ -35,7 +35,7 @@ class AppState:
             self.company_error = ""
         except Exception as exc:  # noqa: BLE001 - network folder may be unreachable
             self.company_error = f"Firmenordner nicht erreichbar: {exc}. Lokale Kopie wird genutzt."
-            self.company = CompanyStore(config.local_home() / "firma.sqlite")
+            self.company = CompanyStore(config.resolve_company_db(config.local_home()))
 
     def first_start(self) -> None:
         """Search datasets if none are configured, then sync the library."""

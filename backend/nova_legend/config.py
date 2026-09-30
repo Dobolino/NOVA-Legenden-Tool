@@ -4,8 +4,8 @@ Two storage places:
 
 * local data folder (per Windows user): settings.json and the library cache
   %LOCALAPPDATA%\\NOVA-Legenden  (Linux/macOS: ~/.local/share/NOVA-Legenden)
-* company folder (shared, e.g. on T:): firma.sqlite with categories and
-  assignments that apply to everyone. Set in the settings page.
+* company folder (shared, e.g. on T:): edeco ag-Legenden-firma.sqlite with
+  categories and assignments that apply to everyone. Set in the settings page.
 
 The environment variable NOVA_LEGENDEN_HOME overrides the local folder
 (used by the tests).
@@ -95,6 +95,25 @@ def resource_dir() -> Path:
 
 
 DEFAULT_PROJECTS_FOLDER = r"T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
+COMPANY_DB_NAME = "edeco ag-Legenden-firma.sqlite"
+LEGACY_COMPANY_DB_NAME = "firma.sqlite"
+
+
+def resolve_company_db(folder: Path) -> Path:
+    """Path of the shared company file.
+
+    Older installs used firma.sqlite. If that file is still there and the new
+    name is not, it is renamed once and then reused.
+    """
+    folder = Path(folder)
+    current = folder / COMPANY_DB_NAME
+    legacy = folder / LEGACY_COMPANY_DB_NAME
+    if legacy.is_file() and not current.exists():
+        try:
+            legacy.rename(current)
+        except OSError:
+            return legacy
+    return current
 
 
 @dataclass
@@ -108,7 +127,7 @@ class Settings:
     @property
     def company_db(self) -> Path:
         folder = Path(self.company_folder) if self.company_folder else local_home()
-        return folder / "firma.sqlite"
+        return resolve_company_db(folder)
 
 
 def settings_file() -> Path:

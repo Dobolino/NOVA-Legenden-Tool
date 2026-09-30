@@ -126,12 +126,24 @@ export interface SymbolDetail {
 export interface ProjectSummary {
   id: string;
   name: string;
+  project_number: string;
   nova_version: string;
   created_at: string;
   created_by: string;
   template_from: string;
+  use_as_template: boolean;
   plan_count: number;
   modified: string;
+}
+
+export interface CategoryColor {
+  id: string;
+  title: string;
+  legend_layer: string;
+  color: string;
+  layer: string;
+  reason: string;
+  manual: boolean;
 }
 
 export interface Plan {
@@ -160,6 +172,7 @@ export interface SummaryRow {
   mountings: Record<string, number>;
   names: string[];
   methods: string[];
+  sources: string[];
   total: number;
 }
 
@@ -192,9 +205,19 @@ export interface LayerInfo {
 export interface ProjectDetail {
   id: string;
   folder: string;
-  meta: { name: string; nova_version: string; created_at: string; created_by: string; template_from: string };
+  meta: {
+    name: string;
+    project_number?: string;
+    nova_version: string;
+    created_at: string;
+    created_by: string;
+    template_from: string;
+    use_as_template?: boolean;
+  };
   settings: Record<string, unknown>;
   layers: LayerInfo[];
+  category_colors: CategoryColor[];
+  export_name: string;
   plans: Plan[];
   rows: SummaryRow[];
   unknown: UnknownElement[];
@@ -256,10 +279,10 @@ const qs = (params: Record<string, string | boolean | number>) =>
 export const api = {
   status: () => request<Status>("GET", "/api/status"),
   projects: () => request<{ folder: string; folder_exists: boolean; items: ProjectSummary[] }>("GET", "/api/projects"),
-  createProject: (name: string, nova_version: string, template: string | null) =>
-    request<ProjectDetail>("POST", "/api/projects", { name, nova_version, template }),
+  createProject: (name: string, nova_version: string, template: string | null, projectNumber = "") =>
+    request<ProjectDetail>("POST", "/api/projects", { name, nova_version, template, project_number: projectNumber }),
   project: (id: string) => request<ProjectDetail>("GET", `/api/projects/${encodeURIComponent(id)}`),
-  updateProject: (id: string, values: { name?: string; nova_version?: string }) =>
+  updateProject: (id: string, values: { name?: string; project_number?: string; nova_version?: string; use_as_template?: boolean }) =>
     request<ProjectDetail>("PUT", `/api/projects/${encodeURIComponent(id)}`, values),
   copyProject: (id: string, name: string) =>
     request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/copy`, { name }),
@@ -273,6 +296,15 @@ export const api = {
     request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/reorder`, { ids }),
   deletePlan: (id: string, planId: number) =>
     request<ProjectDetail>("DELETE", `/api/projects/${encodeURIComponent(id)}/plans/${planId}`),
+  detachPlan: (id: string, planId: number) =>
+    request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/${planId}/detach`),
+  deleteRows: (id: string, sourceKeys: string[]) =>
+    request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/rows/delete`, { source_keys: sourceKeys }),
+  setCategoryLayer: (id: string, categoryId: string, layer: string | null) =>
+    request<ProjectDetail>("PUT", `/api/projects/${encodeURIComponent(id)}/category-layer`, {
+      category_id: categoryId,
+      layer,
+    }),
   suggestions: (id: string, sourceKey: string) =>
     request<{ items: Suggestion[] }>("GET", `/api/projects/${encodeURIComponent(id)}/suggestions?${qs({ source_key: sourceKey })}`),
   setMapping: (sourceKey: string, symbolKey: string | null, name = "") =>

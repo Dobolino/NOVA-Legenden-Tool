@@ -169,6 +169,7 @@ class Library:
                 "folder, kind, mounting, label_variant, orientation, svg, files_3d, svg_nofill, "
                 "has_fill FROM symbols"
             ).fetchall()
+        self._geometry_features = None
         self._symbols = {
             r["key"]: LibSymbol(
                 r["key"], r["dataset"], r["item"], r["graphic_id"], r["sheet"], r["name"],
@@ -178,6 +179,7 @@ class Library:
             for r in rows
         }
         self._families_cache.clear()
+        self._geometry_features = None
 
     def datasets(self) -> list[dict]:
         with self._connect() as con:
@@ -197,6 +199,26 @@ class Library:
         out = dict(row)
         for col in ("folder_path", "stencils", "files_3d", "attributes", "geometry", "points"):
             out[col] = json.loads(out[col]) if out[col] else None
+        return out
+
+    def geometry_features(self) -> dict[str, dict]:
+        """Feature profile per symbol key, loaded once from the cached geometry."""
+        if self._geometry_features is not None:
+            return self._geometry_features
+        from ..matcher.suggest import symbol_features
+        out: dict[str, dict] = {}
+        with self._connect() as con:
+            rows = con.execute("SELECT key, geometry FROM symbols").fetchall()
+        for row in rows:
+            geo = json.loads(row["geometry"]) if row["geometry"] else None
+            if not geo:
+                out[row["key"]] = {}
+                continue
+            stats: dict[str, int] = {}
+            for prim in geo.get("primitives") or []:
+                stats[prim["kind"]] = stats.get(prim["kind"], 0) + 1
+            out[row["key"]] = symbol_features(stats, geo.get("bbox"))
+        self._geometry_features = out
         return out
 
     def families(self, options: FamilyOptions) -> dict:

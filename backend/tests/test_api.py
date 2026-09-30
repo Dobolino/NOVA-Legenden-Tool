@@ -52,12 +52,25 @@ def test_auto_categories_rules(tmp_path):
     assert auto_categories("xx", "Unbekannt", cats)[0] == ["diverse"]
 
 
+def test_resolve_company_db_renames_legacy_once(tmp_path):
+    folder = tmp_path / "firma"
+    legacy = folder / "firma.sqlite"
+    CompanyStore(legacy).create_category("Alt")
+    path = config.resolve_company_db(folder)
+    assert path.name == "edeco ag-Legenden-firma.sqlite"
+    assert path.is_file() and not legacy.exists()
+    assert any(c["title"] == "Alt" for c in CompanyStore(path).categories())
+    legacy.write_bytes(b"alt")
+    assert config.resolve_company_db(folder) == path
+    assert legacy.is_file()
+
+
 def test_settings_roundtrip(home):
     s = config.load_settings()
     s.company_folder = str(home / "firma")
     config.save_settings(s)
     assert config.load_settings().company_folder == str(home / "firma")
-    assert config.load_settings().company_db == home / "firma" / "firma.sqlite"
+    assert config.load_settings().company_db == home / "firma" / "edeco ag-Legenden-firma.sqlite"
 
 
 @pytest.mark.skipif(not V2.exists(), reason="sample dataset missing")

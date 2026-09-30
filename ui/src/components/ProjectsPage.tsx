@@ -84,12 +84,14 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                   <th>Pläne</th>
                   <th>Geändert</th>
                   <th>Angelegt von</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id} className="clickable" onClick={() => setOpen(p.id)}>
                     <td>
+                      {p.project_number && <span className="hint">{p.project_number} · </span>}
                       <b>{p.name}</b>
                       {p.template_from && <div className="hint">Vorlage: {p.template_from}</div>}
                     </td>
@@ -97,6 +99,25 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                     <td>{p.plan_count}</td>
                     <td>{p.modified.replace("T", " ").slice(0, 16)}</td>
                     <td>{p.created_by}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn small danger"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Projekt «${p.name}» löschen? Es wird in den Ordner _Geloescht verschoben.`)) return;
+                          try {
+                            await api.deleteProject(p.id);
+                            notify("Projekt nach _Geloescht verschoben");
+                            if (open === p.id) setOpen(null);
+                            load();
+                          } catch (err) {
+                            notify((err as Error).message, true);
+                          }
+                        }}
+                      >
+                        Löschen
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -133,6 +154,7 @@ function CreateDialog({
 }) {
   const [mode, setMode] = useState<"new" | "existing">(projects.length ? "existing" : "new");
   const [existing, setExisting] = useState(projects[0]?.id ?? "");
+  const [number, setNumber] = useState("");
   const [name, setName] = useState("");
   const [nova, setNova] = useState("19.2");
   const [template, setTemplate] = useState("");
@@ -149,7 +171,7 @@ function CreateDialog({
     }
     setBusy(true);
     try {
-      const p = await api.createProject(name.trim(), nova, template || null);
+      const p = await api.createProject(name.trim(), nova, template || null, number.trim());
       notify(`Projekt «${p.meta.name}» angelegt`);
       onDone(p.id);
     } catch (e) {
@@ -183,8 +205,10 @@ function CreateDialog({
         </label>
         {mode === "new" && (
           <div className="form-grid">
-            <label>Projektname</label>
-            <input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Wohn- und Geschäftshaus Basel" />
+            <label>Projektnummer</label>
+            <input className="input" autoFocus value={number} onChange={(e) => setNumber(e.target.value)} placeholder="z. B. 2026-014" />
+            <label>Bezeichnung</label>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Wohn- und Geschäftshaus Basel" />
             <label>Nova-Version</label>
             <select className="select" value={nova} onChange={(e) => setNova(e.target.value)}>
               <option value="19.2">Nova 19.2</option>
@@ -193,7 +217,7 @@ function CreateDialog({
             <label>Vorlage</label>
             <select className="select" value={template} onChange={(e) => setTemplate(e.target.value)}>
               <option value="">keine Vorlage</option>
-              {projects.map((p) => (
+              {projects.filter((p) => p.use_as_template !== false).map((p) => (
                 <option key={p.id} value={p.id}>
                   Einstellungen und Ebenen von «{p.name}»
                 </option>
