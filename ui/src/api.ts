@@ -13,6 +13,7 @@ export interface SymbolBrief {
   orientation: string;
   kind: string;
   svg: string;
+  has_fill?: boolean;
   is_representative?: boolean;
 }
 
@@ -28,6 +29,8 @@ export interface FamilyItem {
   category_source: string;
   conflicts: string[];
   is_representative: boolean;
+  has_fill: boolean;
+  show_fill: boolean;
   members?: SymbolBrief[];
 }
 
@@ -153,7 +156,9 @@ export const api = {
   families: (p: { q: string; category: string; dataset: string; mounting: string; all_variants: boolean }) =>
     request<{ total: number; items: FamilyItem[] }>("GET", `/api/library/families?${qs(p)}`),
   family: (id: string) => request<FamilyItem>("GET", `/api/library/family?${qs({ id })}`),
-  symbol: (key: string) => request<SymbolDetail>("GET", `/api/library/symbol?${qs({ key })}`),
+  symbol: (key: string, fill = true) => request<SymbolDetail>("GET", `/api/library/symbol?${qs({ key, fill })}`),
+  setFill: (id: string, show_fill: boolean | null) =>
+    request<FamilyItem>("PUT", `/api/library/family/fill?${qs({ id })}`, { show_fill }),
   assign: (id: string, categories: string[] | null) =>
     request<FamilyItem>("PUT", `/api/library/family/categories?${qs({ id })}`, { categories }),
   categories: (dataset = "") =>

@@ -14,11 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..parser.dataset import Dataset
-from ..render.svg import render_svg
+from ..render.svg import has_fill, render_svg
 from .families import FamilyOptions, build_families, family_key, label_variant, orientation
 
 # Bump when the parser or renderer output changes: forces a rebuild of the cache
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS symbols (
     name TEXT, part_name TEXT, sheet_name TEXT, folder TEXT, folder_path TEXT,
     stencils TEXT, kind TEXT, mounting TEXT, label_variant TEXT, orientation TEXT,
     engine TEXT, lib_ref TEXT, files_3d TEXT, attributes TEXT, geometry TEXT,
-    points TEXT, svg TEXT);
+    points TEXT, svg TEXT, svg_nofill TEXT, has_fill INTEGER);
 CREATE INDEX IF NOT EXISTS ix_symbols_item ON symbols(dataset, item);
 """
 
@@ -54,6 +54,8 @@ class LibSymbol:
     orientation: str
     svg: str
     files_3d: list[str] = field(default_factory=list)
+    svg_nofill: str = ""       # same symbol without filled areas and hatches
+    has_fill: bool = False
 
 
 def fingerprint(path: Path) -> str:
@@ -70,11 +72,16 @@ class Library:
         self._symbols: dict[str, LibSymbol] = {}
         self._families_cache: dict[FamilyOptions, dict] = {}
         with self._connect() as con:
-            con.executescript(SCHEMA)
+            con.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
             row = con.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
-            if not row or int(row[0]) != SCHEMA_VERSION:
-                con.executescript("DELETE FROM symbols; DELETE FROM datasets;")
+            columns = {r[1] for r in con.execute("PRAGMA table_info(symbols)")}
+            stale = bool(columns) and not {"svg_nofill", "has_fill"} <= columns
+            if not row or int(row[0]) != SCHEMA_VERSION or stale:
+                # The cache is rebuilt from the datasets: drop the old tables so
+                # new columns exist (CREATE IF NOT EXISTS would keep the old ones).
+                con.executescript("DROP TABLE IF EXISTS symbols; DROP TABLE IF EXISTS datasets;")
                 con.execute("INSERT OR REPLACE INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
+            con.executescript(SCHEMA)
         self._load_memory()
 
     def _connect(self) -> sqlite3.Connection:
@@ -133,7 +140,10 @@ class Library:
         rows = []
         for s in ds.symbols:
             geo = s.geometry
-            svg = render_svg(geo, None, show_points=False) if geo and geo.primitives else ""
+            drawable = bool(geo and geo.primitives)
+            svg = render_svg(geo, None, show_points=False) if drawable else ""
+            filled = drawable and has_fill(geo)
+            svg_nofill = render_svg(geo, None, show_points=False, show_fill=False) if filled else svg
             rows.append((
                 s.key, s.dataset, s.item, s.graphic_id, s.sheet, s.name, s.part_name,
                 s.sheet_name, s.folder, json.dumps(s.folder_path, ensure_ascii=False),
@@ -142,9 +152,9 @@ class Library:
                 json.dumps(s.files_3d, ensure_ascii=False),
                 json.dumps(s.attributes, ensure_ascii=False),
                 json.dumps(geo.to_dict(), ensure_ascii=False) if geo else None,
-                json.dumps(geo.points if geo else {}), svg,
+                json.dumps(geo.points if geo else {}), svg, svg_nofill, int(filled),
             ))
-        con.executemany(f"INSERT INTO symbols VALUES ({','.join('?' * 22)})", rows)
+        con.executemany(f"INSERT INTO symbols VALUES ({','.join('?' * 24)})", rows)
         con.execute("INSERT INTO datasets VALUES (?,?,?,?,?,?,?)", (
             ds.info.id, file, ds.info.version, ds.info.long_name,
             ds.info.raw.get("PredecessorID", ""), fp, len(ds.symbols)))
@@ -155,13 +165,15 @@ class Library:
         with self._connect() as con:
             rows = con.execute(
                 "SELECT key, dataset, item, graphic_id, sheet, name, part_name, sheet_name, "
-                "folder, kind, mounting, label_variant, orientation, svg, files_3d FROM symbols"
+                "folder, kind, mounting, label_variant, orientation, svg, files_3d, svg_nofill, "
+                "has_fill FROM symbols"
             ).fetchall()
         self._symbols = {
             r["key"]: LibSymbol(
                 r["key"], r["dataset"], r["item"], r["graphic_id"], r["sheet"], r["name"],
                 r["part_name"], r["sheet_name"], r["folder"], r["kind"], r["mounting"],
-                r["label_variant"], r["orientation"], r["svg"], json.loads(r["files_3d"] or "[]"))
+                r["label_variant"], r["orientation"], r["svg"], json.loads(r["files_3d"] or "[]"),
+                r["svg_nofill"] or "", bool(r["has_fill"]))
             for r in rows
         }
         self._families_cache.clear()

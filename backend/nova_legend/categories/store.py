@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS assignments (
     family_key TEXT PRIMARY KEY, categories TEXT NOT NULL,
     updated_by TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS options (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS symbol_options (
+    family_key TEXT PRIMARY KEY, show_fill INTEGER,
+    updated_by TEXT, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS log (ts TEXT, user TEXT, action TEXT, detail TEXT);
 """
 
@@ -233,6 +236,24 @@ class CompanyStore:
             con.execute("DELETE FROM assignments")
             self._seed(con)
         return self.categories()
+
+    # -- per family display options ----------------------------------------------
+
+    def fill_settings(self) -> dict[str, bool]:
+        """Families with an explicit fill choice: {family_key: show_fill}."""
+        with self._tx() as con:
+            return {r["family_key"]: bool(r["show_fill"])
+                    for r in con.execute("SELECT family_key, show_fill FROM symbol_options")}
+
+    def set_fill(self, family_key: str, show_fill: bool | None) -> None:
+        """Show or hide filled areas and hatches of a family. None = default (shown)."""
+        with self._tx() as con:
+            if show_fill is None:
+                con.execute("DELETE FROM symbol_options WHERE family_key=?", (family_key,))
+            else:
+                con.execute("INSERT OR REPLACE INTO symbol_options VALUES (?,?,?,?)",
+                            (family_key, int(show_fill), current_user(), _now()))
+            self._log(con, "fill", f"{family_key} -> {show_fill}")
 
     # -- assignments -------------------------------------------------------------
 

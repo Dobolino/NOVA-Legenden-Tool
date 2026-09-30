@@ -46,6 +46,13 @@ Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, fal
 - Zähler in der Seitenleiste zählen nur den gewählten Datensatz.
 - Die Suche in der Familienansicht findet Name und Katalogcode aller Varianten (z. B. den AP-Code).
 
+## Farben, Füllung, Ellipsen
+
+- Farben aus Nova: Teile mit eigener Farbe (meist schwarze Linien) und Teile in der Ebenenfarbe werden unterschieden. Bei den «Füllung»-Symbolen erscheint die Fläche hell (Ebenenfarbe), die Linien darüber bleiben sichtbar.
+- Schalter «Füllung und Schraffur anzeigen» in der Detailansicht, pro Familie, gespeichert für die ganze Firma. Nur bei Symbolen mit Flächen oder Schraffuren sichtbar.
+- Ellipsenbögen korrigiert: Nova speichert Start- und Endwinkel und die Matrix zeilenweise. Betroffen waren 43 Bögen (z. B. 101-040 ZUKO Leser Biometrisch, 130-420 Anbau Strassenleuchte).
+- Nach einem Update baut das Programm den Bibliotheks-Cache selbst neu auf, auch wenn sich dessen Aufbau geändert hat.
+
 ## Weitere Nova-Datensätze
 
 - Die automatische Suche nimmt alle Elektro-Datensätze (DataFormat «…_elo»). HLKS- und Sanitär-Datensätze im Warehouse-Ordner bleiben draussen.

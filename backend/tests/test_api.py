@@ -112,3 +112,42 @@ def test_find_datasets_only_electrical(tmp_path):
     (tmp_path / "kaputt.nzp").write_bytes(b"no zip")
     found = [Path(p).name for p in config.find_datasets([str(tmp_path)])]
     assert found == ["a.nzp"]
+
+
+def test_library_cache_upgrade_from_old_schema(tmp_path):
+    """An old cache (fewer columns, older schema number) must not crash the start."""
+    import sqlite3
+
+    from nova_legend.library.store import Library
+
+    db = tmp_path / "library.sqlite"
+    con = sqlite3.connect(db)
+    con.executescript("""
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO meta VALUES ('schema', '1');
+        CREATE TABLE symbols (key TEXT PRIMARY KEY, dataset TEXT, svg TEXT);
+        CREATE TABLE datasets (id TEXT PRIMARY KEY, file TEXT);
+        INSERT INTO datasets VALUES ('x', 'y');
+    """)
+    con.commit()
+    con.close()
+    lib = Library(db)
+    assert lib.symbols() == [] and lib.datasets() == []
+
+
+def test_library_cache_with_current_number_but_old_columns(tmp_path):
+    """Schema number already current but table from an older build: rebuild."""
+    import sqlite3
+
+    from nova_legend.library.store import SCHEMA_VERSION, Library
+
+    db = tmp_path / "library.sqlite"
+    con = sqlite3.connect(db)
+    con.executescript(f"""
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+        INSERT INTO meta VALUES ('schema', '{SCHEMA_VERSION}');
+        CREATE TABLE symbols (key TEXT PRIMARY KEY, dataset TEXT, svg TEXT);
+    """)
+    con.commit()
+    con.close()
+    assert Library(db).symbols() == []

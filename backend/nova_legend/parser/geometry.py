@@ -114,6 +114,7 @@ class Primitive:
     layer: str                     # sub group name, e.g. X_Geometrie
     filled: bool = False
     data: dict = field(default_factory=dict)
+    color: str | None = None       # "#rrggbb" set by the group, None = layer colour
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -160,16 +161,21 @@ def _arc(data: list) -> dict:
 
 
 def _elliptic_arc(data: list) -> dict:
-    """EllipticArc: ((m11;m21;m12;m22)(cx;cy))(sweep)(start).
+    """EllipticArc: ((m0;m1;m2;m3)(cx;cy))(start angle)(end angle).
 
-    Point(t) = center + M * (cos t, sin t), t from start to start+sweep.
+    Point(t) = center + (m0*cos t + m1*sin t, m2*cos t + m3*sin t), the matrix is
+    stored row by row like the text matrix. Equal angles mean a full ellipse.
+    Verified on 101-040 (eye), 10-170 (key bow) and 130-420 (lamp outline).
     """
     frame = data[0]
     m = _nums(frame[0])
     c = _nums(frame[1])
-    sweep = float(data[1][0]) if len(data) > 1 else 2 * math.pi
-    start = float(data[2][0]) if len(data) > 2 else 0.0
-    return {"matrix": m, "center": c[:2], "sweep": sweep, "start": start}
+    start = float(data[1][0]) if len(data) > 1 and data[1] else 0.0
+    end = float(data[2][0]) if len(data) > 2 and data[2] else start
+    sweep = end - start
+    if abs(sweep) < 1e-9:
+        sweep = 2 * math.pi
+    return {"matrix": m, "center": c[:2], "start": start, "sweep": sweep}
 
 
 def _segments(seg_block: list, count: int) -> list[dict | None]:
@@ -287,6 +293,24 @@ def _block_items(block: list) -> list:
     return items
 
 
+def _group_color(field: list) -> str | None:
+    """Group colour: ((A;R;G;B)()()) -> "#rrggbb". Empty = layer colour.
+
+    Seen in the "Füllung" symbols: the fill has no colour (layer colour), the
+    lines on top are black (255;0;0;0).
+    """
+    try:
+        if not field or not isinstance(field[0], list) or not field[0]:
+            return None
+        parts = [int(float(x)) for x in str(field[0][0]).split(";")]
+    except (ValueError, IndexError, TypeError):
+        return None
+    if len(parts) != 4:
+        return None
+    _alpha, r, g, b = parts
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def parse_geometry(text: str) -> SymbolGeometry:
     """Parse a Geometry attribute into a SymbolGeometry."""
     geo = SymbolGeometry()
@@ -307,6 +331,8 @@ def parse_geometry(text: str) -> SymbolGeometry:
         name = str(group[0][0]) if group and group[0] else ""
         layer = name
         geo.groups.append(name)
+        color = _group_color(group[1] if len(group) > 1 else [])
+        first = len(geo.primitives)
         curves = group[3] if len(group) > 3 else []
         fills = group[4] if len(group) > 4 else []
         reserved = group[5] if len(group) > 5 else []  # hatch areas
@@ -333,6 +359,9 @@ def parse_geometry(text: str) -> SymbolGeometry:
             prim = _text(elem, layer, geo.warnings)
             if prim:
                 geo.primitives.append(prim)
+        if color:
+            for prim in geo.primitives[first:]:
+                prim.color = color
         if len(group) > 7:
             geo.warnings.append(f"group {layer} has {len(group)} fields")
 
@@ -387,7 +416,7 @@ def sample_ellipse(e: dict, steps: int = 64) -> list[tuple[float, float]]:
     for i in range(n + 1):
         t = t0 + sw * i / n
         c, s = math.cos(t), math.sin(t)
-        pts.append((cx + m[0] * c + m[2] * s, cy + m[1] * c + m[3] * s))
+        pts.append((cx + m[0] * c + m[1] * s, cy + m[2] * c + m[3] * s))
     return pts
 
 

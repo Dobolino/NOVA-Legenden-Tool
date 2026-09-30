@@ -148,3 +148,39 @@ def test_text_matrix_is_column_major():
     t = geo.primitives[0].data
     assert t["rotation"] == pytest.approx(90.0)
     assert t["height"] == pytest.approx(0.0025)
+
+
+
+def test_group_colour_and_fill_rendering():
+    from nova_legend.render.svg import render_svg
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from synthetic import FILLED
+    geo = geometry.parse_geometry(FILLED)
+    area = next(p for p in geo.primitives if p.filled)
+    line = next(p for p in geo.primitives if p.kind == "line")
+    assert area.color is None and line.color == "#000000"
+    full = render_svg(geo, None, show_points=False)
+    assert 'fill="var(--sym-layer' in full
+    no_fill = render_svg(geo, None, show_points=False, show_fill=False)
+    assert "sym-layer" not in no_fill and "<path" in no_fill
+
+
+def test_elliptic_arc_start_end_and_row_major():
+    import math
+    # full ellipse: equal start/end angles (as in 101-040)
+    text = ('((1)(("")()(0)((1)(((EllipticArc)(((0;-0.0026;0.0013;0)(0;0.0025))(0)(6.28318530717959)))))'
+            '((0))((0))((0))))((0))((0))()')
+    e = geometry.parse_geometry(text).primitives[0].data
+    assert e["sweep"] == pytest.approx(2 * math.pi)
+    pts = geometry.sample_ellipse(e, 64)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    # row-major: x = m0*cos + m1*sin -> half width 2.6 mm, half height 1.3 mm (an eye)
+    assert max(xs) - min(xs) == pytest.approx(0.0052, abs=1e-5)
+    assert max(ys) - min(ys) == pytest.approx(0.0026, abs=1e-5)
+    # partial arc: from 0.47 to 5.814 rad (as in 130-420)
+    text2 = text.replace("(0)(6.28318530717959)", "(0.47)(5.814)")
+    e2 = geometry.parse_geometry(text2).primitives[0].data
+    assert e2["start"] == pytest.approx(0.47) and e2["sweep"] == pytest.approx(5.344)

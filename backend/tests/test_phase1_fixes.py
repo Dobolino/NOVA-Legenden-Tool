@@ -9,7 +9,7 @@ from nova_legend import config
 from nova_legend.api.app import AppState, create_app
 from nova_legend.categories.store import CompanyStore, normalize_sheets
 
-from synthetic import make_nzp
+from synthetic import FILLED, make_nzp
 
 V2 = "Test.Elektroinstallationen.V2.CH"
 V1 = "Test.Elektroinstallationen.CH"
@@ -22,6 +22,7 @@ def client(tmp_path, monkeypatch):
         ("10", "10-10", "Schalter, Schema 0, UP"),
         ("20", "20-10", "Schalter, Schema 0, AP"),
         ("230", "230-10", "Brandmelder, UP"),
+        ("101", "101-010", "ZUKO Leser Füllung", FILLED),
     ])
     v1 = make_nzp(tmp_path / "v1.nzp", V1, [
         ("10", "10-10", "Schalter, Schema 0, UP"),
@@ -151,3 +152,29 @@ def test_dataset_rule_for_schematics(tmp_path):
     cats = CompanyStore(tmp_path / "f.sqlite").categories()
     assert auto_categories("LS_6_B_1P", "LS-Schalter", cats,
                            "Plancal.Niederspannung_E.2014-11-06")[0] == ["schema"]
+
+
+# Fill: colours from Nova and the per family switch ------------------------------
+
+def test_fill_switch_per_family(client):
+    fam = client.get("/api/library/families", params={"q": "ZUKO", "dataset": V2}).json()["items"][0]
+    assert fam["has_fill"] and fam["show_fill"]
+    svg_with = fam["representative"]["svg"]
+    assert "var(--sym-layer" in svg_with          # area in layer colour under black lines
+    hidden = client.put("/api/library/family/fill", params={"id": fam["id"]},
+                        json={"show_fill": False}).json()
+    assert hidden["show_fill"] is False
+    fam2 = client.get("/api/library/families", params={"q": "ZUKO", "dataset": V2}).json()["items"][0]
+    assert fam2["show_fill"] is False and fam2["representative"]["svg"] != svg_with
+    assert "var(--sym-layer" not in fam2["representative"]["svg"]
+    detail = client.get("/api/library/symbol",
+                        params={"key": fam["representative"]["key"], "fill": False}).json()
+    assert "var(--sym-layer" not in detail["svg_points"]
+    client.put("/api/library/family/fill", params={"id": fam["id"]}, json={"show_fill": None})
+    fam3 = client.get("/api/library/families", params={"q": "ZUKO", "dataset": V2}).json()["items"][0]
+    assert fam3["show_fill"] is True
+
+
+def test_symbols_without_fill_have_no_switch(client):
+    fam = client.get("/api/library/families", params={"q": "Brandmelder", "dataset": V2}).json()["items"][0]
+    assert fam["has_fill"] is False

@@ -11,18 +11,26 @@ CIRCLE = ('((1)(("")()(0)((1)(((Arc)((0;0.0025)(0.0025;0.0025)(0.0025;0.0025)(0)
           '((1)(("NP0")(0;0.0025;0)))((0))(-0.0025;0;0.0025;0.005;1)')
 
 
-def make_nzp(path: Path, dataset_id: str, items: list[tuple[str, str, str]]) -> Path:
-    """items: (sheet, item code, description). One 2D graphic per item."""
+# Filled octagon-like area (layer colour) with black lines on top, like the
+# "Füllung" symbols in the Trimble data
+FILLED = ('((2)(("X_Geometrie")()(0)((0))((1)(((FlexPolygon)((4|-0.004;0|0.004;0|0.004;0.005|-0.004;0.005)()))))'
+          '((0))((0)))(("A0TEST")((255;0;0;0)()())(0)((1)(((Line)((-0.002;0.0025)(0.002;0.0025)))))'
+          '((0))((0))((0))))((1)(("NP0")(0;0.0025;0)))((0))(-0.004;0;0.004;0.005;1)')
+
+
+def make_nzp(path: Path, dataset_id: str, items: list[tuple]) -> Path:
+    """items: (sheet, item code, description[, geometry]). One 2D graphic per item."""
+    items = [tuple(i) if len(i) == 4 else (*i, CIRCLE) for i in items]
     sheets: dict[str, list[tuple[str, str]]] = {}
-    for sheet, code, desc in items:
+    for sheet, code, desc, _geo in items:
         sheets.setdefault(sheet, []).append((code, desc))
 
     set_root = Node("DataSet", {"ID": dataset_id, "Name": dataset_id, "Version": "1.0.0",
                                 "LongName": f"{dataset_id} Test"})
     graphic = Node("Root", {}, [Node("GraphicSet", {"ID": "Default"}, [Node("Graphic", {}, [
         Node("GraphicItem", {"ID": "2D-10", "Description": desc, "Type": "Geometry", "Usage": "I",
-                             "PlaceMode": "W,Y", "Geometry": CIRCLE, "Sheet": sheet, "Item": code})
-        for sheet, code, desc in items])])])
+                             "PlaceMode": "W,Y", "Geometry": geo, "Sheet": sheet, "Item": code})
+        for sheet, code, desc, geo in items])])])
     data = Node("Root", {}, [Node("Data", {}, [
         Node("Sheet", {"ID": sheet, "Description": f"Blatt {sheet}", "BaseClass": "Bauteil"},
              [Node("Bauteil", {"ID": code, "Description": desc}) for code, desc in entries])

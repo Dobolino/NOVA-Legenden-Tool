@@ -84,6 +84,10 @@ class AssignIn(BaseModel):
     categories: list[str] | None = None
 
 
+class FillIn(BaseModel):
+    show_fill: bool | None = None   # None = default (fill shown)
+
+
 class ReorderIn(BaseModel):
     ids: list[str]
 
@@ -104,20 +108,23 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
         rep = fam.representative
         return auto_categories(rep.sheet, rep.name, categories, rep.dataset)
 
-    def family_entry(fam_id: str, fam, categories, assignments) -> dict:
+    def family_entry(fam_id: str, fam, categories, assignments, fills) -> dict:
         cats, source = family_categories(fam, categories, assignments)
         rep = fam.representative
+        show_fill = fills.get(fam.key, True)
         return {
             "id": fam_id,
             "key": fam.key,
             "title": fam.title,
             "dataset": rep.dataset,
-            "representative": _symbol_brief(rep),
+            "representative": _symbol_brief(rep, show_fill),
             "mountings": fam.mountings,
             "variant_count": len(fam.members),
             "categories": cats,
             "category_source": source,
             "conflicts": fam.conflicts,
+            "has_fill": any(m.has_fill for m in fam.members),
+            "show_fill": show_fill,
         }
 
     # -- status & settings -------------------------------------------------------
@@ -190,6 +197,7 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
                  all_variants: bool = False, limit: int = 5000) -> dict:
         categories = st.company.categories()
         assignments = st.company.assignments()
+        fills = st.company.fill_settings()
         fams = st.library.families(st.family_options())
         words = [w for w in q.lower().split() if w]
         items = []
@@ -197,7 +205,7 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
             rep = fam.representative
             if dataset and rep.dataset != dataset:
                 continue
-            entry = family_entry(fam_id, fam, categories, assignments)
+            entry = family_entry(fam_id, fam, categories, assignments, fills)
             if category and category not in entry["categories"]:
                 continue
             members = fam.members if all_variants else [rep]
@@ -218,7 +226,8 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
                         continue
                 if all_variants:
                     items.append({**entry, "id": f"{fam_id}#{sym.key}",
-                                  "title": sym.name, "representative": _symbol_brief(sym),
+                                  "title": sym.name,
+                                  "representative": _symbol_brief(sym, entry["show_fill"]),
                                   "is_representative": sym is rep})
                 else:
                     items.append({**entry, "is_representative": True})
@@ -231,18 +240,19 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
         fam = fams.get(id.split("#")[0])
         if not fam:
             raise HTTPException(404, "Familie nicht gefunden")
-        entry = family_entry(id.split("#")[0], fam, st.company.categories(), st.company.assignments())
-        entry["members"] = [{**_symbol_brief(m), "is_representative": m is fam.representative}
-                            for m in fam.members]
+        entry = family_entry(id.split("#")[0], fam, st.company.categories(),
+                             st.company.assignments(), st.company.fill_settings())
+        entry["members"] = [{**_symbol_brief(m, entry["show_fill"]),
+                             "is_representative": m is fam.representative} for m in fam.members]
         return entry
 
     @app.get("/api/library/symbol")
-    def symbol(key: str) -> dict:
+    def symbol(key: str, fill: bool = True) -> dict:
         detail = st.library.symbol_detail(key)
         if not detail:
             raise HTTPException(404, "Symbol nicht gefunden")
         geo = detail.pop("geometry")
-        detail["svg_points"] = _svg_with_points(geo) if geo else ""
+        detail["svg_points"] = _svg_with_points(geo, fill) if geo else ""
         detail["stats"] = _stats(geo)
         return detail
 
@@ -257,6 +267,15 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
         if unknown:
             raise HTTPException(400, f"Unbekannte Kategorie: {', '.join(unknown)}")
         st.company.assign(fam.key, body.categories)
+        return family(id)
+
+    @app.put("/api/library/family/fill")
+    def set_fill(id: str, body: FillIn) -> dict:  # noqa: A002
+        fams = st.library.families(st.family_options())
+        fam = fams.get(id.split("#")[0])
+        if not fam:
+            raise HTTPException(404, "Familie nicht gefunden")
+        st.company.set_fill(fam.key, body.show_fill)
         return family(id)
 
     # -- categories ----------------------------------------------------------------
@@ -328,12 +347,14 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     return app
 
 
-def _symbol_brief(sym) -> dict:
+def _symbol_brief(sym, show_fill: bool = True) -> dict:
     return {
         "key": sym.key, "name": sym.name, "item": sym.item, "graphic_id": sym.graphic_id,
         "dataset": sym.dataset, "sheet": sym.sheet, "folder": sym.folder,
         "mounting": sym.mounting, "label_variant": sym.label_variant,
-        "orientation": sym.orientation, "kind": sym.kind, "svg": sym.svg,
+        "orientation": sym.orientation, "kind": sym.kind,
+        "svg": sym.svg if show_fill or not sym.has_fill else sym.svg_nofill,
+        "has_fill": sym.has_fill,
     }
 
 
@@ -344,9 +365,9 @@ def _geometry_from_dict(geo: dict) -> SymbolGeometry:
         bbox=geo.get("bbox"), groups=geo.get("groups") or [], warnings=geo.get("warnings") or [])
 
 
-def _svg_with_points(geo: dict) -> str:
+def _svg_with_points(geo: dict, show_fill: bool = True) -> str:
     g = _geometry_from_dict(geo)
-    return render_svg(g, None, show_points=True) if g.primitives else ""
+    return render_svg(g, None, show_points=True, show_fill=show_fill) if g.primitives else ""
 
 
 def _stats(geo: dict | None) -> dict:

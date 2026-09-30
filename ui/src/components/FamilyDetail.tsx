@@ -8,6 +8,7 @@ interface Props {
   notify: (text: string, error?: boolean) => void;
   onClose: () => void;
   onAssigned: (fam: FamilyItem) => void;
+  onFillChanged: () => void;
 }
 
 const LABELS: Record<string, string> = {
@@ -21,7 +22,7 @@ const LABELS: Record<string, string> = {
   text: "Texte",
 };
 
-export default function FamilyDetail({ id, categories, notify, onClose, onAssigned }: Props) {
+export default function FamilyDetail({ id, categories, notify, onClose, onAssigned, onFillChanged }: Props) {
   const [fam, setFam] = useState<FamilyItem | null>(null);
   const [symKey, setSymKey] = useState<string>("");
   const [detail, setDetail] = useState<SymbolDetail | null>(null);
@@ -44,17 +45,35 @@ export default function FamilyDetail({ id, categories, notify, onClose, onAssign
     };
   }, [id, notify]);
 
+  const showFill = fam?.show_fill ?? true;
+
   useEffect(() => {
     if (!symKey) return;
     let alive = true;
     api
-      .symbol(symKey)
+      .symbol(symKey, showFill)
       .then((d) => alive && setDetail(d))
       .catch((e) => notify((e as Error).message, true));
     return () => {
       alive = false;
     };
-  }, [symKey, notify]);
+  }, [symKey, showFill, notify]);
+
+  async function saveFill(show: boolean) {
+    if (!fam) return;
+    setSaving(true);
+    try {
+      // Showing the fill is the default: store "null" instead of true
+      const updated = await api.setFill(fam.id, show ? null : false);
+      setFam({ ...fam, show_fill: updated.show_fill, members: updated.members });
+      onFillChanged();
+      notify(show ? "Füllung wird angezeigt (gilt für die ganze Firma)" : "Füllung ausgeblendet (gilt für die ganze Firma)");
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function save(next: string[] | null) {
     if (!fam) return;
@@ -113,6 +132,12 @@ export default function FamilyDetail({ id, categories, notify, onClose, onAssign
         <SymbolPic sym={current} svg={detail?.key === current.key ? detail.svg_points || undefined : undefined} />
       </div>
       <div className="hint">Punkte: orange = Anschlusspunkte (NP), blau = Einfüge-/Hilfspunkte.</div>
+      {fam.has_fill && (
+        <label className="toggle" style={{ marginTop: 8 }} title="Flächen und Schraffuren dieser Familie zeigen oder ausblenden">
+          <input type="checkbox" checked={fam.show_fill} disabled={saving} onChange={(e) => saveFill(e.target.checked)} />
+          Füllung und Schraffur anzeigen
+        </label>
+      )}
 
       {fam.members && fam.members.length > 1 && (
         <>

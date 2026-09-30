@@ -66,42 +66,77 @@ def geometry_bounds(geo: SymbolGeometry) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
+# Colours in the SVG. The page defines the CSS variables; the fallbacks keep
+# standalone files readable.
+LAYER_FILL = "var(--sym-layer, #b9c0c9)"   # layer colour next to explicit black lines
+BACKGROUND = "var(--sym-bg, #ffffff)"      # white masking areas
+
+
+def has_fill(geo: SymbolGeometry) -> bool:
+    """True if the symbol has filled areas or hatches (the fill can be hidden)."""
+    return any(p.filled for p in geo.primitives)
+
+
+def _paint(color: str | None, mixed: bool) -> str:
+    """CSS colour for a primitive.
+
+    Nova draws parts without their own colour in the layer colour. When a
+    symbol also has explicitly coloured parts (the "Füllung" symbols: black
+    lines on a layer-coloured area) the layer colour becomes a light tone,
+    otherwise everything uses the text colour of the page.
+    """
+    if color is None:
+        return LAYER_FILL if mixed else "currentColor"
+    if color == "#000000":
+        return "currentColor"
+    if color == "#ffffff":
+        return BACKGROUND
+    return color
+
+
 def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
-               stroke_mm: float = 0.18, title: str | None = None) -> str:
-    x0, y0, x1, y1 = geometry_bounds(geo)
+               stroke_mm: float = 0.18, title: str | None = None, show_fill: bool = True) -> str:
+    x0, y0, x1, y1 = geometry_bounds(geo)   # full symbol, also when the fill is hidden
     pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
     x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
     w, h = (x1 - x0) * MM, (y1 - y0) * MM
+    mixed = any(p.color for p in geo.primitives) and any(p.color is None for p in geo.primitives)
     parts: list[str] = []
     for p in geo.primitives:
+        if p.filled and not show_fill:
+            continue
         d = p.data
-        fill = "currentColor" if p.filled else "none"
-        opacity = ' fill-opacity="0.35"' if p.kind == "hatch" else ""
+        paint = _paint(p.color, mixed)
+        stroke = f' stroke="{paint}"' if paint != "currentColor" else ""
+        fill = paint if p.filled else "none"
+        attrs = f' fill="{fill}"{stroke}'
+        if p.kind == "hatch":
+            attrs += ' fill-opacity="0.35"'
         if p.kind == "line":
-            parts.append(f'<path d="M{_pt(d["start"])} L{_pt(d["end"])}"/>')
+            parts.append(f'<path d="M{_pt(d["start"])} L{_pt(d["end"])}"{stroke}/>')
         elif p.kind == "arc":
             if d.get("full"):
                 cx, cy = d["center"]
                 parts.append(f'<circle cx="{cx * MM:.4f}" cy="{-cy * MM:.4f}" '
-                             f'r="{d["radius"] * MM:.4f}" fill="{fill}"/>')
+                             f'r="{d["radius"] * MM:.4f}"{attrs}/>')
             else:
-                parts.append(f'<path d="{_path(sample_arc(d), False)}" fill="{fill}"/>')
+                parts.append(f'<path d="{_path(sample_arc(d), False)}"{attrs}/>')
         elif p.kind == "ellipse_arc":
             closed = abs(abs(d["sweep"]) - 2 * math.pi) < 1e-6
-            parts.append(f'<path d="{_path(sample_ellipse(d), closed)}" fill="{fill}"/>')
+            parts.append(f'<path d="{_path(sample_ellipse(d), closed)}"{attrs}/>')
         elif p.kind in ("polygon", "hatch"):
-            parts.append(f'<path d="{_path(flex_points(d), True)}" fill="{fill}"{opacity}/>')
+            parts.append(f'<path d="{_path(flex_points(d), True)}"{attrs}/>')
         elif p.kind == "polyline":
-            parts.append(f'<path d="{_path(flex_points(d), False)}" fill="{fill}"/>')
+            parts.append(f'<path d="{_path(flex_points(d), False)}"{attrs}/>')
         elif p.kind == "spline":
-            parts.append(f'<path d="{_path(sample_spline(d), False)}"/>')
+            parts.append(f'<path d="{_path(sample_spline(d), False)}"{stroke}/>')
         elif p.kind == "text":
             x, y = d["position"]
             size = d["height"] * MM
             rot = -d["rotation"]
             parts.append(
                 f'<text x="{x * MM:.4f}" y="{-y * MM:.4f}" font-size="{size:.3f}" '
-                f'font-family="Arial, sans-serif" stroke="none" fill="currentColor" '
+                f'font-family="Arial, sans-serif" stroke="none" fill="{paint}" '
                 f'transform="rotate({rot:.3f} {x * MM:.4f} {-y * MM:.4f})">'
                 f'{html.escape(d["text"])}</text>')
     if show_points:

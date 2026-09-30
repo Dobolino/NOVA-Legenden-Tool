@@ -38,6 +38,7 @@ export default function Library(props: Props) {
   const [shown, setShown] = useState(PAGE);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refresh, setRefresh] = useState(0); // bumps after a display option changed
   const moreRef = useRef<HTMLDivElement>(null);
 
   // Datasets can arrive after the first render: apply the default once,
@@ -78,7 +79,7 @@ export default function Library(props: Props) {
       }
     }, 180);
     return () => window.clearTimeout(handle);
-  }, [q, category, dataset, mounting, allVariants, revision, options, notify]);
+  }, [q, category, dataset, mounting, allVariants, revision, options, refresh, notify]);
 
   // Load more tiles when the sentinel scrolls into view
   useEffect(() => {
@@ -232,6 +233,7 @@ export default function Library(props: Props) {
           categories={categories}
           notify={notify}
           onClose={() => setSelected(null)}
+          onFillChanged={() => setRefresh((r) => r + 1)}
           onAssigned={(updated) => {
             setItems((list) =>
               list.map((x) =>
