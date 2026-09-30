@@ -30,7 +30,7 @@ Die gemeinsamen Kategorien liegen in `edeco ag-Legenden-firma.sqlite` (ältere D
 
 Projektfunktionen: Projektnummer und Bezeichnung speichern, kopieren, als ZIP exportieren, löschen (verschiebt nach `_Geloescht`), Nova-Version ändern, anderes Projekt direkt öffnen, als Vorlage ausblenden.
 
-**Neu importieren** ersetzt die Plandatei dieses Geschosses und legt eine neue Version an. Apparate, die in der neuen Datei fehlen, bleiben in der Liste mit Anzahl 0. Zuordnung über Katalogcode, Bezeichnung (Bez) oder Name, damit eine bestehende Zeile und eine gespeicherte Entscheidung erhalten bleiben. **Datei entfernen** löscht nur die Plandatei, nicht die Liste. Eine Zeile mit Total 0 lässt sich mit **Zeile löschen** entfernen. Der Vergleich zwischen Versionen folgt in Phase 3.
+**Neu importieren** ersetzt die Plandatei dieses Geschosses und legt eine neue Version an. Apparate, die in der neuen Datei fehlen, bleiben in der Liste mit Anzahl 0. Zuordnung über Katalogcode, Bezeichnung (Bez) oder Name, damit eine bestehende Zeile und eine gespeicherte Entscheidung erhalten bleiben. **Datei entfernen** löscht nur die Plandatei, nicht die Liste. Eine Zeile mit Total 0 lässt sich mit **Zeile löschen** entfernen. Was sich zwischen zwei Importen geändert hat, zeigt Phase 3.
 
 ## Erkennung
 
@@ -81,4 +81,4 @@ Braucht den ODA File Converter (Einstellungen zeigen, ob er gefunden wurde). Ohn
 - Gesamtliste zeigt die Symbole aus der Bibliothek. Parametrische Leuchten erscheinen vereinfacht.
 - Die Farbe einer Kategorie sucht zuerst die Legendenebene (E_Licht), sonst eine Planeebene mit demselben Namensteil (E_232.5_Licht). E_233_Leuchten passt nicht zu E_Licht. Unter **Ebenen und Farben** und in der Gruppenzeile lässt sich die Ebene pro Projekt wählen. Gibt es keine passende Ebene, steht der Grund daneben.
 - SQLite-Projektdateien auf T: sind für gleichzeitiges Lesen gut, gleichzeitiges Schreiben am selben Projekt wartet kurz.
-- Änderungsvergleich zwischen Versionen: Phase 3.
+- Änderungsvergleich zwischen zwei Importen: [Phase 3](PHASE3.md).

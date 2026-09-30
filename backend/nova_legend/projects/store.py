@@ -310,6 +310,13 @@ class Project:
                 totals[name] = totals.get(name, 0) + int(count)
         return totals
 
+    def version_ignored(self, version_id: int) -> dict[str, int]:
+        with self.tx() as con:
+            row = con.execute("SELECT ignored FROM plan_versions WHERE id=?", (version_id,)).fetchone()
+        if not row:
+            return {}
+        return {name: int(count) for name, count in json.loads(row["ignored"] or "{}").items()}
+
     def versions(self, plan_id: int) -> list[dict]:
         with self.tx() as con:
             return [dict(r) for r in con.execute(

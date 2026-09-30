@@ -2,9 +2,9 @@
 
 Windows-Programm, das aus Trimble-Nova-Elektroplänen die Legende der Apparate erzeugt.
 
-Stand: **Phase 2 (Projekte und Import)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, ordnet sie Kategorien zu (für die ganze Firma) und liest Pläne (DXF, N4D, DWG) pro Geschoss in Projekte ein. Die Gesamtliste zeigt alle Apparate mit einer Spalte pro Geschoss.
+Stand: **Phase 3 (Änderungen zwischen Importen)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, ordnet sie Kategorien zu (für die ganze Firma) und liest Pläne (DXF, N4D, DWG) pro Geschoss in Projekte ein. Die Gesamtliste zeigt alle Apparate mit einer Spalte pro Geschoss. Ein erneuter Import desselben Geschosses zeigt, was neu ist, was fehlt und wo sich die Anzahl geändert hat.
 
-Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md) · [Phase 2](docs/PHASE2.md)
+Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md) · [Phase 2](docs/PHASE2.md) · [Phase 3](docs/PHASE3.md)
 
 ## Installation für die Firma
 

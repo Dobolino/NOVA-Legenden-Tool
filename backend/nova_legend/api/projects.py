@@ -17,6 +17,7 @@ from ..importer.dxf import read_dxf
 from ..importer.n4d import read_n4d
 from ..importer.recognize import IGNORE
 from ..projects.colors import pick_category_layer
+from ..projects.diff import diff_counts, tally
 from ..projects.floors import resolve_plan_name
 from ..projects.service import ProjectEvaluator
 from ..projects.store import ProjectManager, export_filename
@@ -79,6 +80,14 @@ def register(app: FastAPI, st) -> None:
     def evaluator() -> ProjectEvaluator:
         return ProjectEvaluator(st.library, st.company, st.family_options())
 
+    def _change_summary(p, plan_id: int) -> dict | None:
+        versions = p.versions(plan_id)
+        if len(versions) < 2:
+            return None
+        before = {row["source_key"]: int(row["count"] or 0) for row in p.elements(versions[1]["id"])}
+        after = {row["source_key"]: int(row["count"] or 0) for row in p.elements(versions[0]["id"])}
+        return tally(diff_counts(before, after))
+
     def detail(project_id: str) -> dict:
         p = project(project_id)
         ev = evaluator()
@@ -93,9 +102,23 @@ def register(app: FastAPI, st) -> None:
             category_colors.append({"id": cat["id"], "title": cat["title"],
                                     "legend_layer": cat.get("layer") or "", **picked})
         meta = p.meta()
+        for plan in result["plans"]:
+            plan["change_summary"] = _change_summary(p, plan["id"])
         return {"id": p.id, "meta": meta, "settings": p.settings(), "layers": layers,
                 "category_colors": category_colors, "export_name": export_filename(meta),
                 "folder": str(p.folder), **result}
+
+
+    def version_pair(p, plan_id: int, older: int | None, newer: int | None) -> tuple[int | None, int | None]:
+        versions = p.versions(plan_id)
+        known = {v["id"] for v in versions}
+        if older is None and newer is None:
+            if len(versions) < 2:
+                return None, None
+            return versions[1]["id"], versions[0]["id"]
+        if older is None or newer is None or older == newer or older not in known or newer not in known:
+            raise HTTPException(400, "Die beiden Importe gehören nicht zu diesem Geschoss.")
+        return older, newer
 
     @app.get("/api/projects")
     def list_projects() -> dict:
@@ -238,6 +261,23 @@ def register(app: FastAPI, st) -> None:
     @app.get("/api/projects/{project_id}/plans/{plan_id}/versions")
     def plan_versions(project_id: str, plan_id: int) -> dict:
         return {"items": project(project_id).versions(plan_id)}
+
+    def one_comparison(project_id: str, plan_id: int, older: int | None, newer: int | None) -> dict:
+        p = project(project_id)
+        plan = next((item for item in p.plans() if item["id"] == plan_id), None)
+        if plan is None:
+            raise HTTPException(404, "Plan nicht gefunden")
+        old_id, new_id = version_pair(p, plan_id, older, newer)
+        return evaluator().compare_plan(p, plan, old_id, new_id)
+
+    @app.get("/api/projects/{project_id}/changes")
+    def project_changes(project_id: str) -> dict:
+        p = project(project_id)
+        return {"plans": [one_comparison(project_id, plan["id"], None, None) for plan in p.plans()]}
+
+    @app.get("/api/projects/{project_id}/plans/{plan_id}/changes")
+    def plan_changes(project_id: str, plan_id: int, older: int | None = None, newer: int | None = None) -> dict:
+        return {"plan": one_comparison(project_id, plan_id, older, newer)}
 
     # -- unknown elements --------------------------------------------------------------
 

@@ -156,6 +156,48 @@ export interface Plan {
   imported_at: string | null;
   imported_by: string | null;
   versions: number;
+  change_summary: ChangeSummary | null;
+}
+
+export interface ChangeSummary {
+  neu: number;
+  weg: number;
+  geaendert: number;
+}
+
+export interface VersionInfo {
+  id: number;
+  file_name: string | null;
+  format: string | null;
+  imported_at: string | null;
+  imported_by: string | null;
+}
+
+export interface CountChange {
+  source_key?: string;
+  name: string;
+  title?: string;
+  item?: string;
+  svg?: string;
+  status?: string;
+  reason?: string;
+  kind: "neu" | "weg" | "geaendert";
+  before: number;
+  after: number;
+  delta: number;
+}
+
+export interface PlanChanges {
+  plan_id: number;
+  name: string;
+  versions: VersionInfo[];
+  older: number | null;
+  newer: number | null;
+  comparable: boolean;
+  changes: CountChange[];
+  ignored_changes: CountChange[];
+  unchanged: number;
+  summary: ChangeSummary;
 }
 
 export interface SummaryRow {
@@ -294,6 +336,13 @@ export const api = {
     request<ProjectDetail>("PUT", `/api/projects/${encodeURIComponent(id)}/plans/${planId}`, { name }),
   reorderPlans: (id: string, ids: number[]) =>
     request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/reorder`, { ids }),
+  changes: (id: string) =>
+    request<{ plans: PlanChanges[] }>("GET", `/api/projects/${encodeURIComponent(id)}/changes`),
+  planChanges: (id: string, planId: number, older: number, newer: number) =>
+    request<{ plan: PlanChanges }>(
+      "GET",
+      `/api/projects/${encodeURIComponent(id)}/plans/${planId}/changes?${qs({ older, newer })}`,
+    ),
   deletePlan: (id: string, planId: number) =>
     request<ProjectDetail>("DELETE", `/api/projects/${encodeURIComponent(id)}/plans/${planId}`),
   detachPlan: (id: string, planId: number) =>

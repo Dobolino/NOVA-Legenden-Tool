@@ -8,6 +8,7 @@ from ..categories.store import auto_categories
 from ..importer.model import Found
 from ..importer.recognize import LibraryIndex, resolve
 from ..matcher.suggest import suggest
+from .diff import diff_counts, tally, unchanged_count
 from .store import Project
 
 
@@ -179,3 +180,63 @@ class ProjectEvaluator:
 
         symbols = [s for s in self.library.symbols() if not s.sheet.startswith("Label_")]
         return suggest(found, symbols, feature_of, layer_category, category_of, limit)
+
+    # -- version comparison --------------------------------------------------------
+
+    def describe_element(self, row: dict | None) -> dict:
+        """Library title for one stored element, for the changes list."""
+        if not row:
+            return {"title": "", "name": "", "item": "", "svg": "", "status": ""}
+        found = _found_from_row(row)
+        res = resolve(found, self.index, self.mappings)
+        title = found.name or found.source_key
+        item = found.item
+        svg = ""
+        if res.symbol_key:
+            sym = self.index.by_key.get(res.symbol_key)
+            if sym is not None:
+                fam = self.families.get(self.family_of.get(sym.key, ""))
+                if fam is not None:
+                    title = fam.title
+                    item = item or fam.representative.item
+                    show_fill = self.fills.get(fam.key, True)
+                    rep = fam.representative
+                    svg = rep.svg if show_fill or not rep.has_fill else rep.svg_nofill
+                else:
+                    title = sym.name
+                    item = item or sym.item
+                    svg = sym.svg
+        return {"title": title, "name": found.name, "item": item, "svg": svg, "status": res.status}
+
+    def compare_plan(self, project: Project, plan: dict, older: int | None, newer: int | None) -> dict:
+        """Changes between two versions of one floor. None means there is only one import."""
+        versions = project.versions(plan["id"])
+        base = {"plan_id": plan["id"], "name": plan["name"], "versions": versions,
+                "older": older, "newer": newer, "comparable": older is not None and newer is not None,
+                "changes": [], "ignored_changes": [], "unchanged": 0,
+                "summary": {"neu": 0, "weg": 0, "geaendert": 0}}
+        if older is None or newer is None:
+            return base
+        before_rows = {row["source_key"]: row for row in project.elements(older)}
+        after_rows = {row["source_key"]: row for row in project.elements(newer)}
+        before_counts = {key: int(row["count"] or 0) for key, row in before_rows.items()}
+        after_counts = {key: int(row["count"] or 0) for key, row in after_rows.items()}
+        changes = []
+        for row in diff_counts(before_counts, after_counts):
+            shown = after_rows.get(row["key"]) or before_rows.get(row["key"])
+            changes.append({**self.describe_element(shown), "source_key": row["key"],
+                            "kind": row["kind"], "before": row["before"], "after": row["after"],
+                            "delta": row["delta"]})
+        changes.sort(key=lambda row: (0 if row["kind"] == "neu" else 1 if row["kind"] == "geaendert" else 2,
+                                     (row["title"] or "").lower()))
+        ignored = []
+        for row in diff_counts(project.version_ignored(older), project.version_ignored(newer)):
+            ignored.append({"name": row["key"], "reason": _import_reason(row["key"]),
+                            "kind": row["kind"], "before": row["before"], "after": row["after"],
+                            "delta": row["delta"]})
+        ignored.sort(key=lambda row: (0 if row["kind"] == "neu" else 1 if row["kind"] == "geaendert" else 2,
+                                     row["name"].lower()))
+        base.update(changes=changes, ignored_changes=ignored,
+                    unchanged=unchanged_count(before_counts, after_counts),
+                    summary=tally(changes))
+        return base

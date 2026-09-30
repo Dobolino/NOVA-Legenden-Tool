@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Suggestion, UnknownElement } from "../api";
 import { floorNameFromFilename } from "../floors";
+import ChangesTab, { changeHint } from "./ChangesTab";
 
 interface Props {
   projectId: string;
@@ -11,7 +12,7 @@ interface Props {
   onOpenProject: (id: string) => void;
 }
 
-type Tab = "list" | "unknown" | "layers" | "ignored";
+type Tab = "list" | "unknown" | "layers" | "ignored" | "changes";
 
 export default function ProjectView({ projectId, projects, categories, notify, onBack, onOpenProject }: Props) {
   const [data, setData] = useState<ProjectDetail | null>(null);
@@ -84,6 +85,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
 
   const plans = data.plans;
   const planTotals = Object.fromEntries(plans.map((p) => [p.id, data.rows.reduce((n, r) => n + (r.counts[p.id] ?? 0), 0)]));
+  const changeCount = plans.reduce(
+    (n, p) => n + (p.change_summary ? p.change_summary.neu + p.change_summary.weg + p.change_summary.geaendert : 0),
+    0,
+  );
 
   // Group the overall list by the first category of each row
   const groups: { cat: Category | null; rows: typeof data.rows }[] = [];
@@ -268,6 +273,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                     <td>
                       {p.file_name} <span className="badge">{p.format?.toUpperCase()}</span>
                       {p.versions > 1 && <span className="hint"> · {p.versions} Versionen</span>}
+                      {p.versions > 1 && p.change_summary && <div className="hint">{changeHint(p.change_summary)}</div>}
                     </td>
                     <td>
                       {p.imported_at?.replace("T", " ").slice(0, 16)} · {p.imported_by}
@@ -379,6 +385,9 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               <button className={`tab ${tab === "list" ? "active" : ""}`} onClick={() => setTab("list")}>
                 Gesamtliste ({data.rows.length})
               </button>
+              <button className={`tab ${tab === "changes" ? "active" : ""}`} onClick={() => setTab("changes")}>
+                Änderungen{changeCount ? ` (${changeCount})` : ""}
+              </button>
               <button className={`tab ${tab === "unknown" ? "active" : ""}`} onClick={() => setTab("unknown")}>
                 Unbekannt ({data.unknown.length})
               </button>
@@ -480,6 +489,14 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {tab === "changes" && (
+              <ChangesTab
+                projectId={projectId}
+                stamp={plans.map((p) => `${p.id}:${p.current_version}:${p.versions}`).join(",")}
+                notify={notify}
+              />
             )}
 
             {tab === "unknown" && (
