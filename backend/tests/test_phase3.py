@@ -126,3 +126,25 @@ def test_identical_reimport_reports_no_change(env):
     assert data["plans"][0]["change_summary"] == {"neu": 0, "weg": 0, "geaendert": 0}
     compared = client.get(f"/api/projects/{pid}/changes").json()["plans"][0]
     assert compared["changes"] == [] and compared["ignored_changes"] == [] and compared["unchanged"] >= 3
+
+
+def test_merge_keeps_same_key_when_a_second_graphic_appears():
+    from nova_legend.importer.model import Found
+    from nova_legend.projects.store import merge_found
+
+    previous = [{"source_key": "code:D|C1|G1", "name": "A", "count": 1, "item": "C1", "graphic_name": "G1"}]
+    rows = merge_found(previous, [Found("code:D|C1|G2", "B", 2, item="C1", graphic_name="G2"),
+                                  Found("code:D|C1|G1", "A", 3, item="C1", graphic_name="G1")])
+    counts = {row["source_key"]: row["count"] for row in rows}
+    assert counts == {"code:D|C1|G1": 3, "code:D|C1|G2": 2}
+
+
+def test_merge_does_not_guess_between_datasets_with_the_same_code():
+    from nova_legend.importer.model import Found
+    from nova_legend.projects.store import merge_found
+
+    previous = [{"source_key": "n4d:V1|90|90-30|2D-10", "name": "V1", "count": 4, "item": "90-30", "graphic_name": "G1"},
+                {"source_key": "n4d:V2|90|90-30|2D-10", "name": "V2", "count": 5, "item": "90-30", "graphic_name": "G2"}]
+    rows = merge_found(previous, [Found("code:X|90-30|G3", "Neu", 6, item="90-30", graphic_name="G3")])
+    counts = {row["source_key"]: row["count"] for row in rows}
+    assert counts == {"code:X|90-30|G3": 6, "n4d:V1|90|90-30|2D-10": 0, "n4d:V2|90|90-30|2D-10": 0}

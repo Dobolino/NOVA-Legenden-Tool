@@ -99,7 +99,8 @@ def _match_previous(found, pool: list[dict], used: set[int]) -> int | None:
                 named = [i for i in by_code if _norm(pool[i].get("name")) == _norm(found.name)]
                 if named:
                     return pick(named)
-            return pick(by_code)
+            # Same code in several datasets (V1 and V2): no safe choice.
+            return None
     if found.graphic_name:
         same = [i for i in free() if _norm(pool[i].get("graphic_name")) == _norm(found.graphic_name)]
         if same:
@@ -116,11 +117,29 @@ def merge_found(previous: list[dict], found_list) -> list[dict]:
     """Keep existing rows. New counts overwrite a match; missing rows stay at 0."""
     used: set[int] = set()
     merged: list[dict] = []
-    for found in found_list:
-        index = _match_previous(found, previous, used)
+    found_list = list(found_list)
+    # Same key first, so a row that is still there never loses its key to a look-alike.
+    exact: dict[int, int] = {}
+    by_key = {row.get("source_key"): i for i, row in enumerate(previous)}
+    for n, found in enumerate(found_list):
+        index = by_key.get(found.source_key)
+        if index is not None and index not in used:
+            used.add(index)
+            exact[n] = index
+    taken = {found.source_key for found in found_list}
+    keys: set[str] = set()
+    for n, found in enumerate(found_list):
+        index = exact[n] if n in exact else _match_previous(found, previous, used)
         old = previous[index] if index is not None else None
+        key = found.source_key
+        if old and old["source_key"] not in keys and (old["source_key"] == key or old["source_key"] not in taken):
+            key = old["source_key"]
+        elif old:
+            used.discard(index)
+            old = None
+        keys.add(key)
         merged.append({
-            "source_key": old["source_key"] if old else found.source_key,
+            "source_key": key,
             "name": found.name or (old or {}).get("name") or "",
             "count": found.count,
             "dataset": found.dataset or (old or {}).get("dataset") or "",
@@ -132,7 +151,7 @@ def merge_found(previous: list[dict], found_list) -> list[dict]:
             "features": found.features,
         })
     for index, old in enumerate(previous):
-        if index in used:
+        if index in used or old["source_key"] in keys:
             continue
         merged.append({**old, "count": 0})
     return merged
