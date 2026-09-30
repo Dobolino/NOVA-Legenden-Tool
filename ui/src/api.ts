@@ -167,5 +167,19 @@ export const api = {
   resetCategories: () => request<{ items: Category[] }>("POST", "/api/categories/reset"),
 };
 
-export const DATASET_LABEL = (id: string) =>
-  id.includes(".V2.") ? "V2 (2025)" : id.replace("Trimble.Elektroinstallationen.", "") === "CH" ? "V1 (2022)" : id;
+// Readable dataset names, filled from /api/status (long name of each dataset)
+const datasetNames: Record<string, string> = {};
+
+export function setDatasetNames(datasets: DatasetInfo[]) {
+  for (const d of datasets) {
+    const hidden = /\binvisible\b/i.test(d.long_name);
+    const name = d.long_name.replace(/\s*\binvisible\b/i, "").trim() || d.id;
+    datasetNames[d.id] = hidden ? `${name} (in Nova ausgeblendet)` : name;
+  }
+}
+
+export const DATASET_LABEL = (id: string) => {
+  if (id === "Trimble.Elektroinstallationen.V2.CH") return "V2 (2025)";
+  if (id === "Trimble.Elektroinstallationen.CH") return "V1 (2022)";
+  return datasetNames[id] ?? id;
+};

@@ -50,6 +50,43 @@ DEFAULT_CATEGORIES: list[Category] = [
     Category("hlks", "Melder, Fühler, Sensoren (HLKS)", "E_HLKS", sheets=["110", "120"]),
     Category("erdung", "Blitzschutz und Erdung", "E_Starkstrom", sheets=["190", "200"]),
     Category("diverse", "Diverse", "E_Starkstrom", sheets=["101"]),
+    Category("schema", "Schema Verteiler (Niederspannung)", "E_Starkstrom"),
+]
+
+# Number ranges of the other Nova electrical datasets (added in defaults
+# version 2): Niederspannung CH, Schwachstrom CH, Elektro-Trassen.
+EXTRA_SHEETS: dict[str, list[str]] = {
+    "allgemein": ["E_Label_Z1", "ALLG"],
+    "leitungen": ["Beschriftung_6_2", "GZLSym", "LeitungsVerw", "Tra1"],
+    "verteiler": ["VT1"],
+    "licht": ["T5", "T8", "LB", "DL_EB", "DL_AP", "WL_EB", "WL_AP", "BL_AP", "BL_UP",
+              "geoL_AP", "geoL_EB", "geoWL_AP", "geoWL_EB", "geoBL_AP", "geoBL_EB"],
+    "fluchtweg": ["RZL0"],
+    "schalter": ["S_P0", "S_P1", "S_P2", "S_P3", "S_P8", "S_P9", "S_KombGr1", "S_P10", "S_P11"],
+    "steckdosen": ["S_KombGr1", "SD_5P0_UP", "SD_5P0_AP", "SD_3P0_UP", "SD_3P0_AP", "SD_3P0_SZ",
+                   "SD_2P0_UP", "SD_2P0_AP", "VT2"],
+    "kraft": ["EG_Anschluesse", "Hauswirtschaft", "Warmwasser", "EG_Antriebe", "Wandler"],
+    "schwachstrom": ["S_P5", "AKSG", "OPSG"],
+    "telefon": ["FMA", "FMVT"],
+    "edv": ["EDV"],
+    "tv": ["TV"],
+    "gsa": ["GSA"],
+    "uhren": ["UHR"],
+    "pans": ["S_P4", "KHS", "KHS_A", "KHS_B", "KHS_C", "RKS"],
+    "knx": ["KNX", "KNX_A", "KNX_B", "BUSKNX"],
+    "bma": ["S_P7", "BMA"],
+    "sicherheit": ["S_P6", "EMA", "SICHERHEIT"],
+    "hlks": ["HLK", "MEFUE"],
+    "erdung": ["FE", "BS"],
+}
+for _cat in DEFAULT_CATEGORIES:
+    for _sheet in EXTRA_SHEETS.get(_cat.id, []):
+        if _sheet not in _cat.sheets:
+            _cat.sheets.append(_sheet)
+
+# Whole datasets that go to one category when the sheet is unknown
+DATASET_RULES: list[tuple[str, str]] = [
+    ("Niederspannung_E", "schema"),   # distribution board schematics (FI, LS, ...)
 ]
 
 # Fallback rules on the symbol name (only used when the sheet is unknown)

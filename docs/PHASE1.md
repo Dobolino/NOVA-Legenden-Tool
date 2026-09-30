@@ -46,6 +46,13 @@ Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, fal
 - Zähler in der Seitenleiste zählen nur den gewählten Datensatz.
 - Die Suche in der Familienansicht findet Name und Katalogcode aller Varianten (z. B. den AP-Code).
 
+## Weitere Nova-Datensätze
+
+- Die automatische Suche nimmt alle Elektro-Datensätze (DataFormat «…_elo»). HLKS- und Sanitär-Datensätze im Warehouse-Ordner bleiben draussen.
+- Geprüft: Niederspannung CH (983 Symbole), Niederspannung VT (1619, Verteiler-Schema), Schwachstrom CH (438), Elektro-Trassen (keine Symbole, nur Trassen-Bauteile).
+- 6 Symbole in den Niederspannung-Datensätzen haben abgeschnittene Grafiken (Fehler in den Trimble-Daten). Das Tool liest den vollständigen Teil und lädt den Rest des Datensatzes normal.
+- Alle Nummernkreise der neuen Datensätze haben eine Kategorie. Niederspannung VT kommt in die neue Kategorie «Schema Verteiler (Niederspannung)». Bestehende firma.sqlite-Dateien werden einmal ergänzt. Eigene Zuordnungen bleiben unverändert.
+
 ## Bekannte Grenzen
 
 - 141 parametrische Leuchten (Engine) und 22 Bibliothekssymbole (.nsb) zeigen einen Platzhalter. Lösung in Phase 2 über den DXF-Import.

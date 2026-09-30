@@ -182,7 +182,11 @@ class Dataset:
             kind = gi.get("Type", "")
             geo = None
             if gi.get("Geometry") and kind in ("Geometry", "Symbol"):
-                geo = parse_geometry(gi.get("Geometry"))
+                try:
+                    geo = parse_geometry(gi.get("Geometry"))
+                except (ValueError, IndexError, TypeError):
+                    # One broken graphic must not stop the whole dataset
+                    geo = None
             symbols.append(Symbol(
                 dataset=self.info.id,
                 item=item,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, Category, Options, Status, UpdateInfo } from "./api";
+import { api, Category, Options, setDatasetNames, Status, UpdateInfo } from "./api";
 import Library from "./components/Library";
 import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
@@ -28,6 +28,7 @@ export default function App() {
   const reload = useCallback(async () => {
     try {
       const [s, c, o] = await Promise.all([api.status(), api.categories(), api.options()]);
+      setDatasetNames(s.datasets);
       setStatus(s);
       setCategories(c.items);
       setOptions(o);

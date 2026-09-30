@@ -98,3 +98,17 @@ def test_api_library_flow(home):
     cats = client.get("/api/categories").json()["items"]
     assert next(c for c in cats if c["id"] == "schalter")["family_count"] > 50
     assert client.post("/api/categories", json={"title": " "}).status_code == 400
+
+
+def test_find_datasets_only_electrical(tmp_path):
+    import zipfile
+
+    from nova_legend.parser.tree import Node, serialize
+
+    (tmp_path / "Elektro").mkdir()
+    for name, fmt in (("Elektro/a.nzp", "nova10.2_elo"), ("hlks.nzp", "nova10.2_hlk")):
+        with zipfile.ZipFile(tmp_path / name, "w") as zf:
+            zf.writestr("Set", serialize(Node("DataSet", {"ID": name, "DataFormat": fmt})))
+    (tmp_path / "kaputt.nzp").write_bytes(b"no zip")
+    found = [Path(p).name for p in config.find_datasets([str(tmp_path)])]
+    assert found == ["a.nzp"]

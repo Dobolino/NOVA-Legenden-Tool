@@ -45,7 +45,24 @@ DATASET_SEARCH_ROOTS = [
     r"C:\Users\Public\Documents\Trimble",
     r"C:\Nova",
 ]
-DATASET_PATTERN = "Elektroinstallationen*.nzp"
+DATASET_PATTERN = "*.nzp"
+
+
+def is_electrical_dataset(path: Path) -> bool:
+    """True for Nova electrical datasets (DataFormat 'nova…_elo').
+
+    The Warehouse folder also holds HVAC and sanitary datasets. They are skipped.
+    """
+    import zipfile
+
+    from .parser import tree
+
+    try:
+        with zipfile.ZipFile(path) as zf:
+            attrs = tree.parse(zf.read("Set")).root.attrs
+    except Exception:  # noqa: BLE001 - unreadable files are simply skipped
+        return False
+    return attrs.get("DataFormat", "").endswith("_elo")
 
 
 def local_home() -> Path:
@@ -123,8 +140,9 @@ def find_datasets(roots: list[str] | None = None, max_depth: int = 7) -> list[st
                 if depth >= max_depth:
                     dirnames[:] = []
                 for name in filenames:
-                    if Path(name).match(DATASET_PATTERN):
-                        found.append(str(Path(dirpath) / name))
+                    path = Path(dirpath) / name
+                    if path.match(DATASET_PATTERN) and is_electrical_dataset(path):
+                        found.append(str(path))
         except OSError:
             continue
     return sorted(set(found))

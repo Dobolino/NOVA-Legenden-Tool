@@ -102,7 +102,7 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
         if manual:
             return manual, "manuell"
         rep = fam.representative
-        return auto_categories(rep.sheet, rep.name, categories)
+        return auto_categories(rep.sheet, rep.name, categories, rep.dataset)
 
     def family_entry(fam_id: str, fam, categories, assignments) -> dict:
         cats, source = family_categories(fam, categories, assignments)

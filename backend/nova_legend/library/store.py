@@ -18,7 +18,7 @@ from ..render.svg import render_svg
 from .families import FamilyOptions, build_families, family_key, label_variant, orientation
 
 # Bump when the parser or renderer output changes: forces a rebuild of the cache
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);

@@ -31,7 +31,7 @@ Sexp = list | str  # nested list of atoms
 # Tokenizer
 # ---------------------------------------------------------------------------
 
-def parse_sexp(text: str) -> list:
+def parse_sexp(text: str, strict: bool = True) -> list:
     """Turn the bracket notation into nested Python lists.
 
     Quoted strings ("...") become Python strings wrapped in a 1-tuple marker
@@ -72,8 +72,9 @@ def parse_sexp(text: str) -> list:
                 j += 1
             stack[-1].append(text[i:j])
             i = j
-    if len(stack) != 1:
+    if len(stack) != 1 and strict:
         raise ValueError("Unbalanced '(' in geometry")
+    # strict=False: a truncated text keeps what was read (open lists are closed)
     return stack[0]
 
 
@@ -289,7 +290,13 @@ def _block_items(block: list) -> list:
 def parse_geometry(text: str) -> SymbolGeometry:
     """Parse a Geometry attribute into a SymbolGeometry."""
     geo = SymbolGeometry()
-    top = parse_sexp(text)
+    try:
+        top = parse_sexp(text)
+    except ValueError:
+        # Some Trimble datasets contain truncated geometry texts (e.g.
+        # Niederspannung.CH KNX_01_B). Keep the complete part.
+        top = parse_sexp(text, strict=False)
+        geo.warnings.append("geometry text truncated (partly read)")
     if len(top) < 1:
         geo.warnings.append("empty geometry")
         return geo

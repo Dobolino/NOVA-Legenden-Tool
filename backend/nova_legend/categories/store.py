@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..config import current_user
-from .defaults import DEFAULT_CATEGORIES, NAME_RULES
+from .defaults import DATASET_RULES, DEFAULT_CATEGORIES, EXTRA_SHEETS, NAME_RULES
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories (
@@ -43,6 +43,10 @@ DEFAULT_OPTIONS = {
     "show_empty_categories": False,
     "legend_by_category": True,
 }
+
+# Bump when default categories gain number ranges; existing company files
+# are extended once (only ranges that are not assigned anywhere yet).
+DEFAULTS_VERSION = 2
 
 CATEGORY_FIELDS = ("title", "parent", "layer", "columns", "spacing", "hidden", "sheets")
 
@@ -71,6 +75,9 @@ class CompanyStore:
             con.executescript(SCHEMA)
             if not con.execute("SELECT 1 FROM categories LIMIT 1").fetchone():
                 self._seed(con)
+                self._set_defaults_version(con)
+            else:
+                self._migrate(con)
 
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
@@ -95,12 +102,53 @@ class CompanyStore:
                  sort, 0, json.dumps(d["sheets"]), "system", _now()))
         self._log(con, "seed", "Standardkategorien angelegt")
 
+    def _set_defaults_version(self, con: sqlite3.Connection) -> None:
+        con.execute("INSERT OR REPLACE INTO options VALUES ('defaults_version', ?)",
+                    (json.dumps(DEFAULTS_VERSION),))
+
+    def _migrate(self, con: sqlite3.Connection) -> None:
+        row = con.execute("SELECT value FROM options WHERE key='defaults_version'").fetchone()
+        version = json.loads(row["value"]) if row else 1
+        if version >= DEFAULTS_VERSION:
+            return
+        rows = {r["id"]: json.loads(r["sheets"] or "[]")
+                for r in con.execute("SELECT id, sheets FROM categories")}
+        used = {s for sheets in rows.values() for s in sheets}
+        counts: dict[str, int] = {}
+        for extra in EXTRA_SHEETS.values():
+            for sheet in extra:
+                counts[sheet] = counts.get(sheet, 0) + 1
+        shared = {sheet for sheet, n in counts.items() if n > 1}
+        added = []
+        for cat_id, extra in EXTRA_SHEETS.items():
+            if cat_id not in rows:
+                continue
+            # A range may be added if nobody uses it yet, or if the defaults
+            # themselves put it into several categories (e.g. S_KombGr1).
+            new = [s for s in extra if s not in rows[cat_id]
+                   and (s not in used or s in shared)]
+            if new:
+                rows[cat_id] += new
+                used.update(new)
+                con.execute("UPDATE categories SET sheets=? WHERE id=?",
+                            (json.dumps(rows[cat_id]), cat_id))
+                added.append(f"{cat_id}: {', '.join(new)}")
+        if "schema" not in rows:
+            schema = next(c for c in DEFAULT_CATEGORIES if c.id == "schema")
+            sort = con.execute("SELECT COALESCE(MAX(sort), 0) + 1 FROM categories").fetchone()[0]
+            con.execute("INSERT INTO categories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (schema.id, schema.title, None, schema.layer, schema.columns,
+                         schema.spacing_mm, sort, 0, "[]", "system", _now()))
+            added.append("neue Kategorie schema")
+        self._set_defaults_version(con)
+        self._log(con, "migrate", f"Standard v{DEFAULTS_VERSION}: " + "; ".join(added))
+
     # -- options ---------------------------------------------------------------
 
     def options(self) -> dict:
         with self._tx() as con:
             stored = {r["key"]: json.loads(r["value"]) for r in con.execute("SELECT * FROM options")}
-        return {**DEFAULT_OPTIONS, **stored}
+        return {k: stored.get(k, v) for k, v in DEFAULT_OPTIONS.items()}
 
     def set_options(self, values: dict) -> dict:
         with self._tx() as con:
@@ -204,13 +252,17 @@ class CompanyStore:
             self._log(con, "assign", f"{family_key} -> {category_ids}")
 
 
-def auto_categories(sheet: str, name: str, categories: list[dict]) -> tuple[list[str], str]:
-    """Automatic rule: number range first, then name pattern, else Diverse."""
+def auto_categories(sheet: str, name: str, categories: list[dict],
+                    dataset: str = "") -> tuple[list[str], str]:
+    """Automatic rule: number range, then dataset rule, then name pattern, else Diverse."""
     ids = [c["id"] for c in categories if sheet in c["sheets"]]
     if ids:
         return ids, f"Nummernkreis {sheet}"
-    low = name.lower()
     known = {c["id"] for c in categories}
+    for fragment, cat_id in DATASET_RULES:
+        if cat_id in known and fragment in dataset:
+            return [cat_id], "Datensatz"
+    low = name.lower()
     for pattern, cat_id in NAME_RULES:
         if cat_id in known and re.search(pattern, low):
             return [cat_id], "Namensmuster"
