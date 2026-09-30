@@ -88,26 +88,34 @@ def register(app: FastAPI, st) -> None:
         after = {row["source_key"]: int(row["count"] or 0) for row in p.elements(versions[0]["id"])}
         return tally(diff_counts(before, after))
 
+    def category_colors(p, ev, result: dict | None = None) -> list[dict]:
+        """Colour and layer state per category (after ev.evaluate, which fills layer_usage)."""
+        if result is None:
+            result = ev.evaluate(p)
+        layers = p.layers()
+        chosen = (p.settings().get("category_layers") or {})
+        usage = getattr(ev, "layer_usage", {})
+        used = category_usage(result["rows"])
+        out = []
+        for cat in ev.categories:
+            picked = pick_category_layer(cat.get("layer") or "", layers, usage.get(cat["id"], {}),
+                                         chosen.get(cat["id"]) or None)
+            out.append({"id": cat["id"], "title": cat["title"], "parent": cat.get("parent"),
+                        "legend_layer": cat.get("layer") or "", **picked,
+                        **category_state(picked, layers, used.get(cat["id"], 0))})
+        return out
+
     def detail(project_id: str) -> dict:
         p = project(project_id)
         ev = evaluator()
         result = ev.evaluate(p)
         layers = p.layers()
-        chosen = (p.settings().get("category_layers") or {})
-        usage = getattr(ev, "layer_usage", {})
-        used = category_usage(result["rows"])
-        category_colors = []
-        for cat in ev.categories:
-            picked = pick_category_layer(cat.get("layer") or "", layers, usage.get(cat["id"], {}),
-                                         chosen.get(cat["id"]) or None)
-            category_colors.append({"id": cat["id"], "title": cat["title"], "parent": cat.get("parent"),
-                                    "legend_layer": cat.get("layer") or "", **picked,
-                                    **category_state(picked, layers, used.get(cat["id"], 0))})
+        category_colors_ = category_colors(p, ev, result)
         meta = p.meta()
         for plan in result["plans"]:
             plan["change_summary"] = _change_summary(p, plan["id"])
         return {"id": p.id, "meta": meta, "settings": p.settings(), "layers": layers,
-                "category_colors": category_colors, "export_name": export_filename(meta),
+                "category_colors": category_colors_, "export_name": export_filename(meta),
                 "folder": str(p.folder), **result}
 
 
@@ -130,7 +138,10 @@ def register(app: FastAPI, st) -> None:
     @app.post("/api/projects")
     def create_project(body: ProjectIn) -> dict:
         try:
-            p = manager().create(body.name, body.nova_version, body.template or None, body.project_number)
+            legend = st.company.legend_settings()
+            p = manager().create(body.name, body.nova_version, body.template or None, body.project_number,
+                                 legend_style={"text_size": legend["legend_text_size"],
+                                               "symbol_scale": legend["legend_symbol_scale"], "columns": 2})
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         except KeyError:
@@ -302,4 +313,4 @@ def register(app: FastAPI, st) -> None:
         return st.company.layer_colors()
 
     from .legend import register as register_legend
-    register_legend(app, st, project, evaluator)
+    register_legend(app, st, project, evaluator, category_colors)

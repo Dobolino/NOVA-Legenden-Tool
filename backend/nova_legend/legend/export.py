@@ -1,0 +1,207 @@
+"""Write a placed legend as DXF (R2013, AC1027) and, with the ODA converter, as DWG.
+
+Colours are true colours: header bar, background, border, symbols, lines and
+texts. Every symbol becomes a block (drawn BYBLOCK, the insert carries the
+section colour); filled areas get a lighter tint of it. Layers: symbols and
+lines on the legend layer of their category, texts on X_Text, frames and bars
+on X_Geometrie (layer names of the existing edeco legend).
+"""
+
+from __future__ import annotations
+
+import math
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+from ..parser.geometry import flex_points, sample_arc, sample_ellipse, sample_spline
+from ..render.svg import geometry_bounds
+from .general import GeneralPart
+from .model import tint
+
+LINETYPES = {"solid": "CONTINUOUS", "dashed": "DASHED", "dotted": "DOT", "dashdot": "DASHDOT"}
+TEXT_LAYER = "X_Text"
+FRAME_LAYER = "X_Geometrie"
+
+
+def _rgb(color: str) -> tuple[int, int, int]:
+    return int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+
+
+def _layer(doc, name: str) -> str:
+    name = (name or "0").strip() or "0"
+    name = re.sub(r'[<>/\\":;?*|=`]', "_", name)[:120]
+    if name not in doc.layers:
+        doc.layers.add(name)
+    return name
+
+
+def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = "Arial"):
+    """Return an ezdxf document of the placed legend. ``geometry_for(prim)`` gives the
+    SymbolGeometry (metres) of a symbol primitive, or None."""
+    import ezdxf
+
+    doc = ezdxf.new("R2013", setup=True, units=4)     # millimetres
+    doc.header["$INSUNITS"] = 4
+    doc.header["$LTSCALE"] = 1.0
+    if "Arial" not in doc.styles:
+        doc.styles.add("Arial", font="arial.ttf")
+    if "Arial Bold" not in doc.styles:
+        doc.styles.add("Arial Bold", font="arialbd.ttf")
+    msp = doc.modelspace()
+    height = lay["height"]
+    blocks: dict[str, str] = {}
+
+    def Y(y: float) -> float:
+        return round(height - y, 4)
+
+    def draw(prims, dx=0.0, dy=0.0):
+        for p in prims:
+            t = p["t"]
+            if t == "rect":
+                if p.get("role") == "general":
+                    continue
+                pts = [(p["x"] + dx, Y(p["y"] + dy)), (p["x"] + dx + p["w"], Y(p["y"] + dy)),
+                       (p["x"] + dx + p["w"], Y(p["y"] + dy + p["h"])), (p["x"] + dx, Y(p["y"] + dy + p["h"]))]
+                layer = _layer(doc, FRAME_LAYER)
+                if p.get("fill"):
+                    h = msp.add_hatch(dxfattribs={"layer": layer})
+                    h.rgb = _rgb(p["fill"])
+                    h.paths.add_polyline_path(pts, is_closed=True)
+                if p.get("stroke"):
+                    pl = msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer, "const_width": 0.25})
+                    pl.rgb = _rgb(p["stroke"])
+            elif t == "text":
+                if not p["text"]:
+                    continue
+                txt = msp.add_text(p["text"], height=p["size"], dxfattribs={
+                    "layer": _layer(doc, TEXT_LAYER), "style": "Arial Bold" if p.get("bold") else "Arial"})
+                txt.set_placement((p["x"] + dx, Y(p["y"] + dy)))
+                txt.rgb = _rgb(p["color"])
+            elif t == "line":
+                ln = msp.add_line((p["x1"] + dx, Y(p["y1"] + dy)), (p["x2"] + dx, Y(p["y2"] + dy)), dxfattribs={
+                    "layer": _layer(doc, p.get("layer") or FRAME_LAYER), "linetype": LINETYPES.get(p["style"], "CONTINUOUS"),
+                    "ltscale": 0.25, "lineweight": 35})
+                ln.rgb = _rgb(p["color"])
+            elif t == "half":
+                cx, cy, r = p["cx"] + dx, Y(p["cy"] + dy), p["r"]
+                c = msp.add_circle((cx, cy), r, dxfattribs={"layer": _layer(doc, FRAME_LAYER)})
+                c.rgb = _rgb(p["color"])
+                half = [(cx + r * math.sin(a), cy + r * math.cos(a)) for a in
+                        [math.pi * i / 24 for i in range(25)]]
+                h = msp.add_hatch(dxfattribs={"layer": _layer(doc, FRAME_LAYER)})
+                h.rgb = _rgb(p["color"])
+                h.paths.add_polyline_path(half, is_closed=True)
+            elif t == "symbol":
+                geo = geometry_for(p)
+                if geo is None or not geo.primitives:
+                    continue
+                name = _symbol_block(doc, blocks, p, geo)
+                x0, y0, x1, y1 = geometry_bounds(geo)
+                bcx, bcy = (x0 + x1) / 2 * 1000, (y0 + y1) / 2 * 1000
+                s = p["scale"]
+                ins = msp.add_blockref(name, (p["cx"] + dx - bcx * s, Y(p["cy"] + dy) - bcy * s), dxfattribs={
+                    "xscale": s, "yscale": s, "layer": _layer(doc, p.get("layer") or "0")})
+                ins.rgb = _rgb(p["color"])
+
+    if general and general.kind == "project":
+        g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
+        if g:
+            draw(general.prims, g["x"], g["y"])
+    if general and general.kind == "dxf":
+        g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
+        if g:
+            _import_general(doc, msp, general, g["x"], Y(g["y"] + g["h"]))
+    draw(lay["prims"])
+    return doc
+
+
+def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float) -> None:
+    import ezdxf
+    from ezdxf.addons import Importer
+
+    src = ezdxf.readfile(general.dxf_path)
+    blk = doc.blocks.new("Allgemeinteil")
+    imp = Importer(src, doc)
+    imp.import_entities(src.modelspace(), target_layout=blk)
+    imp.finalize()
+    sc = general.scale
+    msp.add_blockref("Allgemeinteil", (x - general.ext_min[0] * sc, y_bottom - general.ext_min[1] * sc),
+                     dxfattribs={"xscale": sc, "yscale": sc, "layer": _layer(doc, FRAME_LAYER)})
+
+
+def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
+    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|{prim['color']}"
+    if key in cache:
+        return cache[key]
+    base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
+    name = f"{base}_{len(cache) + 1}"
+    blk = doc.blocks.new(name)
+    fill = _rgb(tint(prim["color"], 0.45))
+    for p in geo.primitives:
+        d = p.data
+        pts: list = []
+        closed = False
+        if p.kind == "line":
+            blk.add_line(_mm(d["start"]), _mm(d["end"]), dxfattribs={"color": 0})
+            continue
+        if p.kind == "arc" and d.get("full"):
+            e = blk.add_circle(_mm(d["center"]), d["radius"] * 1000, dxfattribs={"color": 0})
+            if p.filled:
+                h = blk.add_hatch()
+                h.rgb = fill
+                h.paths.add_polyline_path([_mm(q) for q in sample_arc(d, 48)], is_closed=True)
+            continue
+        if p.kind == "arc":
+            pts = sample_arc(d)
+        elif p.kind == "ellipse_arc":
+            pts = sample_ellipse(d)
+            closed = abs(abs(d["sweep"]) - 2 * math.pi) < 1e-6
+        elif p.kind in ("polygon", "hatch"):
+            pts, closed = flex_points(d), True
+        elif p.kind == "polyline":
+            pts = flex_points(d)
+        elif p.kind == "spline":
+            pts = sample_spline(d)
+        elif p.kind == "text":
+            t = blk.add_text(d["text"], height=d["height"] * 1000, rotation=d.get("rotation", 0.0),
+                             dxfattribs={"color": 0, "style": "Arial"})
+            t.set_placement(_mm(d["position"]))
+            continue
+        if len(pts) < 2:
+            continue
+        mm = [_mm(q) for q in pts]
+        if p.filled and len(mm) >= 3:
+            h = blk.add_hatch()
+            h.rgb = _rgb(tint(prim["color"], 0.7)) if p.kind == "hatch" else fill
+            h.paths.add_polyline_path(mm, is_closed=True)
+        blk.add_lwpolyline(mm, close=closed, dxfattribs={"color": 0})
+    cache[key] = name
+    return name
+
+
+def _mm(p) -> tuple[float, float]:
+    return round(p[0] * 1000, 4), round(p[1] * 1000, 4)
+
+
+def dxf_to_dwg(dxf: Path, oda_exe: str | None, out_dir: Path) -> Path:
+    """Convert with the ODA File Converter. Same message as the import when it is missing."""
+    from ..importer.dwg import ConverterMissing, MISSING_MESSAGE
+
+    if not oda_exe or not Path(oda_exe).exists():
+        raise ConverterMissing(MISSING_MESSAGE)
+    in_dir = Path(tempfile.mkdtemp(prefix="nl_dxf_in_"))
+    try:
+        shutil.copy2(dxf, in_dir / dxf.name)
+        flags = 0x08000000 if sys.platform == "win32" else 0
+        proc = subprocess.run([oda_exe, str(in_dir), str(out_dir), "ACAD2013", "DWG", "0", "1", dxf.name],
+                              capture_output=True, timeout=300, creationflags=flags)  # noqa: S603
+        target = out_dir / (dxf.stem + ".dwg")
+        if not target.exists():
+            raise RuntimeError(f"ODA File Converter hat keine DWG-Datei erzeugt (Rückgabewert {proc.returncode}).")
+        return target
+    finally:
+        shutil.rmtree(in_dir, ignore_errors=True)

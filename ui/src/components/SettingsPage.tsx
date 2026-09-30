@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import CompanyLegendCard from "./CompanyLegendCard";
 import { api, DATASET_LABEL, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
 import type { ThemeMode } from "../theme";
@@ -87,7 +88,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   const pickHint = canPick ? "" : "Dateidialoge gibt es nur im Programmfenster. Pfad bitte einfügen.";
 
   /** Native dialog of the program window. Cancel keeps the previous value. */
-  async function choose(kind: "dataset" | "folder", start: string): Promise<string | null> {
+  async function choose(kind: "dataset" | "folder" | "legend", start: string): Promise<string | null> {
     try {
       const r = await api.dialog(kind, start);
       if (!r.available) {
@@ -335,6 +336,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           <p className="hint" style={{ wordBreak: "break-all" }}>Aktuelle Datei: {status.company_db}</p>
           {status.company_error && <p className="warn-text">{status.company_error}</p>}
         </div>
+
+        <CompanyLegendCard canPick={canPick} choose={choose} notify={notify} />
 
         <div className="card">
           <h3>Nova-Version (Standard für neue Projekte)</h3>

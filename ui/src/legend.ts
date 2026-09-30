@@ -1,7 +1,8 @@
-// Legend document and editing steps of the legend editor (Phase 4).
+// Legend document (version 2) and editing steps of the legend editor.
+// No free coordinates: the backend places everything on a fixed grid.
 // Pure functions, so npm test checks them without a browser.
 
-export type ItemKind = "symbol" | "line" | "note";
+export type ItemKind = "symbol" | "line" | "note" | "text";
 export type LineStyle = "solid" | "dashed" | "dotted" | "dashdot";
 
 export interface LegendItem {
@@ -10,66 +11,54 @@ export interface LegendItem {
   family_key: string | null;
   symbol_key: string | null;
   text: string;
-  x: number; // symbol centre, relative to the block origin (mm)
-  y: number;
-  scale: number;
-  text_size: number;
-  length_mm: number | null; // parametric symbols: real length and width
+  length_mm: number | null; // parametric luminaires: real length and width
   width_mm: number | null;
   line_style: LineStyle;
   line_length: number;
+}
+
+export interface SectionStyle {
+  header: string;
+  header_text: string;
+  background: string;
+  border_on: boolean;
+  border: string;
+  symbol: string;
+  text: string;
+  padding: number;
 }
 
 export interface LegendBlock {
   id: string;
   category_id: string | null;
   title: string;
-  x: number;
-  y: number;
-  columns: number;
-  spacing: number;
-  heading_size: number;
+  layer: string;
   collapsed: boolean;
+  style: SectionStyle;
   items: LegendItem[];
-}
-
-export interface LegendText {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-  size: number;
 }
 
 export interface LegendStyle {
   font: string;
-  title_size: number;
-  heading_size: number;
   text_size: number;
+  symbol_scale: number;
+  grid: string;
   row: number;
   text_offset: number;
-  column_width: number;
-  page_columns: number;
-  page_height: number;
+  columns: number;
+  width: number;
   margin: number;
-  grid: number;
   plan_scale: number;
 }
 
 export interface LegendDoc {
   version: number;
   style: LegendStyle;
-  title: { text: string; x: number; y: number; size: number };
+  title: { text: string };
   blocks: LegendBlock[];
-  texts: LegendText[];
 }
 
-export type Selection =
-  | { type: "item"; block: string; item: string }
-  | { type: "block"; block: string }
-  | { type: "text"; id: string }
-  | { type: "title" }
-  | null;
+export type Selection = { type: "item"; block: string; item: string } | { type: "block"; block: string } | { type: "legend" } | null;
 
 // -- undo / redo ---------------------------------------------------------------
 
@@ -91,12 +80,12 @@ export function push<T>(h: History<T>, next: T): History<T> {
   return { past: [...h.past, h.present].slice(-LIMIT), present: next, future: [] };
 }
 
-/** Live change while dragging: no undo step yet. */
+/** Live change while typing: no undo step yet. */
 export function replace<T>(h: History<T>, next: T): History<T> {
   return { ...h, present: next };
 }
 
-/** End of a drag: one undo step back to the state before the drag. */
+/** End of typing in a field: one undo step back to the state before. */
 export function commit<T>(h: History<T>, before: T): History<T> {
   if (before === h.present) return h;
   return { past: [...h.past, before].slice(-LIMIT), present: h.present, future: [] };
@@ -112,32 +101,21 @@ export function redo<T>(h: History<T>): History<T> {
   return { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) };
 }
 
-// -- geometry helpers ------------------------------------------------------------
+// -- saving: a slow answer must not win over a newer save ----------------------------
 
-export function snap(value: number, grid: number, enabled = true): number {
-  if (!enabled || !grid || grid <= 0) return Math.round(value * 1000) / 1000;
-  return Math.round(Math.round(value / grid) * grid * 1000) / 1000;
+export interface SaveGate {
+  generation: number;
 }
 
-/** Paper size in mm: legend columns side by side, height from the content. */
-export function paperSize(doc: LegendDoc): { width: number; height: number } {
-  const s = doc.style;
-  let right = s.margin * 2 + s.column_width * s.page_columns;
-  let bottom = s.page_height;
-  for (const b of doc.blocks) {
-    const rows = Math.ceil(b.items.length / Math.max(1, b.columns));
-    bottom = Math.max(bottom, b.y + b.heading_size * 1.8 + rows * b.spacing + s.margin);
-    for (const it of b.items) {
-      right = Math.max(right, b.x + it.x + s.column_width / Math.max(1, b.columns));
-      bottom = Math.max(bottom, b.y + it.y + s.margin);
-    }
-    right = Math.max(right, b.x + s.column_width + s.margin);
-  }
-  for (const t of doc.texts) {
-    right = Math.max(right, t.x + t.text.length * t.size * 0.6 + s.margin);
-    bottom = Math.max(bottom, t.y + s.margin);
-  }
-  return { width: Math.ceil(right), height: Math.ceil(bottom) };
+/** Start a save; returns its generation. */
+export function beginSave(gate: SaveGate): number {
+  gate.generation += 1;
+  return gate.generation;
+}
+
+/** True if the answer of this save is still the newest one. */
+export function isCurrentSave(gate: SaveGate, generation: number): boolean {
+  return gate.generation === generation;
 }
 
 // -- editing steps (each returns a new document) ----------------------------------
@@ -147,10 +125,7 @@ function mapBlock(doc: LegendDoc, id: string, fn: (b: LegendBlock) => LegendBloc
 }
 
 export function updateItem(doc: LegendDoc, blockId: string, itemId: string, patch: Partial<LegendItem>): LegendDoc {
-  return mapBlock(doc, blockId, (b) => ({
-    ...b,
-    items: b.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
-  }));
+  return mapBlock(doc, blockId, (b) => ({ ...b, items: b.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) }));
 }
 
 export function removeItem(doc: LegendDoc, blockId: string, itemId: string): LegendDoc {
@@ -159,6 +134,10 @@ export function removeItem(doc: LegendDoc, blockId: string, itemId: string): Leg
 
 export function updateBlock(doc: LegendDoc, blockId: string, patch: Partial<LegendBlock>): LegendDoc {
   return mapBlock(doc, blockId, (b) => ({ ...b, ...patch }));
+}
+
+export function updateSectionStyle(doc: LegendDoc, blockId: string, patch: Partial<SectionStyle>): LegendDoc {
+  return mapBlock(doc, blockId, (b) => ({ ...b, style: { ...b.style, ...patch } }));
 }
 
 export function removeBlock(doc: LegendDoc, blockId: string): LegendDoc {
@@ -174,31 +153,36 @@ export function moveBlockInOrder(doc: LegendDoc, blockId: string, delta: number)
   return { ...doc, blocks };
 }
 
-/** Move an entry to another block, keeping its place on paper. */
-export function moveItemToBlock(doc: LegendDoc, fromId: string, itemId: string, toId: string): LegendDoc {
-  const from = doc.blocks.find((b) => b.id === fromId);
-  const to = doc.blocks.find((b) => b.id === toId);
-  const item = from?.items.find((it) => it.id === itemId);
-  if (!from || !to || !item || fromId === toId) return doc;
-  const moved = { ...item, x: item.x + from.x - to.x, y: item.y + from.y - to.y };
+/** Move an entry one place up or down; at the edge it goes to the neighbouring section. */
+export function moveItemInOrder(doc: LegendDoc, blockId: string, itemId: string, delta: number): { doc: LegendDoc; block: string } {
+  const bi = doc.blocks.findIndex((b) => b.id === blockId);
+  if (bi < 0) return { doc, block: blockId };
+  const items = [...doc.blocks[bi].items];
+  const i = items.findIndex((it) => it.id === itemId);
+  if (i < 0) return { doc, block: blockId };
+  const j = i + delta;
+  if (j >= 0 && j < items.length) {
+    [items[i], items[j]] = [items[j], items[i]];
+    return { doc: mapBlock(doc, blockId, (b) => ({ ...b, items })), block: blockId };
+  }
+  const nb = doc.blocks[bi + (delta < 0 ? -1 : 1)];
+  if (!nb) return { doc, block: blockId };
+  return { doc: moveItemToBlock(doc, blockId, itemId, nb.id, delta < 0 ? "end" : "start"), block: nb.id };
+}
+
+export function moveItemToBlock(doc: LegendDoc, fromId: string, itemId: string, toId: string, where: "start" | "end" = "end"): LegendDoc {
+  const item = doc.blocks.find((b) => b.id === fromId)?.items.find((it) => it.id === itemId);
+  if (!item || fromId === toId || !doc.blocks.some((b) => b.id === toId)) return doc;
   return {
     ...doc,
     blocks: doc.blocks.map((b) =>
       b.id === fromId
         ? { ...b, items: b.items.filter((it) => it.id !== itemId) }
         : b.id === toId
-          ? { ...b, items: [...b.items, moved] }
+          ? { ...b, items: where === "start" ? [item, ...b.items] : [...b.items, item] }
           : b,
     ),
   };
-}
-
-/** Next free row below the last entry of a block. */
-export function nextSlot(block: LegendBlock, style: LegendStyle): { x: number; y: number } {
-  if (!block.items.length) return { x: style.text_offset * 0.35, y: block.heading_size * 1.8 + block.spacing / 2 };
-  const last = block.items.reduce((a, b) => (b.y > a.y || (b.y === a.y && b.x > a.x) ? b : a));
-  const first = block.items.reduce((a, b) => (b.x < a.x ? b : a));
-  return { x: first.x, y: Math.round((last.y + block.spacing) * 1000) / 1000 };
 }
 
 let counter = 0;
@@ -207,17 +191,13 @@ export function newId(): string {
   return `n${Date.now().toString(36)}${counter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function makeItem(style: LegendStyle, patch: Partial<LegendItem>): LegendItem {
+export function makeItem(patch: Partial<LegendItem>): LegendItem {
   return {
     id: newId(),
     kind: "symbol",
     family_key: null,
     symbol_key: null,
     text: "",
-    x: 0,
-    y: 0,
-    scale: 1,
-    text_size: style.text_size,
     length_mm: null,
     width_mm: null,
     line_style: "solid",
@@ -227,30 +207,34 @@ export function makeItem(style: LegendStyle, patch: Partial<LegendItem>): Legend
 }
 
 export function addItem(doc: LegendDoc, blockId: string, patch: Partial<LegendItem>): { doc: LegendDoc; id: string } {
-  const block = doc.blocks.find((b) => b.id === blockId);
-  if (!block) return { doc, id: "" };
-  const item = makeItem(doc.style, { ...nextSlot(block, doc.style), ...patch });
+  if (!doc.blocks.some((b) => b.id === blockId)) return { doc, id: "" };
+  const item = makeItem(patch);
   return { doc: mapBlock(doc, blockId, (b) => ({ ...b, items: [...b.items, item] })), id: item.id };
 }
 
-export function addBlock(doc: LegendDoc, title: string, categoryId: string | null = null): { doc: LegendDoc; id: string } {
-  const s = doc.style;
-  const bottom = doc.blocks.reduce(
-    (y, b) => Math.max(y, b.y + b.heading_size * 1.8 + Math.ceil(b.items.length / b.columns) * b.spacing + b.spacing),
-    s.margin + doc.title.size * 2.2,
-  );
-  const block: LegendBlock = {
-    id: newId(),
-    category_id: categoryId,
-    title,
-    x: s.margin,
-    y: Math.round(bottom * 1000) / 1000,
-    columns: 1,
-    spacing: s.row,
-    heading_size: s.heading_size,
-    collapsed: false,
-    items: [],
-  };
+export const NEUTRAL_SECTION: SectionStyle = {
+  header: "#6b7280",
+  header_text: "#ffffff",
+  background: "#f0f1f3",
+  border_on: true,
+  border: "#6b7280",
+  symbol: "#6b7280",
+  text: "#000000",
+  padding: 1.5,
+};
+
+/** Default look of a section from a plan colour (same rule as the backend). */
+export function sectionStyle(color?: string | null): SectionStyle {
+  if (!color || !/^#[0-9a-f]{6}$/i.test(color) || /^#(ffffff|000000)$/i.test(color)) return { ...NEUTRAL_SECTION };
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+  const mix = (c: number) => Math.round(c + (255 - c) * 0.9);
+  const bg = `#${[r, g, b].map((c) => mix(c).toString(16).padStart(2, "0")).join("")}`;
+  return { header: color, header_text: lum > 160 ? "#000000" : "#ffffff", background: bg, border_on: true, border: color, symbol: color, text: "#000000", padding: 1.5 };
+}
+
+export function addBlock(doc: LegendDoc, title: string, categoryId: string | null = null, color?: string | null, layer = ""): { doc: LegendDoc; id: string } {
+  const block: LegendBlock = { id: newId(), category_id: categoryId, title, layer, collapsed: false, style: sectionStyle(color), items: [] };
   return { doc: { ...doc, blocks: [...doc.blocks, block] }, id: block.id };
 }
 
@@ -270,16 +254,15 @@ export function missingRows<T extends RowLike>(doc: LegendDoc, rows: T[]): T[] {
   return rows.filter((r) => r.total > 0 && !shown.has(r.family_key));
 }
 
-/** Legend entries whose apparatus no longer occurs in the current imports. */
+/** Legend entries whose apparatus does not occur in the current imports. */
 export function staleItems(doc: LegendDoc, rows: RowLike[]): Set<string> {
   const used = new Set(rows.filter((r) => r.total > 0).map((r) => r.family_key));
   const out = new Set<string>();
-  for (const b of doc.blocks)
-    for (const it of b.items) if (it.kind === "symbol" && it.family_key && !used.has(it.family_key)) out.add(it.id);
+  for (const b of doc.blocks) for (const it of b.items) if (it.kind === "symbol" && it.family_key && !used.has(it.family_key)) out.add(it.id);
   return out;
 }
 
-/** Block for a new entry: the one of its category, else the selected or first block. */
+/** Block for a new entry: the one of its category, else the fallback or first block. */
 export function blockForCategory(doc: LegendDoc, categories: string[], fallback: string | null): string | null {
   for (const c of categories) {
     const b = doc.blocks.find((x) => x.category_id === c);
@@ -288,19 +271,11 @@ export function blockForCategory(doc: LegendDoc, categories: string[], fallback:
   return fallback ?? doc.blocks[0]?.id ?? null;
 }
 
-export function symbolRequestKey(it: Pick<LegendItem, "symbol_key" | "length_mm" | "width_mm">): string {
+/** Description of a new entry: the company text first, else the library name. */
+export function describe(familyKey: string | null, fallback: string, descriptions: Record<string, string>): string {
+  return (familyKey && descriptions[familyKey]) || fallback;
+}
+
+export function symbolRequestKey(it: { symbol_key: string | null; length_mm: number | null; width_mm: number | null }): string {
   return `${it.symbol_key}|${it.length_mm ?? ""}|${it.width_mm ?? ""}`;
-}
-
-/** Symbol size without the 12 % padding the rendered SVG adds on every side. */
-export function drawingSize(box: [number, number, number, number]): { w: number; h: number } {
-  const m = Math.max(box[2], box[3]) / 1.24;
-  return { w: Math.max(0, box[2] - 0.24 * m), h: Math.max(0, box[3] - 0.24 * m) };
-}
-
-/** Same rule as the backend proposal: shrink large symbols to their row, never enlarge. */
-export function fitScale(w: number, h: number, spacing: number, textOffset: number): number {
-  if (w <= 0 || h <= 0) return 1;
-  const limit = Math.min(1, (spacing * 1.1) / h, ((textOffset - 1.5) * 2) / w);
-  return Math.max(0.05, Math.floor(limit * 20 + 1e-9) / 20);
 }

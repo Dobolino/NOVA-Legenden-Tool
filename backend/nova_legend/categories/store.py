@@ -54,6 +54,14 @@ DEFAULT_OPTIONS = {
     "legend_by_category": True,
 }
 
+# Legend settings of the company (Allgemeinteil, admins, standard for new projects).
+LEGEND_DEFAULTS = {
+    "legend_general_path": "",     # DXF, DWG or template project folder on the server
+    "legend_admins": [],           # Windows user names allowed to change these settings
+    "legend_text_size": 2.5,       # mm, one size for all legend texts
+    "legend_symbol_scale": 1.0,    # one scale for all symbols
+}
+
 # Bump when default categories gain number ranges; existing company files
 # are extended once (only ranges that are not assigned anywhere yet).
 DEFAULTS_VERSION = 2
@@ -167,6 +175,24 @@ class CompanyStore:
                     con.execute("INSERT OR REPLACE INTO options VALUES (?,?)", (key, json.dumps(value)))
             self._log(con, "options", json.dumps(values, ensure_ascii=False))
         return self.options()
+
+    # -- legend settings (company-wide, admins only; checked by the API) ---------
+
+    def legend_settings(self) -> dict:
+        with self._tx() as con:
+            stored = {r["key"]: json.loads(r["value"]) for r in con.execute(
+                "SELECT * FROM options WHERE key LIKE 'legend_%'")}
+        out = {k: stored.get(k, v) for k, v in LEGEND_DEFAULTS.items()}
+        out["legend_admins"] = [str(a) for a in out["legend_admins"] if str(a).strip()]
+        return out
+
+    def set_legend_settings(self, values: dict) -> dict:
+        with self._tx() as con:
+            for key, value in values.items():
+                if key in LEGEND_DEFAULTS and value is not None:
+                    con.execute("INSERT OR REPLACE INTO options VALUES (?,?)", (key, json.dumps(value)))
+            self._log(con, "legend_settings", json.dumps(values, ensure_ascii=False))
+        return self.legend_settings()
 
     # -- categories ------------------------------------------------------------
 

@@ -6,7 +6,7 @@ Stand: 30.09.2026
 
 1. Reiter **Projekte** → **Legende erstellen**.
 2. Vorhandenes Projekt aus der Liste wählen, oder **Neues Projekt**: Projektnummer, Bezeichnung, Nova-Version (19.2 oder 20), optional **Vorlage** aus einem anderen Projekt (übernimmt Einstellungen und Ebenen, keine Pläne). **Vorlage ausblenden** nimmt ein Projekt aus dieser Liste, ohne es zu löschen. **Nach ‚Gelöscht‘ verschieben** steht in der Liste und in der Projektansicht.
-3. In der Projektansicht pro Geschoss einen Plan importieren: Datei hierher ziehen oder wählen (DXF, N4D, DWG). Der Geschossname kommt aus dem Dateinamen, wenn er EG, 1. OG, UG, DG oder Stock enthält (`3_1.OG.dxf` → `1. OG`). Geschosse lassen sich ziehen, um die Spalten zu sortieren.
+3. In der Projektansicht **Pläne importieren …**: eine oder mehrere Dateien wählen oder hierher ziehen (DXF, N4D, DWG). Ein Fenster zeigt pro Datei den Geschossnamen zum Prüfen; heisst er wie ein vorhandenes Geschoss, wird die Datei dessen neue Planversion. Der Geschossname kommt aus dem Dateinamen, wenn er EG, 1. OG, UG, DG oder Stock enthält (`3_1.OG.dxf` → `1. OG`). Geschosse lassen sich ziehen, um die Spalten zu sortieren.
 4. **Gesamtliste**: alle Apparate aller Geschosse, eine Spalte pro Geschoss, Total, gegliedert nach Kategorien mit Ebenenfarbe. Die Montageart bleibt nur in der Bibliothek als Filter.
 5. **Unbekannt**: Elemente, die das Tool nicht sicher erkennt. Pro Element eine Rangliste passender Bibliothekssymbole mit Trefferwert. Klick übernimmt. **Kein Apparat (ignorieren)** blendet es aus. Die Entscheidung gilt für die ganze Firma und bei jedem weiteren Import automatisch.
 6. **Ebenen und Farben**: Farbe pro Kategorie (automatisch oder selbst gewählt) und darunter alle Ebenen der Pläne mit Farbe und Linienart.

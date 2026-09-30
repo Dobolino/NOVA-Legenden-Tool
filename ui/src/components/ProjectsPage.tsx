@@ -108,7 +108,7 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                         title="Nach ‚Gelöscht‘ verschieben (Ordner _Geloescht, nichts wird endgültig gelöscht)"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!window.confirm(`Projekt «${p.name}» in den Ordner _Geloescht verschieben?`)) return;
+                          if (!window.confirm(`Projekt «${p.name}» in den Ordner _Geloescht verschieben? Nichts wird endgültig gelöscht.`)) return;
                           try {
                             await api.deleteProject(p.id);
                             notify("Projekt nach _Geloescht verschoben");

@@ -436,7 +436,9 @@ class ProjectManager:
         return folder
 
     def create(self, name: str, nova_version: str, template: str | None = None,
-               project_number: str = "") -> Project:
+               project_number: str = "", legend_style: dict | None = None) -> Project:
+        """New project. ``legend_style`` (text size, symbol scale) is the company standard;
+        a template overrides it with its own values and hands over its legend."""
         name = name.strip()
         if not name:
             raise ValueError("Projektname fehlt")
@@ -460,6 +462,17 @@ class ProjectManager:
                 for l in layers:
                     con.execute("INSERT OR REPLACE INTO layers VALUES (?,?,?,?)",
                                 (l["name"], l["color"], l["linetype"], "Vorlage"))
+            stored = src.legend()
+            if stored:
+                project.set_legend(stored["doc"])
+                style = stored["doc"].get("style") or {}
+                legend_style = {"text_size": style.get("text_size", (legend_style or {}).get("text_size")),
+                                "symbol_scale": style.get("symbol_scale", (legend_style or {}).get("symbol_scale")),
+                                "columns": style.get("columns", 2)}
+            elif src.settings().get("legend_style"):
+                legend_style = src.settings()["legend_style"]
+        if legend_style:
+            project.set_settings({"legend_style": legend_style})
         return project
 
     def rename(self, project_id: str, new_name: str) -> Project:

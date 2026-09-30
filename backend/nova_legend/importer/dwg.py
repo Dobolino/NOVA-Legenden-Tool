@@ -17,15 +17,17 @@ from .dxf import read_dxf
 from .model import ImportResult
 
 
+MISSING_MESSAGE = ("Für DWG-Dateien wird der ODA File Converter gebraucht. Er ist nicht installiert. "
+                   "Alternative: Plan in Nova als DXF exportieren und diese Datei importieren.")
+
+
 class ConverterMissing(RuntimeError):
     pass
 
 
 def convert_dwg_to_dxf(dwg: Path, oda_exe: str, out_dir: Path, version: str = "ACAD2013") -> Path:
     if not oda_exe or not Path(oda_exe).exists():
-        raise ConverterMissing(
-            "Für DWG-Dateien wird der ODA File Converter gebraucht. Er ist nicht installiert. "
-            "Alternative: Plan in Nova als DXF exportieren und diese Datei importieren.")
+        raise ConverterMissing(MISSING_MESSAGE)
     in_dir = Path(tempfile.mkdtemp(prefix="nl_dwg_in_"))
     try:
         src = in_dir / dwg.name

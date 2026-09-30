@@ -208,6 +208,50 @@ export interface PlanChanges {
   summary: ChangeSummary;
 }
 
+export interface StoredLegend {
+  doc: LegendDoc;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface GeneralInfo {
+  source: string;
+  kind: "" | "dxf" | "project";
+  error: string;
+  w: number;
+  h: number;
+}
+
+export interface CompanyLegend {
+  general_path: string;
+  admins: string[];
+  text_size: number;
+  symbol_scale: number;
+  user: string;
+  is_admin: boolean;
+  bootstrap: boolean;
+}
+
+export interface LegendInfo {
+  legend: StoredLegend | null;
+  template_texts: string[];
+  descriptions: Record<string, string>;
+  grids: { id: string; label: string; row: number; text_offset: number }[];
+  style: LegendDoc["style"];
+  company: CompanyLegend;
+  oda: boolean;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type LegendPrim = { t: string; [key: string]: any };
+
+export interface LegendLayout {
+  width: number;
+  height: number;
+  prims: LegendPrim[];
+  general: GeneralInfo;
+}
+
 export interface SymbolRender {
   svg: string;
   box?: [number, number, number, number];
@@ -297,11 +341,12 @@ export interface Suggestion {
   parts: Record<string, number>;
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method,
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
   });
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
@@ -401,22 +446,25 @@ export const api = {
     request<Category>("PUT", `/api/categories/${encodeURIComponent(id)}`, values),
   deleteCategory: (id: string) => request<{ ok: boolean }>("DELETE", `/api/categories/${encodeURIComponent(id)}`),
   reorder: (ids: string[]) => request<{ items: Category[] }>("POST", "/api/categories/reorder", { ids }),
-  dialog: (kind: "dataset" | "folder", start = "") =>
+  dialog: (kind: "dataset" | "folder" | "legend", start = "") =>
     request<{ available: boolean; path: string | null }>("POST", `/api/dialog/${kind}`, { start }),
   legend: (id: string) =>
-    request<{ legend: { doc: LegendDoc; updated_at: string; updated_by: string } | null; template_texts: string[] }>(
-      "GET",
-      `/api/projects/${encodeURIComponent(id)}/legend`,
-    ),
-  saveLegend: (id: string, doc: LegendDoc) =>
-    request<{ legend: { doc: LegendDoc; updated_at: string; updated_by: string } }>(
-      "PUT",
-      `/api/projects/${encodeURIComponent(id)}/legend`,
-      { doc },
-    ),
-  proposeLegend: (id: string) =>
-    request<{ doc: LegendDoc }>("POST", `/api/projects/${encodeURIComponent(id)}/legend/propose`),
-  layoutLegend: (doc: LegendDoc) => request<{ doc: LegendDoc }>("POST", "/api/legend/layout", { doc }),
+    request<LegendInfo>("GET", `/api/projects/${encodeURIComponent(id)}/legend`),
+  saveLegend: (id: string, doc: LegendDoc, signal?: AbortSignal) =>
+    request<{ legend: StoredLegend }>("PUT", `/api/projects/${encodeURIComponent(id)}/legend`, { doc }, signal),
+  proposeLegend: (id: string, style?: LegendDoc["style"]) =>
+    request<{ doc: LegendDoc }>("POST", `/api/projects/${encodeURIComponent(id)}/legend/propose`, { style: style ?? null }),
+  layoutLegend: (id: string, doc: LegendDoc, signal?: AbortSignal) =>
+    request<LegendLayout>("POST", `/api/projects/${encodeURIComponent(id)}/legend/layout`, { doc }, signal),
+  legendGeneral: (id: string) =>
+    request<GeneralInfo & { svg: string; prims: LegendPrim[] }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/general`),
+  legendExportUrl: (id: string, format: "dxf" | "dwg", block: string, general: boolean) =>
+    `/api/projects/${encodeURIComponent(id)}/legend/export?${qs({ format, block, general })}`,
+  rememberLegend: (id: string, doc: LegendDoc) =>
+    request<CompanyLegend>("POST", `/api/projects/${encodeURIComponent(id)}/legend/remember`, { doc }),
+  companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),
+  saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number }) =>
+    request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
   legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[]) =>
     request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items }),
   legendTexts: (q: string, familyKey = "") =>

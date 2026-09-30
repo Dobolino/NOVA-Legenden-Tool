@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 KINDS = {
     "dataset": {"folder": False, "types": ("Nova-Datensatz (*.nzp)", "Alle Dateien (*.*)")},
     "folder": {"folder": True, "types": ()},
+    "legend": {"folder": False, "types": ("Allgemeinteil DXF/DWG (*.dxf;*.dwg)", "Alle Dateien (*.*)")},
 }
 
 _window = None

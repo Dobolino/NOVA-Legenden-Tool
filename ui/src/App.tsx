@@ -21,6 +21,7 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [revision, setRevision] = useState(0); // bumps when library data changes
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
   const [theme, setThemeState] = useState<ThemeMode>(loadTheme);
   const setTheme = useCallback((mode: ThemeMode) => {
     applyTheme(mode);
@@ -64,6 +65,24 @@ export default function App() {
   useEffect(() => {
     api.updateCheck().then(setUpdate).catch(() => undefined);
   }, []);
+
+  /** Same as «Jetzt aktualisieren» in the settings: confirm, download, check, silent setup, restart. */
+  async function installUpdate() {
+    if (!update) return;
+    if (!update.can_install) {
+      notify(update.message || "Das Update läuft nur im installierten Windows-Programm.");
+      return;
+    }
+    if (!window.confirm(`Update ${update.latest} jetzt installieren? Das Programm schliesst sich und startet danach neu.`)) return;
+    setInstalling(true);
+    try {
+      const r = await api.updateInstall();
+      notify(r.message);
+    } catch (e) {
+      notify((e as Error).message, true);
+      setInstalling(false);
+    }
+  }
 
   const noDatasets = status && status.datasets.length === 0;
 
@@ -110,8 +129,13 @@ export default function App() {
               {effectiveDark(theme) ? "☀ Hell" : "☾ Dunkel"}
             </button>
             {update?.available && (
-              <button className="chip update" onClick={() => setTab("settings")} title="Zum Update">
-                Update {update.latest} verfügbar
+              <button
+                className="chip update"
+                disabled={installing}
+                onClick={() => installUpdate()}
+                title={update.can_install ? "Update jetzt installieren" : "Update läuft nur im installierten Programm"}
+              >
+                {installing ? "Update läuft …" : `Update ${update.latest} verfügbar`}
               </button>
             )}
           </div>

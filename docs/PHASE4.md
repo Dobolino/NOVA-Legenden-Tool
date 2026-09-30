@@ -1,60 +1,77 @@
 # Phase 4: Legenden-Editor
 
-Stand: 30.09.2026
+Stand: 30.09.2026 (Version 2: festes Raster, farbige Abschnitte, Allgemeinteil, DXF/DWG-Export)
 
-## Ablauf
+## Aufbau der Legende
 
-1. Projekt öffnen, Reiter **Legende**.
-2. **Vorschlag aus dem Projekt erstellen**: alle Apparate der aktuellen Importe, ein Abschnitt pro Kategorie (Einstellung «Legende nach Kategorien gliedern»). Kategorien, die ausgeblendet sind, fehlen. Gibt es AP- oder NAP-Varianten, kommt der Hinweis «Unterscheidung UP / AP (halbausgefüllt)» dazu.
-3. Auf der Zeichenfläche verschieben: Symbole, Abschnitte (an der Überschrift), freie Texte und den Titel. **Einrasten** mit wählbarem Raster (0,25 bis 5 mm, auch 4,55 mm Zeilenabstand).
-4. Anklicken öffnet rechts die Eigenschaften: Beschreibung, Schriftgrösse, Massstab, Position, Abschnitt. Parametrische Leuchten zusätzlich Länge und Breite in Millimetern wie im Plan.
-5. Links die Gliederung: Abschnitte ein- und ausklappen, mit ↑ ↓ umsortieren, Einträge anwählen. Darunter **Im Projekt, nicht in der Legende** (per Klick oder «Alle hinzufügen») und **Aus der Bibliothek hinzufügen**.
-6. **+ Linie** für Leitungen und Trassen (durchgezogen, gestrichelt, punktiert, Strich-Punkt, Länge wählbar), **+ Hinweis** mit halb gefülltem Kreis, **+ Freier Text**.
-7. **Automatisch anordnen** ordnet Abschnitte in Legendenspalten und Einträge in Zeilen. Danach frei nachbearbeiten.
-8. **Rückgängig** und **Wiederholen** (Strg+Z, Strg+Y). Ein Zug mit der Maus und ein bearbeitetes Textfeld sind je ein Schritt.
+```
+┌───────────────────────── max. 200 mm inkl. Rand ─────────────────────────┐
+│ Allgemeinteil (vom Server, gesperrt)                                     │
+│ Titel                                                                    │
+│ ███ Leuchten ███████████████████████████████████████████████ Kopfleiste  │
+│  ○ Text …                ○ Text …                                        │
+│ ███ Kraft / Drehstrominstallation ██████████████████████████████████████ │
+│  ⊗ Text …                ⊗ Text …                                        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
-Die Legende speichert sich selbst, etwa eine Sekunde nach der letzten Änderung. Oben rechts steht «Gespeichert … von …».
+- Blatt höchstens 200 mm breit (Rand 5 mm). 2 oder 3 Spalten teilen die Breite.
+- Nichts ist frei verschiebbar. Alles sitzt auf dem sichtbaren Raster. Reihenfolge: ↑ ↓ im rechten Feld oder Pfeiltasten. Am Rand eines Abschnitts wandert der Eintrag in den Nachbarabschnitt.
+- Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross.
+- Texte umbrechen in ihrer Spalte. Die Zeile wird höher, nie liegt ein Text auf dem nächsten Symbol oder in der nächsten Spalte.
+- Die Höhe wächst mit der Anzahl Einträge. Nichts wird abgeschnitten.
+- Die Anordnung rechnet das Programm (Backend `legend/layout.py`). Vorschau und DXF-Export nutzen dieselbe Rechnung.
 
-## Texte
+## Abschnitte
 
-| Quelle | Wirkung |
-|---|---|
-| Firmentext | «Als Firmentext speichern» merkt die Beschreibung einer Symbolfamilie für die ganze Firma (Tabelle `descriptions` in `edeco ag-Legenden-firma.sqlite`). Neue Vorschläge in allen Projekten nutzen ihn. |
-| Legende edeco | Die 65 Texte der bestehenden Legende (Legende_edeco20.n4d) stehen als Vorschläge bereit, sortiert nach Ähnlichkeit zum aktuellen Text. |
-| Bibliothek | Ohne Firmentext steht der Name der Familie aus der Bibliothek. |
+Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Hintergrund, Symbole und Linien, Text, Umrandung (Farbe, an/aus), Innenabstand. Voreinstellung aus der Planfarbe der Legendenebene der Kategorie (Reiter «Ebenen und Farben»). Die Farben liegen im Legenden-Dokument und gehen in den Export.
 
-Die Zuordnung «dieser Text gehört zu diesem Symbol» steht im N4D nicht sicher: Texte und Symbole liegen getrennt, die Einfügepunkte der Symbole sind noch nicht entschlüsselt. Darum schlägt das Programm die Texte vor und du bestätigst sie.
+## Gemeinsame Werte
 
-## Vorlage und Masse
+- Eine Schriftgrösse für alle Texte (Titel, Kopfleisten, Einträge, freier Text).
+- Ein Symbolmassstab für alle Symbole. Sehr grosse Symbole werden zusätzlich auf die Zeilenhöhe begrenzt.
+- Ein neues Projekt startet mit dem Firmen-Standard (Einstellungen → Legende der Firma). Mit Vorlage kommen Werte und Legende aus der Vorlage.
+- Eine Änderung im Projekt gilt nur dort. «Für neue Projekte merken» schreibt die beiden Werte in den Firmen-Standard (nur Admins). Bestehende Projekte bleiben unverändert.
 
-Aus der bestehenden edeco-Legende übernommen: Zeilenabstand 4,55 mm, Text 9,75 mm rechts der Symbolmitte, Spaltenbreite 103,7 mm, zwei Legendenspalten, Schrift Arial. Textgrössen: Titel 5 mm, Überschrift 3,5 mm, Text 2,5 mm. Alles unter «Legende» (nichts angewählt) änderbar. Spalten und Zeilenabstand pro Abschnitt kommen aus der Kategorie und lassen sich pro Legende ändern.
+## Freier Text
 
-Grosse Symbole (zum Beispiel Leitungspfeile) verkleinert der Vorschlag auf die Zeilenhöhe. Der Massstab steht im Feld «Massstab Symbol» und bleibt frei änderbar. Parametrische Leuchten zeichnet das Programm im Massstab 1:50 (einstellbar) mal diesem Massstab.
+Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster wie ein Eintrag, in einem Abschnitt, und nutzt die gemeinsame Schriftgrösse. Ohne gewählten Abschnitt entsteht ein Abschnitt «Zusatztext». Entfernen über das Mülleimer-Symbol («Text entfernen»). Alte freie Texte (Version 1) wandern beim Öffnen in einen Abschnitt «Zusatztext».
+
+## Allgemeinteil und Admins
+
+- Einstellungen → Legende der Firma → Pfad auf die Servervorlage: DXF, DWG (mit ODA File Converter) oder Ordner eines Vorlagen-Projekts mit Legende.
+- N4D geht nicht: Die Einfügepunkte der Symbole sind nicht sicher dekodiert. Das Programm meldet das.
+- Der Allgemeinteil steht zuoberst, auf höchstens 190 mm Breite verkleinert, Höhe nach Inhalt. Er ist im Editor nicht änderbar. Anpassen heisst: Datei auf dem Server ersetzen. Das Programm liest sie beim Öffnen neu.
+- Admins: Liste von Windows-Benutzernamen. Nur sie ändern Pfad, Admin-Liste und Firmen-Standard. Ist die Liste leer, darf der erste Benutzer sich eintragen. Wer speichert, muss selbst in der Liste stehen.
+
+## Export
+
+Rechts unter «Export» (nichts angewählt):
+
+- «Ganze Legende» oder «Nur «Kategorie»».
+- «Allgemeinteil einschliessen».
+- DXF R2013 (AC1027), Millimeter. DWG über den ODA File Converter; ohne Converter dieselbe Meldung wie beim Import.
+- Farben als Truecolor: Kopfleiste und Hintergrund (Schraffur), Umrandung, Symbole (Block, Farbe am Einfügen), Linien, Texte.
+- Ebenen: Symbole und Linien auf der Legendenebene der Kategorie, Texte auf X_Text, Kopfleisten und Rahmen auf X_Geometrie. Der Allgemeinteil wird als Block «Allgemeinteil» übernommen.
+- Dateiname: `edeco ag-<Bezeichnung>-<Kategorie>.dxf` bzw. `…-Legende.dxf`.
+- Kein N4D-Export.
 
 ## Speicherort
 
-Die Legende liegt in `projekt.nlproj` (Tabelle `legend`). Kopieren und ZIP-Export nehmen sie mit. Ältere Projektdateien bekommen die Tabelle beim ersten Öffnen der Legende.
+Legende: `projekt.nlproj`, Tabelle `legend` (Version 2). Firmenwerte: `edeco ag-Legenden-firma.sqlite`, Tabelle `options` (Schlüssel `legend_*`), Firmentexte in `descriptions`.
 
-## Darstellung hell und dunkel
+## So testest du
 
-Oben rechts wechselt der Knopf zwischen hell und dunkel. Unter Einstellungen → Darstellung gibt es zusätzlich «Wie Windows». Die Wahl gilt pro Computer (lokale Einstellungen). Die Legende bleibt immer weiss wie auf dem Plan.
-
-## So testest du Phase 4
-
-1. Update installieren (Build mit diesem Stand).
-2. Projekt mit importierten Plänen öffnen, Reiter Legende, «Vorschlag aus dem Projekt erstellen».
-3. Ein Symbol ziehen, Strg+Z, Strg+Y.
-4. Ein Symbol anklicken, Beschreibung ändern, einen Vorschlag aus der edeco-Legende anklicken, «Als Firmentext speichern».
-5. Eine Leuchte aus der Bibliothek hinzufügen (z. B. «Rechteckleuchte»), Länge 1500 eingeben.
-6. «+ Linie» für eine Leitung, Linienart gestrichelt.
-7. Einen Abschnitt mit ↑ verschieben, «Automatisch anordnen».
-8. Programm schliessen und neu öffnen: die Legende ist unverändert da.
-9. Oben rechts auf hell umschalten, Programm neu starten: bleibt hell.
+1. Einstellungen → Legende der Firma: dich als Admin eintragen, Pfad auf eine DXF-Vorlage setzen.
+2. Projekt → Gesamtliste → «Legende bearbeiten →» → «Vorschlag aus dem Projekt erstellen».
+3. Allgemeinteil oben, darunter farbige Abschnitte. Raster «★ Standard», Spalten 2 und 3 ausprobieren.
+4. Schriftgrösse auf 3 setzen, Strg+Z: ein Schritt zurück.
+5. Eine Kopfleiste anklicken, Farben ändern, Umrandung aus.
+6. Export «Nur Brandmeldeanlage» mit und ohne Allgemeinteil, die DXF in Nova oder einem DXF-Viewer öffnen.
+7. «Für neue Projekte merken», neues Projekt anlegen: hat die Werte. Ein anderes bestehendes Projekt: unverändert.
 
 ## Bekannte Grenzen
 
-- Kein Export. DXF und DWG folgen in Phase 5, N4D in Phase 6.
-- Eine Legende pro Projekt. Die Auswahl «je Kategorie eine eigene Legende» kommt mit dem Export.
-- Symbole aus .nsb-Bibliotheken erscheinen als Rahmen «keine Vorschau».
-- Mehrfachauswahl gibt es nicht. Ein Abschnitt verschiebt alle seine Einträge.
-- Lange Texte laufen über die Spaltenbreite hinaus. Die Breite prüft das Programm nicht.
+- Textbreiten rechnet das Programm mit einer Arial-Näherung. In Nova kann ein Text minimal breiter oder schmaler sein.
+- Symbole aus .nsb-Bibliotheken erscheinen als Rahmen «keine Vorschau» und fehlen im Export.
+- DWG-Export und DWG-Allgemeinteil sind ohne Windows mit ODA nicht getestet.

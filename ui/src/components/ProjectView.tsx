@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Suggestion, UnknownElement } from "../api";
-import { floorNameFromFilename } from "../floors";
+import { planFiles } from "../floors";
 import { formatDateTime, layerStateText, plansOpen, rememberPlansOpen } from "../uiState";
 import ChangesTab, { changeHint } from "./ChangesTab";
 import LegendEditor from "./LegendEditor";
+import ImportDialog from "./ImportDialog";
 import Menu from "./Menu";
+import { TrashIcon } from "./Icons";
 
 interface Props {
   projectId: string;
@@ -28,7 +30,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [tab, setTab] = useState<Tab>("list");
   const [busy, setBusy] = useState(false);
-  const [planName, setPlanName] = useState("");
+  const [pending, setPending] = useState<File[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const reimportRef = useRef<HTMLInputElement>(null);
   const [reimportPlan, setReimportPlan] = useState<number | null>(null);
@@ -39,7 +41,6 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [open, setOpen] = useState(true);
   const [allCategories, setAllCategories] = useState(false);
-  const [chosenFile, setChosenFile] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -72,9 +73,9 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     }
   }
 
-  async function importFile(file: File, planId?: number, explicitName?: string) {
-    const typed = explicitName !== undefined ? explicitName.trim() : planName.trim();
-    const name = planId ? "" : typed || file.name.replace(/\.[^.]+$/, "");
+  /** New plan version of one floor (per-floor action). New floors go through the import dialog. */
+  async function importFile(file: File, planId: number) {
+    const name = "";
     const before = new Set((data?.plans ?? []).map((p) => p.id));
     const target = planId ? data?.plans.find((p) => p.id === planId)?.name : name;
     setImportStatus({
@@ -85,9 +86,6 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     try {
       const result = await api.importPlan(projectId, name, file, planId);
       setData(result);
-      setPlanName("");
-      if (fileRef.current) fileRef.current.value = "";
-      setChosenFile("");
       const plan = planId
         ? result.plans.find((p) => p.id === planId)
         : result.plans.find((p) => !before.has(p.id)) ?? result.plans[result.plans.length - 1];
@@ -105,6 +103,15 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     } finally {
       setBusy(false);
     }
+  }
+
+  function openImport(list: File[]) {
+    const files = planFiles(list);
+    if (!files.length) {
+      notify("Nur DXF-, DWG- oder N4D-Dateien können importiert werden.", true);
+      return;
+    }
+    setPending(files);
   }
 
   function toggleOpen(next: boolean) {
@@ -275,16 +282,17 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             </button>
             <span className="sep" />
             <button
-              className="btn small danger"
+              className="btn icon danger"
               disabled={busy}
-              title="Verschiebt den Projektordner nach _Geloescht. Nichts wird endgültig gelöscht."
+              aria-label="Projekt nach ‚Gelöscht‘ verschieben"
+              title="Nach ‚Gelöscht‘ verschieben: der Projektordner kommt nach _Geloescht, nichts wird endgültig gelöscht."
               onClick={async () => {
-                if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben?`)) return;
+                if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben? Nichts wird endgültig gelöscht.`)) return;
                 const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
                 if (r) onBack();
               }}
             >
-              Nach ‚Gelöscht‘ verschieben
+              <TrashIcon />
             </button>
           </div>
           <div className="muted-line" title={data.folder}>
@@ -310,15 +318,12 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             if (!e.dataTransfer.files?.length) return;
             e.preventDefault();
             setDropHot(false);
-            const file = e.dataTransfer.files[0];
-            const guess = floorNameFromFilename(file.name);
-            if (guess) setPlanName(guess);
-            importFile(file, undefined, guess ?? "");
+            openImport([...e.dataTransfer.files]);
           }}
         >
           <summary onClick={(e) => plans.length === 0 && e.preventDefault()}>
             Pläne · {plans.length === 1 ? "1 Geschoss" : `${plans.length} Geschosse`}
-            {!open && plans.length > 0 && <span className="hint">Datei hierher ziehen importiert ein neues Geschoss</span>}
+            {!open && plans.length > 0 && <span className="hint">Dateien hierher ziehen importiert Geschosse (mehrere möglich)</span>}
             {importStatus?.kind === "busy" && <span className="hint">· importiert …</span>}
           </summary>
           <p className="desc">
@@ -463,52 +468,24 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             }}
           />
           <div className="head-fields" style={{ marginTop: 12 }}>
-            <label className="field">
-              <span>Neues Geschoss</span>
-              <input
-                className="input"
-                placeholder="z. B. EG"
-                value={planName}
-                onChange={(e) => setPlanName(e.target.value)}
-                style={{ width: 200 }}
-              />
-            </label>
-            <div className="field grow">
-              <span>Plandatei (DXF, N4D, DWG)</span>
-              <div className="file-pick">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".dxf,.dwg,.n4d"
-                  disabled={busy}
-                  style={{ display: "none" }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    setChosenFile(file?.name ?? "");
-                    if (!file) return;
-                    const guess = floorNameFromFilename(file.name);
-                    if (guess) setPlanName(guess);
-                  }}
-                />
-                <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
-                  Datei wählen …
-                </button>
-                <span className={chosenFile ? "name" : "hint"} title={chosenFile}>
-                  {chosenFile || "Keine Datei gewählt"}
-                </span>
-              </div>
-            </div>
-            <button
-              className="btn primary"
-              disabled={busy}
-              onClick={() => {
-                const f = fileRef.current?.files?.[0];
-                if (!f) notify("Bitte zuerst eine Datei wählen", true);
-                else importFile(f);
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".dxf,.dwg,.n4d"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const list = [...(e.target.files ?? [])];
+                e.target.value = "";
+                if (list.length) openImport(list);
               }}
-            >
-              {importStatus?.kind === "busy" ? "importiert …" : "Plan importieren"}
+            />
+            <button className="btn primary" disabled={busy} onClick={() => fileRef.current?.click()}>
+              Pläne importieren …
             </button>
+            <span className="hint" style={{ lineHeight: "34px" }}>
+              Mehrere DXF, DWG oder N4D auf einmal: wählen oder hierher ziehen. Danach Geschossnamen prüfen.
+            </span>
           </div>
           {importStatus && (
             <div className={`import-status ${importStatus.kind}`} role="status" aria-live="polite">
@@ -525,6 +502,25 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             </div>
           )}
         </details>
+
+        {pending && (
+          <ImportDialog
+            projectId={projectId}
+            files={pending}
+            plans={plans}
+            onClose={() => setPending(null)}
+            onDone={(result, summary) => {
+              if (result) setData(result);
+              setImportStatus({
+                kind: summary.failed ? "error" : "ok",
+                text: summary.failed
+                  ? `${summary.ok} importiert, ${summary.failed} fehlgeschlagen. Details im Fenster.`
+                  : `${summary.ok} ${summary.ok === 1 ? "Datei" : "Dateien"} importiert: ${summary.text}.`,
+              });
+              if (summary.ok) notify(`${summary.ok} ${summary.ok === 1 ? "Plan" : "Pläne"} importiert`);
+            }}
+          />
+        )}
 
         {plans.length > 0 && (
           <div className="card">
@@ -574,6 +570,13 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             </div>
 
             {tab === "list" && (
+              <>
+              <div className="list-toolbar">
+                <span className="hint">Eine Zeile pro Apparat, eine Spalte pro Geschoss.</span>
+                <button className="btn primary" onClick={() => setTab("legend")} title="Legenden-Editor öffnen">
+                  Legende bearbeiten →
+                </button>
+              </div>
               <div className="table-scroll sticky">
                 <table className="list-table summary">
                   <thead>
@@ -668,6 +671,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             {tab === "legend" && (
