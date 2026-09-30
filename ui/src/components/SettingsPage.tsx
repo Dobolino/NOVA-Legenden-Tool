@@ -53,7 +53,9 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
     try {
       const s = await api.saveSettings(values);
       const errors = s.sync.fehler ?? [];
+      const doubles = s.sync.doppelt ?? [];
       if (errors.length) notify(errors.join(" · "), true);
+      else if (doubles.length) notify(`${ok}. ${doubles.length} doppelte Datei(en) übersprungen.`);
       else notify(ok);
       onChanged();
     } catch (e) {
@@ -68,14 +70,20 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
     try {
       const res = await api.searchDatasets();
       const merged = Array.from(new Set([...paths, ...res.found]));
-      if (res.found.length === 0) notify("Keine Datensätze in den üblichen Ordnern gefunden", true);
-      else await save({ dataset_paths: merged }, `${res.found.length} Datensätze gefunden`);
+      if (res.found.length === 0) notify(`Keine neuen Datensätze in ${res.folders.join(", ")} gefunden`);
+      else await save({ dataset_paths: merged }, `${res.found.length} Datensätze hinzugefügt`);
     } finally {
       setBusy(false);
     }
   }
 
   const cleanPath = (p: string) => p.trim().replace(/^"(.*)"$/, "$1");
+  const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase();
+
+  function removeAll() {
+    if (!window.confirm("Alle Datensätze aus der Liste entfernen? Die Dateien selbst bleiben unverändert.")) return;
+    save({ dataset_paths: [] }, "Alle Datensätze entfernt");
+  }
 
   return (
     <div className="page">
@@ -109,19 +117,26 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <div className="card">
           <h3>Nova-Datensätze</h3>
           <p className="desc">
-            Die Symbole stammen aus den Nova-Datensätzen (Dateien «Elektroinstallationen…nzp»). Tipp: Datei im
-            Explorer mit Shift + Rechtsklick → «Als Pfad kopieren» und hier einfügen.
+            Die Symbole stammen aus den Nova-Elektro-Datensätzen (.nzp). «Automatisch suchen» sucht in
+            C:\Users\Public\Documents\Trimble\Warehouse und übernimmt nur Elektro-Datensätze mit Symbolen.
+            Einzelne Dateien fügst du unten ein: im Explorer Shift + Rechtsklick → «Als Pfad kopieren».
           </p>
           <div className="path-list">
             {paths.length === 0 && <div className="hint">Noch kein Datensatz eingetragen.</div>}
             {paths.map((p) => {
-              const ds = status.datasets.find((d) => d.file.toLowerCase().endsWith(p.split(/[\\/]/).pop()!.toLowerCase()));
+              const ds = status.datasets.find((d) => norm(d.file) === norm(p));
+              const doubled = (status.sync.doppelt ?? []).some((x) => norm(x) === norm(p));
               return (
                 <div key={p} className="path-item">
                   <span>{p}</span>
                   {ds && (
                     <span className="badge up" style={{ flex: "none" }}>
                       {DATASET_LABEL(ds.id)} · {ds.version} · {ds.symbol_count} Symbole
+                    </span>
+                  )}
+                  {!ds && doubled && (
+                    <span className="badge warn" style={{ flex: "none" }}>
+                      doppelt, übersprungen
                     </span>
                   )}
                   <button
@@ -172,6 +187,9 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               }}
             >
               Neu einlesen
+            </button>
+            <button className="btn danger" disabled={busy || paths.length === 0} onClick={removeAll}>
+              Alle entfernen
             </button>
           </div>
         </div>

@@ -152,7 +152,9 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
 
     @app.post("/api/settings/search-datasets")
     def search_datasets() -> dict:
-        return {"found": config.find_datasets()}
+        known = {d["id"] for d in st.library.datasets()}
+        return {"found": config.find_datasets(skip_ids=known),
+                "folders": config.DATASET_SEARCH_ROOTS}
 
     @app.post("/api/library/sync")
     def sync() -> dict:

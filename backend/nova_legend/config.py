@@ -34,24 +34,19 @@ def build_number() -> int:
         return 0
 
 
-# Folders searched for Nova datasets (.nzp). Depth is limited.
+# Folder searched for Nova datasets (.nzp). At edeco all datasets that are
+# used live here; other folders (e.g. installer copies on T:) are not searched.
 DATASET_SEARCH_ROOTS = [
-    r"C:\Users\Public\Documents\Trimble\Warehouse",  # confirmed location at edeco
-    r"T:\_CAD\NovaDat",
-    r"C:\ProgramData\Trimble",
-    r"C:\ProgramData\Plancal",
-    r"C:\Program Files\Trimble",
-    r"C:\Program Files (x86)\Trimble",
-    r"C:\Users\Public\Documents\Trimble",
-    r"C:\Nova",
+    r"C:\Users\Public\Documents\Trimble\Warehouse",
 ]
 DATASET_PATTERN = "*.nzp"
 
 
-def is_electrical_dataset(path: Path) -> bool:
-    """True for Nova electrical datasets (DataFormat 'nova…_elo').
+def dataset_summary(path: Path) -> tuple[str, int] | None:
+    """(dataset id, number of symbols) for a Nova electrical dataset, else None.
 
-    The Warehouse folder also holds HVAC and sanitary datasets. They are skipped.
+    Electrical = DataFormat 'nova…_elo'. The Warehouse folder also holds HVAC and
+    sanitary datasets; they are skipped.
     """
     import zipfile
 
@@ -60,9 +55,17 @@ def is_electrical_dataset(path: Path) -> bool:
     try:
         with zipfile.ZipFile(path) as zf:
             attrs = tree.parse(zf.read("Set")).root.attrs
+            if not attrs.get("DataFormat", "").endswith("_elo"):
+                return None
+            graphic = tree.parse(zf.read("Graphic")).root if "Graphic" in zf.namelist() else None
     except Exception:  # noqa: BLE001 - unreadable files are simply skipped
-        return False
-    return attrs.get("DataFormat", "").endswith("_elo")
+        return None
+    count = sum(1 for g in graphic.find_all("GraphicItem") if g.get("Item")) if graphic else 0
+    return attrs.get("ID", path.stem), count
+
+
+def is_electrical_dataset(path: Path) -> bool:
+    return dataset_summary(path) is not None
 
 
 def local_home() -> Path:
@@ -127,25 +130,36 @@ def save_settings(settings: Settings) -> None:
     tmp.replace(path)
 
 
-def find_datasets(roots: list[str] | None = None, max_depth: int = 7) -> list[str]:
-    """Search typical Nova folders for dataset archives."""
+def find_datasets(roots: list[str] | None = None, max_depth: int = 7,
+                  skip_ids: set[str] | None = None) -> list[str]:
+    """Search the Nova folder for electrical datasets.
+
+    Skips empty catalogues (no symbols), datasets whose id is in ``skip_ids``
+    and further copies of a dataset that was already found.
+    """
     found: list[str] = []
+    seen: set[str] = set(skip_ids or ())
     for root in roots or DATASET_SEARCH_ROOTS:
         base = Path(root)
         if not base.is_dir():
             continue
         try:
-            for dirpath, dirnames, filenames in os.walk(base):
-                depth = len(Path(dirpath).relative_to(base).parts)
-                if depth >= max_depth:
-                    dirnames[:] = []
-                for name in filenames:
-                    path = Path(dirpath) / name
-                    if path.match(DATASET_PATTERN) and is_electrical_dataset(path):
-                        found.append(str(path))
+            walk = sorted(os.walk(base), key=lambda w: w[0])
         except OSError:
             continue
-    return sorted(set(found))
+        for dirpath, dirnames, filenames in walk:
+            if len(Path(dirpath).relative_to(base).parts) >= max_depth:
+                continue
+            for name in sorted(filenames):
+                path = Path(dirpath) / name
+                if not path.match(DATASET_PATTERN):
+                    continue
+                summary = dataset_summary(path)
+                if not summary or summary[1] == 0 or summary[0] in seen:
+                    continue
+                seen.add(summary[0])
+                found.append(str(path))
+    return found
 
 
 def find_oda_converter() -> str:

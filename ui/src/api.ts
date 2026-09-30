@@ -94,7 +94,7 @@ export interface Status {
   company_error: string;
   datasets: DatasetInfo[];
   symbol_count: number;
-  sync: { neu?: string[]; unveraendert?: string[]; entfernt?: string[]; fehler?: string[] };
+  sync: { neu?: string[]; unveraendert?: string[]; entfernt?: string[]; fehler?: string[]; doppelt?: string[] };
   oda: string;
   local_home: string;
 }
@@ -147,7 +147,7 @@ const qs = (params: Record<string, string | boolean | number>) =>
 export const api = {
   status: () => request<Status>("GET", "/api/status"),
   saveSettings: (s: Partial<Settings>) => request<Status>("PUT", "/api/settings", s),
-  searchDatasets: () => request<{ found: string[] }>("POST", "/api/settings/search-datasets"),
+  searchDatasets: () => request<{ found: string[]; folders: string[] }>("POST", "/api/settings/search-datasets"),
   sync: () => request<Status["sync"]>("POST", "/api/library/sync"),
   updateCheck: () => request<UpdateInfo>("GET", "/api/update/check"),
   updateInstall: () => request<{ ok: boolean; message: string }>("POST", "/api/update/install"),

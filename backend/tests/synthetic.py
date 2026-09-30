@@ -18,7 +18,8 @@ FILLED = ('((2)(("X_Geometrie")()(0)((0))((1)(((FlexPolygon)((4|-0.004;0|0.004;0
           '((0))((0))((0))))((1)(("NP0")(0;0.0025;0)))((0))(-0.004;0;0.004;0.005;1)')
 
 
-def make_nzp(path: Path, dataset_id: str, items: list[tuple]) -> Path:
+def make_nzp(path: Path, dataset_id: str, items: list[tuple],
+             data_format: str = "nova10.2_elo") -> Path:
     """items: (sheet, item code, description[, geometry]). One 2D graphic per item."""
     items = [tuple(i) if len(i) == 4 else (*i, CIRCLE) for i in items]
     sheets: dict[str, list[tuple[str, str]]] = {}
@@ -26,7 +27,7 @@ def make_nzp(path: Path, dataset_id: str, items: list[tuple]) -> Path:
         sheets.setdefault(sheet, []).append((code, desc))
 
     set_root = Node("DataSet", {"ID": dataset_id, "Name": dataset_id, "Version": "1.0.0",
-                                "LongName": f"{dataset_id} Test"})
+                                "LongName": f"{dataset_id} Test", "DataFormat": data_format})
     graphic = Node("Root", {}, [Node("GraphicSet", {"ID": "Default"}, [Node("Graphic", {}, [
         Node("GraphicItem", {"ID": "2D-10", "Description": desc, "Type": "Geometry", "Usage": "I",
                              "PlaceMode": "W,Y", "Geometry": geo, "Sheet": sheet, "Item": code})

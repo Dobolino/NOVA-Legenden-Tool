@@ -18,7 +18,7 @@ from ..render.svg import has_fill, render_svg
 from .families import FamilyOptions, build_families, family_key, label_variant, orientation
 
 # Bump when the parser or renderer output changes: forces a rebuild of the cache
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -96,7 +96,7 @@ class Library:
 
         Returns a report: added, unchanged, removed, errors.
         """
-        report = {"neu": [], "unveraendert": [], "entfernt": [], "fehler": []}
+        report = {"neu": [], "unveraendert": [], "entfernt": [], "fehler": [], "doppelt": []}
         wanted: dict[str, Path] = {}
         for p in dataset_paths:
             path = Path(p)
@@ -120,7 +120,8 @@ class Library:
                     report["fehler"].append(f"{path.name}: {exc}")
                     continue
                 if ds.info.id in seen_ids:
-                    report["fehler"].append(f"{path.name}: Datensatz {ds.info.id} ist doppelt")
+                    # Same dataset in a second file: keep the first, no error
+                    report["doppelt"].append(str(path))
                     continue
                 self._store_dataset(con, ds, resolved, fp)
                 seen_ids.add(ds.info.id)

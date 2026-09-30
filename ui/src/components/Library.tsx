@@ -211,6 +211,11 @@ export default function Library(props: Props) {
                       </span>
                     ))
                   )}
+                  {it.representative.kind === "Engine" && it.representative.svg && (
+                    <span className="badge" title="Nova zeichnet dieses Symbol aus Parametern. Die Vorschau ist vereinfacht.">
+                      vereinfacht
+                    </span>
+                  )}
                   {it.category_source === "manuell" && <span className="badge manual">zugeordnet</span>}
                   {it.conflicts.length > 0 && <span className="badge warn">prüfen</span>}
                 </div>

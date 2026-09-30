@@ -100,6 +100,8 @@ def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool 
     pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
     x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
     w, h = (x1 - x0) * MM, (y1 - y0) * MM
+    # Large symbols (e.g. an 11 m PV array at 1:50) keep visible lines
+    stroke_mm = max(stroke_mm, 0.012 * max(w, h))
     mixed = any(p.color for p in geo.primitives) and any(p.color is None for p in geo.primitives)
     parts: list[str] = []
     for p in geo.primitives:

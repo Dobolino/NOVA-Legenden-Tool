@@ -8,7 +8,7 @@ export default function SymbolPic({ sym, svg }: { sym: SymbolBrief; svg?: string
     sym.kind === "Engine"
       ? "parametrische Leuchte (Vorschau folgt)"
       : sym.kind === "Symbol"
-        ? "Bibliothekssymbol (.nsb)"
+        ? "Grafik in Nova-Bibliothek (.nsb), noch nicht lesbar"
         : "keine Grafik";
   return <div className="placeholder">{label}</div>;
 }

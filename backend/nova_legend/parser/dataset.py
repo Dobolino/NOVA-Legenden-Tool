@@ -187,6 +187,13 @@ class Dataset:
                 except (ValueError, IndexError, TypeError):
                     # One broken graphic must not stop the whole dataset
                     geo = None
+            elif kind == "Engine":
+                # Parametric symbol: simplified preview from its parameters
+                from ..render.engine import engine_geometry
+                try:
+                    geo = engine_geometry(gi.get("Content"), attrs)
+                except (ValueError, IndexError, TypeError):
+                    geo = None
             symbols.append(Symbol(
                 dataset=self.info.id,
                 item=item,

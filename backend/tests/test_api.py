@@ -101,17 +101,38 @@ def test_api_library_flow(home):
 
 
 def test_find_datasets_only_electrical(tmp_path):
-    import zipfile
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from synthetic import make_nzp
 
-    from nova_legend.parser.tree import Node, serialize
-
-    (tmp_path / "Elektro").mkdir()
-    for name, fmt in (("Elektro/a.nzp", "nova10.2_elo"), ("hlks.nzp", "nova10.2_hlk")):
-        with zipfile.ZipFile(tmp_path / name, "w") as zf:
-            zf.writestr("Set", serialize(Node("DataSet", {"ID": name, "DataFormat": fmt})))
+    item = [("10", "10-10", "Schalter, UP")]
+    (tmp_path / "A").mkdir()
+    (tmp_path / "B").mkdir()
+    make_nzp(tmp_path / "A" / "elo.nzp", "Test.Elo", item)
+    make_nzp(tmp_path / "B" / "elo_kopie.nzp", "Test.Elo", item)          # same id again
+    make_nzp(tmp_path / "A" / "leer.nzp", "Test.Leer", [])                 # empty catalogue
+    make_nzp(tmp_path / "A" / "hlks.nzp", "Test.HLK", item, "nova10.2_hlk")
+    make_nzp(tmp_path / "A" / "zweiter.nzp", "Test.Zwei", item)
     (tmp_path / "kaputt.nzp").write_bytes(b"no zip")
     found = [Path(p).name for p in config.find_datasets([str(tmp_path)])]
-    assert found == ["a.nzp"]
+    assert found == ["elo.nzp", "zweiter.nzp"]
+    again = config.find_datasets([str(tmp_path)], skip_ids={"Test.Elo"})
+    assert [Path(p).name for p in again] == ["zweiter.nzp"]
+
+
+def test_duplicate_dataset_is_not_an_error(tmp_path):
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from synthetic import make_nzp
+
+    from nova_legend.library.store import Library
+
+    item = [("10", "10-10", "Schalter, UP")]
+    a = make_nzp(tmp_path / "a.nzp", "Test.Elo", item)
+    b = make_nzp(tmp_path / "b.nzp", "Test.Elo", item)
+    report = Library(tmp_path / "lib.sqlite").sync([str(a), str(b)])
+    assert report["fehler"] == [] and report["doppelt"] == [str(b)]
+    assert report["neu"] == ["Test.Elo"]
 
 
 def test_library_cache_upgrade_from_old_schema(tmp_path):

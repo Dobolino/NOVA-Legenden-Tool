@@ -14,7 +14,8 @@ Stand: 30.09.2026
 - Einstellungen: Datensätze (automatische Suche oder Pfad einfügen), Firmenordner, Nova-Version, Status des ODA File Converters.
 - Installation: Setup-exe ohne Adminrechte, eigenes Programmfenster (Edge WebView2), Symbol auf dem Desktop.
 - Update-Knopf: Das Programm prüft beim Start, ob auf GitHub eine neuere Version liegt, und zeigt oben rechts «Update verfügbar». Unter Einstellungen → Programm-Update lädt «Jetzt aktualisieren» das Setup, prüft die Prüfsumme, installiert still und startet das Programm neu. Braucht Internetzugang zu github.com.
-- Automatische Suche der Datensätze zuerst in `C:\Users\Public\Documents\Trimble\Warehouse`.
+- Automatische Suche nur in `C:\Users\Public\Documents\Trimble\Warehouse`: nur Elektro-Datensätze mit Symbolen, jede Datei-Kopie eines Datensatzes nur einmal. Doppelte Einträge sind kein Fehler mehr. Knopf «Alle entfernen».
+- Parametrische Symbole (Leuchten, Verteiler, Heizungen) zeigen eine vereinfachte Vorschau aus Länge, Breite und Typ, markiert mit «vereinfacht».
 
 ## Speicherorte
 
@@ -62,7 +63,7 @@ Melde mir bitte: falsch gezeichnete Symbole (Code nennen), falsche Familien, fal
 
 ## Bekannte Grenzen
 
-- 141 parametrische Leuchten (Engine) und 22 Bibliothekssymbole (.nsb) zeigen einen Platzhalter. Lösung in Phase 2 über den DXF-Import.
+- Parametrische Symbole: vereinfachte Vorschau, eingebettete Nova-Symbole darin fehlen. 22 Bibliothekssymbole (.nsb, z. B. Leerdosen, Beschriftungen) zeigen weiter einen Platzhalter. Lösung über den DXF-Import (Phase 2) oder das Lesen der .nsb (Phase 6).
 - Das Setup ist nicht signiert (Windows-Warnung beim ersten Start).
 - SQLite im Netzwerkordner ist für seltene Änderungen ausgelegt. Viele gleichzeitige Schreibzugriffe können kurz warten (bis 10 Sekunden).
 - Firmeneigene Symbole (Makro\Symbole) sind noch nicht enthalten.
