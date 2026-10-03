@@ -175,6 +175,7 @@ def test_copy_contains_the_edit_that_was_pending_when_copy_was_requested(editor)
     page, field, client, (a, b) = editor
     field.fill("Include me in the copy")
     page.once("dialog", lambda dialog: dialog.accept("Browser copy"))
+    page.locator("summary").filter(has_text="Projektaktionen").click()
     page.get_by_role("button", name="Projekt duplizieren", exact=True).click()
     playwright.expect(page.get_by_role("heading", name="Browser copy", exact=True)).to_be_visible()
     assert title(client, a) == "Include me in the copy"

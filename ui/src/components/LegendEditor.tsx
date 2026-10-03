@@ -40,9 +40,10 @@ import {
   updateItem,
   updateSectionStyle,
 } from "../legend";
-import { TrashIcon } from "./Icons";
+import { Icon, TrashIcon } from "./Icons";
 import { SaveSession } from "../saveSession";
 import { useNavigation } from "../Navigation";
+import Menu from "./Menu";
 
 interface Props {
   projectId: string;
@@ -98,6 +99,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const { register } = useNavigation();
   const layoutGate = useRef({ generation: 0 });
   const fieldBefore = useRef<LegendDoc | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   const doc = hist?.present ?? null;
   const colorByCat = useMemo(() => Object.fromEntries(data.category_colors.map((c) => [c.id, c.color])), [data.category_colors]);
@@ -545,25 +547,27 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
           ↷ Wiederholen
         </button>
         <span className="sep" />
-        <button className="btn small" onClick={() => addKind("text")} title={FREE_TEXT_HINT}>
-          + Freier Text
-        </button>
-        <button className="btn small" onClick={() => addKind("line")} title="Linienmuster, z. B. für Leitungen und Trassen">
-          + Linie
-        </button>
-        <button className="btn small" onClick={() => addKind("note")}>
-          + Hinweis
-        </button>
-        <button
-          className="btn small"
-          onClick={() => {
-            const r = addBlock(doc, "Neuer Abschnitt");
-            change(r.doc);
-            setSel({ type: "block", block: r.id });
-          }}
-        >
-          + Abschnitt
-        </button>
+        <Menu label="Einfügen">
+          <button className="btn small" onClick={() => addKind("text")} title={FREE_TEXT_HINT}>
+            + Freier Text
+          </button>
+          <button className="btn small" onClick={() => addKind("line")} title="Linienmuster, z. B. für Leitungen und Trassen">
+            + Linie
+          </button>
+          <button className="btn small" onClick={() => addKind("note")}>
+            + Hinweis
+          </button>
+          <button
+            className="btn small"
+            onClick={() => {
+              const r = addBlock(doc, "Neuer Abschnitt");
+              change(r.doc);
+              setSel({ type: "block", block: r.id });
+            }}
+          >
+            + Abschnitt
+          </button>
+        </Menu>
         <span className="sep" />
         <label className="filter-label">
           Raster
@@ -609,7 +613,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
           Raster anzeigen
         </button>
         <span className="sep" />
-        <button className="btn small" onClick={() => setZoom((z) => Math.max(1.5, round(z / 1.25)))} aria-label="Verkleinern">
+        <button className="btn small" onClick={() => setZoom((z) => Math.max(0.5, round(z / 1.25)))} aria-label="Verkleinern">
           −
         </button>
         <span className="hint" style={{ minWidth: 44, textAlign: "center" }}>
@@ -618,10 +622,21 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         <button className="btn small" onClick={() => setZoom((z) => Math.min(12, round(z * 1.25)))} aria-label="Vergrössern">
           +
         </button>
+        <button className="btn small" onClick={() => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const padding = getComputedStyle(canvas);
+          const width = canvas.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
+          setZoom(Math.max(0.5, Math.min(12, round(width / W))));
+        }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
         <span style={{ flex: 1 }} />
         <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
           {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
         </span>
+        <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
+          title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
+          <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
+        </button>
       </div>
 
       <div className="legend-body">
@@ -745,6 +760,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         </aside>
 
         <div
+          ref={canvasRef}
           className="legend-canvas"
           onClick={() => !justDragged.current && setSel({ type: "legend" })}
           onDragOver={(e) => {

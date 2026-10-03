@@ -129,6 +129,11 @@ export default function Library(props: Props) {
 
   return (
     <div className="lib">
+      <div className="library-heading">
+        <div className="eyebrow">Symbolkatalog</div>
+        <h1>Bibliothek</h1>
+        <p>Symbole finden, Varianten vergleichen und Kategorien zuordnen.</p>
+      </div>
       <div className="toolbar lib-bar">
         <input
           className="search"
@@ -158,6 +163,13 @@ export default function Library(props: Props) {
                 {m === "-" ? "ohne Angabe" : m}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="filter-label library-category-filter">
+          Kategorie
+          <select className="select" value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Alle Symbole</option>
+            {visibleCats.map(({ cat }) => <option key={cat.id} value={cat.id}>{cat.title} ({countOf(cat)})</option>)}
           </select>
         </label>
         <label className="toggle" title="Zeigt jede Variante (UP, AP, ohne Text …) als eigene Kachel">
@@ -195,7 +207,11 @@ export default function Library(props: Props) {
                 <div
                   key={it.id}
                   className={`tile ${selected === it.id ? "selected" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected === it.id}
                   onClick={() => setSelected(it.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(it.id); } }}
                   title={`${it.representative.name} · ${it.representative.item}`}
                 >
                   <div className="pic">

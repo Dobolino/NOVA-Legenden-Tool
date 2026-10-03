@@ -111,8 +111,9 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   }
 
   return (
-    <div className="page">
+    <div className="page settings-page">
       <div className="page-inner">
+        <div className="page-heading"><div><div className="eyebrow">Konfiguration</div><h1>Einstellungen</h1><p>Darstellung, Bibliotheken und gemeinsame Daten verwalten.</p></div></div>
         <div className="card">
           <h3>Darstellung</h3>
           <p className="desc">Gilt nur auf diesem Computer. Die Legende bleibt immer weiss wie auf dem Plan.</p>

@@ -4,20 +4,31 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 export default function Menu({ label, disabled, children }: { label: string; disabled?: boolean; children: ReactNode }) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number | "auto"; bottom: number | "auto"; right: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent | KeyboardEvent) => {
       if (e instanceof KeyboardEvent ? e.key === "Escape" : !ref.current?.contains(e.target as Node)) {
-        if (ref.current) ref.current.open = false;
+        if (ref.current) {
+          ref.current.open = false;
+          if (e instanceof KeyboardEvent) ref.current.querySelector("summary")?.focus();
+        }
       }
     };
     // Fixed position, so a scrolling table does not cut the menu off. Scrolling closes it.
     const rect = ref.current?.querySelector("summary")?.getBoundingClientRect();
     if (rect) {
       const below = window.innerHeight - rect.bottom - 12;
-      setPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right), maxHeight: Math.max(160, below) });
+      const above = rect.top - 12;
+      const height = ref.current?.querySelector<HTMLElement>(".menu-pop")?.scrollHeight ?? 220;
+      const up = below < Math.min(height, above) && above > below;
+      setPos({
+        top: up ? "auto" : rect.bottom + 4,
+        bottom: up ? window.innerHeight - rect.top + 4 : "auto",
+        right: Math.max(8, window.innerWidth - rect.right),
+        maxHeight: Math.max(80, up ? above : below),
+      });
     }
     const shut = () => {
       if (ref.current) ref.current.open = false;
@@ -47,10 +58,11 @@ export default function Menu({ label, disabled, children }: { label: string; dis
       {open && (
         <div
           className="menu-pop"
-          role="menu"
-          style={pos ? { position: "fixed", top: pos.top, right: pos.right, maxHeight: pos.maxHeight, overflowY: "auto" } : undefined}
+          role="group"
+          aria-label={label}
+          style={pos ? { position: "fixed", top: pos.top, bottom: pos.bottom, right: pos.right, maxHeight: pos.maxHeight, overflowY: "auto" } : undefined}
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest("button") && ref.current) ref.current.open = false;
+            if ((e.target as HTMLElement).closest("button, a") && ref.current) ref.current.open = false;
           }}
         >
           {children}

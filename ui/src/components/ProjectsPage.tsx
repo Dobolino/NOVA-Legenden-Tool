@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Category, ProjectSummary } from "../api";
 import { formatDateTime } from "../uiState";
-import { TrashIcon } from "./Icons";
+import { Icon, TrashIcon } from "./Icons";
 import ProjectView from "./ProjectView";
+import { useDialogFocus } from "../useDialogFocus";
 
 interface Props {
   categories: Category[];
@@ -16,6 +17,8 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
   const [folderExists, setFolderExists] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
   const [dialog, setDialog] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("modified");
 
   const load = useCallback(async () => {
     try {
@@ -51,22 +54,27 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
     );
   }
 
+  const shown = items.filter((p) => `${p.project_number} ${p.name}`.toLocaleLowerCase("de-CH").includes(query.toLocaleLowerCase("de-CH")))
+    .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name, "de-CH") : b.modified.localeCompare(a.modified));
+
   return (
-    <div className="page">
+    <div className="page projects-page">
       <div className="page-inner">
-        <div className="card">
-          <div className="row" style={{ justifyContent: "space-between" }}>
+        <div className="page-heading">
             <div>
-              <h3>Projekte</h3>
-              <p className="desc" style={{ marginBottom: 0 }}>
-                Projektordner: {folder}
-                {!folderExists && " (wird beim ersten Projekt angelegt)"}
-              </p>
+              <div className="eyebrow">Projektübersicht</div>
+              <h1>Deine Projekte</h1>
+              <p>Pläne verwalten. Symbole zuordnen. Legenden erstellen.</p>
             </div>
             <button className="btn primary" onClick={() => setDialog(true)}>
-              Legende erstellen
+              <Icon name="plus" size={18} /> Legende erstellen
             </button>
-          </div>
+        </div>
+
+        <div className="project-metrics" aria-label="Projektübersicht in Zahlen">
+          <div><span>Projekte</span><strong>{items.length}</strong><Icon name="projects" size={22} /></div>
+          <div><span>Importierte Geschosse</span><strong>{items.reduce((sum, p) => sum + p.plan_count, 0)}</strong><Icon name="file" size={22} /></div>
+          <div><span>Als Vorlage verfügbar</span><strong>{items.filter((p) => p.use_as_template !== false).length}</strong><Icon name="library" size={22} /></div>
         </div>
 
         {items.length === 0 ? (
@@ -77,7 +85,12 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
             </p>
           </div>
         ) : (
-          <div className="card">
+          <div className="card project-list">
+            <div className="project-list-toolbar">
+              <label className="search-field"><Icon name="search" size={18} /><input className="search" aria-label="Projekte suchen" placeholder="Projektname oder Nummer suchen …" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+              <label className="filter-label">Sortieren<select className="select" aria-label="Projekte sortieren" value={sort} onChange={(e) => setSort(e.target.value)}><option value="modified">Zuletzt geändert</option><option value="name">Projektname A–Z</option></select></label>
+            </div>
+            <div className="table-scroll">
             <table className="list-table">
               <thead>
                 <tr>
@@ -90,14 +103,14 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                 </tr>
               </thead>
               <tbody>
-                {items.map((p) => (
+                {shown.map((p) => (
                   <tr key={p.id} className="clickable" onClick={() => setOpen(p.id)}>
                     <td>
                       {p.project_number && <span className="hint">{p.project_number} · </span>}
-                      <b>{p.name}</b>
+                      <button className="project-open" onClick={(e) => { e.stopPropagation(); setOpen(p.id); }}>{p.name}</button>
                       {p.template_from && <div className="hint">Vorlage: {p.template_from}</div>}
                     </td>
-                    <td>Nova {p.nova_version}</td>
+                    <td><span className="badge">Nova {p.nova_version}</span></td>
                     <td>{p.plan_count}</td>
                     <td>{formatDateTime(p.modified)}</td>
                     <td>{p.created_by}</td>
@@ -126,8 +139,16 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
                 ))}
               </tbody>
             </table>
+            </div>
+            {shown.length === 0 && <div className="empty">Keine Projekte für diese Suche.</div>}
+            <div className="project-list-footer">{shown.length} von {items.length} Projekten</div>
           </div>
         )}
+        <details className="project-location">
+          <summary>Projektordner anzeigen</summary>
+          <p>{folder}{!folderExists && " (wird beim ersten Projekt angelegt)"}</p>
+          <button className="btn small" onClick={onOpenSettings}>Ordner in den Einstellungen ändern</button>
+        </details>
       </div>
       {dialog && (
         <CreateDialog
@@ -163,6 +184,8 @@ function CreateDialog({
   const [nova, setNova] = useState("19.2");
   const [template, setTemplate] = useState("");
   const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, onClose, busy);
 
   async function submit() {
     if (mode === "existing") {
@@ -187,8 +210,8 @@ function CreateDialog({
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Legende erstellen</h3>
+      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby="create-project-title" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+        <h3 id="create-project-title">Legende erstellen</h3>
         <p className="desc">Jede Legende gehört zu einem Projekt.</p>
         <label className="toggle choice">
           <input type="radio" checked={mode === "existing"} disabled={!projects.length} onChange={() => setMode("existing")} />
@@ -209,17 +232,17 @@ function CreateDialog({
         </label>
         {mode === "new" && (
           <div className="form-grid">
-            <label>Projektnummer</label>
-            <input className="input" autoFocus value={number} onChange={(e) => setNumber(e.target.value)} placeholder="z. B. 2026-014" />
-            <label>Bezeichnung</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Wohn- und Geschäftshaus Basel" />
-            <label>Nova-Version</label>
-            <select className="select" value={nova} onChange={(e) => setNova(e.target.value)}>
+            <label htmlFor="create-number">Projektnummer</label>
+            <input id="create-number" className="input" autoFocus value={number} onChange={(e) => setNumber(e.target.value)} placeholder="z. B. 2026-014" />
+            <label htmlFor="create-name">Bezeichnung</label>
+            <input id="create-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="z. B. Wohn- und Geschäftshaus Basel" />
+            <label htmlFor="create-nova">Nova-Version</label>
+            <select id="create-nova" className="select" value={nova} onChange={(e) => setNova(e.target.value)}>
               <option value="19.2">Nova 19.2</option>
               <option value="20">Nova 20</option>
             </select>
-            <label>Vorlage (Einstellungen und Ebenen)</label>
-            <select className="select" value={template} onChange={(e) => setTemplate(e.target.value)}>
+            <label htmlFor="create-template">Vorlage (Einstellungen und Ebenen)</label>
+            <select id="create-template" className="select" value={template} onChange={(e) => setTemplate(e.target.value)}>
               <option value="">keine Vorlage</option>
               {projects.filter((p) => p.use_as_template !== false).map((p) => (
                 <option key={p.id} value={p.id}>

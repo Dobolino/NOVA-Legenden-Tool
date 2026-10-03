@@ -6,6 +6,8 @@ Stand: **Phase 3 (Änderungen zwischen Importen)**. Das Programm zeigt alle Symb
 
 Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md) · [Phase 2](docs/PHASE2.md) · [Phase 3](docs/PHASE3.md)
 
+Oberfläche: [edeco-Design, Bedienung und anpassbare Designvariablen](docs/UI_REDESIGN.md). Die Programmoberfläche und ihre Hell-/Dunkelmodi verändern die Symbolfarben der Legende und den DXF-Export nicht.
+
 ## Installation für die Firma
 
 1. `NOVA-Legenden-Setup-<Version>.exe` doppelklicken.

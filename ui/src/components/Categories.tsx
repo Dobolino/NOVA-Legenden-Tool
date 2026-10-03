@@ -126,6 +126,7 @@ export default function Categories({ categories, options, notify, onChanged }: P
   return (
     <div className="page">
       <div className="page-inner full">
+        <div className="page-heading"><div><div className="eyebrow">Firmenstandard</div><h1>Kategorien</h1><p>Symbole strukturieren und die Darstellung der Legenden festlegen.</p></div></div>
         <p className="info-line company">
           <b>{COMPANY}</b> Kategorien, Legendenebenen, Nummernkreise und Familienregeln liegen im Firmenordner und
           wirken bei allen Mitarbeitenden.

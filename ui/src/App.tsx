@@ -6,8 +6,17 @@ import SettingsPage from "./components/SettingsPage";
 import ProjectsPage from "./components/ProjectsPage";
 import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
 import { NavigationProvider, useNavigation } from "./Navigation";
+import { Icon } from "./components/Icons";
+import edecoLogo from "./assets/edeco-logo.svg";
 
 type Tab = "projects" | "library" | "categories" | "settings";
+
+const NAVIGATION: { id: Tab; label: string; description: string }[] = [
+  { id: "projects", label: "Projekte", description: "Pläne und Legenden" },
+  { id: "library", label: "Bibliothek", description: "Symbole und Varianten" },
+  { id: "categories", label: "Kategorien", description: "Firmenweite Ordnung" },
+  { id: "settings", label: "Einstellungen", description: "Programm und Daten" },
+];
 
 export interface Toast {
   text: string;
@@ -91,98 +100,109 @@ function AppContent() {
   }
 
   const noDatasets = status && status.datasets.length === 0;
+  const current = NAVIGATION.find((item) => item.id === tab)!;
 
   return (
     <div className="app" inert={pending}>
-      <header className="topbar">
+      <aside className="app-nav" aria-label="Programmnavigation">
         <div className="brand">
-          <span className="brand-mark">NL</span> NOVA-Legenden
+          <div className="brand-logo"><img src={edecoLogo} alt="edeco" /></div>
+          <div className="brand-name">NOVA<span>Legenden</span></div>
         </div>
-        <nav className="tabs">
-          <button className={`tab ${tab === "projects" ? "active" : ""}`} onClick={() => navigate(() => setTab("projects"))}>
-            Projekte
-          </button>
-          <button className={`tab ${tab === "library" ? "active" : ""}`} onClick={() => navigate(() => setTab("library"))}>
-            Bibliothek
-          </button>
-          <button className={`tab ${tab === "categories" ? "active" : ""}`} onClick={() => navigate(() => setTab("categories"))}>
-            Kategorien
-          </button>
-          <button className={`tab ${tab === "settings" ? "active" : ""}`} onClick={() => navigate(() => setTab("settings"))}>
-            Einstellungen
-          </button>
-        </nav>
-        <div className="spacer" />
-        {status && (
-          <div className="top-chips">
-            <span className={`chip ${noDatasets ? "warn" : ""}`} title="Geladene Nova-Symbol-Datensätze (z. B. V1 2022, V2 2025)">
-              <span className={`dot ${noDatasets ? "warn" : ""}`} />
-              {status.datasets.length} Symbol-Datensätze · {status.symbol_count} Symbole
-            </span>
-            <span className={`chip ${status.company_error ? "warn" : ""}`} title={`Firmenweite Daten: ${status.company_db}`}>
-              <span className={`dot ${status.company_error || !status.settings.company_folder ? "warn" : ""}`} />
-              {status.settings.company_folder ? "Firmenordner" : "Firmenordner fehlt"}
-            </span>
-            <span className="chip" title="Standard für neue Projekte. Jedes Projekt speichert seine eigene Nova-Version.">
-              Nova-Version {status.settings.nova_version}
-            </span>
+        <div className="nav-label">Arbeitsbereich</div>
+        <nav className="tabs" aria-label="Hauptnavigation">
+          {NAVIGATION.map((item) => (
             <button
-              className="chip theme-btn"
-              onClick={() => setTheme(effectiveDark(theme) ? "light" : "dark")}
-              title={effectiveDark(theme) ? "Zum hellen Modus wechseln" : "Zum dunklen Modus wechseln"}
-              aria-label={effectiveDark(theme) ? "Heller Modus" : "Dunkler Modus"}
+              key={item.id}
+              className={`tab ${tab === item.id ? "active" : ""}`}
+              aria-current={tab === item.id ? "page" : undefined}
+              title={item.label}
+              onClick={() => navigate(() => setTab(item.id))}
             >
-              {effectiveDark(theme) ? "☀ Hell" : "☾ Dunkel"}
+              <Icon name={item.id} /><span>{item.label}</span>
             </button>
-            {update?.available && (
+          ))}
+        </nav>
+        <div className="nav-footer">
+          <span className="nav-footer-label">NOVA-Legenden</span>
+          <span>Elektroplanung · edeco</span>
+        </div>
+      </aside>
+      <div className="app-workspace">
+        <header className="topbar">
+          <div className="workspace-context"><span>{current.label}</span><span>{current.description}</span></div>
+          {status && (
+            <div className="top-chips">
+              <span className={`chip ${noDatasets ? "warn" : ""}`} title="Geladene Nova-Symbol-Datensätze (z. B. V1 2022, V2 2025)">
+                <span className={`dot ${noDatasets ? "warn" : ""}`} />
+                {status.datasets.length} Datensätze<span className="chip-detail"> · {status.symbol_count.toLocaleString("de-CH")} Symbole</span>
+              </span>
+              <span className={`chip ${status.company_error ? "warn" : ""}`} title={`Firmenweite Daten: ${status.company_db}`}>
+                <span className={`dot ${status.company_error || !status.settings.company_folder ? "warn" : ""}`} />
+                {status.settings.company_folder ? "Firmenordner" : "Firmenordner fehlt"}
+              </span>
+              <span className="chip" title="Standard für neue Projekte. Jedes Projekt speichert seine eigene Nova-Version.">
+                Nova-Version {status.settings.nova_version}
+              </span>
               <button
-                className="chip update"
-                disabled={installing}
-                onClick={() => installUpdate()}
-                title={update.can_install ? "Update jetzt installieren" : "Update läuft nur im installierten Programm"}
+                className="chip theme-btn"
+                onClick={() => setTheme(effectiveDark(theme) ? "light" : "dark")}
+                title={effectiveDark(theme) ? "Zum hellen Modus wechseln" : "Zum dunklen Modus wechseln"}
+                aria-label={effectiveDark(theme) ? "Heller Modus" : "Dunkler Modus"}
               >
-                {installing ? "Update läuft …" : `Update ${update.latest} verfügbar`}
+                <Icon name={effectiveDark(theme) ? "sun" : "moon"} size={16} />
+                <span>{effectiveDark(theme) ? "Hell" : "Dunkel"}</span>
               </button>
-            )}
-          </div>
-        )}
-      </header>
-      <div className="main">
-        {tab === "projects" && (
-          <ProjectsPage categories={categories} notify={notify} onOpenSettings={() => navigate(() => setTab("settings"))} />
-        )}
-        {tab === "library" && options && (
-          <Library
-            categories={categories}
-            options={options}
-            revision={revision}
-            datasets={status?.datasets ?? []}
-            notify={notify}
-            onCategoriesChanged={reloadCategories}
-            onOpenSettings={() => navigate(() => setTab("settings"))}
-          />
-        )}
-        {tab === "categories" && options && (
-          <Categories
-            categories={categories}
-            options={options}
-            notify={notify}
-            onChanged={reload}
-          />
-        )}
-        {tab === "settings" && status && (
-          <SettingsPage
-            status={status}
-            update={update}
-            onUpdate={setUpdate}
-            notify={notify}
-            onChanged={reload}
-            theme={theme}
-            onTheme={setTheme}
-          />
-        )}
+              {update?.available && (
+                <button
+                  className="chip update"
+                  disabled={installing}
+                  onClick={() => installUpdate()}
+                  title={update.can_install ? "Update jetzt installieren" : "Update läuft nur im installierten Programm"}
+                >
+                  {installing ? "Update läuft …" : `Update ${update.latest} verfügbar`}
+                </button>
+              )}
+            </div>
+          )}
+        </header>
+        <div className="main">
+          {tab === "projects" && (
+            <ProjectsPage categories={categories} notify={notify} onOpenSettings={() => navigate(() => setTab("settings"))} />
+          )}
+          {tab === "library" && options && (
+            <Library
+              categories={categories}
+              options={options}
+              revision={revision}
+              datasets={status?.datasets ?? []}
+              notify={notify}
+              onCategoriesChanged={reloadCategories}
+              onOpenSettings={() => navigate(() => setTab("settings"))}
+            />
+          )}
+          {tab === "categories" && options && (
+            <Categories
+              categories={categories}
+              options={options}
+              notify={notify}
+              onChanged={reload}
+            />
+          )}
+          {tab === "settings" && status && (
+            <SettingsPage
+              status={status}
+              update={update}
+              onUpdate={setUpdate}
+              notify={notify}
+              onChanged={reload}
+              theme={theme}
+              onTheme={setTheme}
+            />
+          )}
+        </div>
       </div>
-      {toast && <div className={`toast ${toast.error ? "error" : ""}`}>{toast.text}</div>}
+      {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.text}</div>}
     </div>
   );
 }

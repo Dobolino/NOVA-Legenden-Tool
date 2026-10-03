@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ImportPreview, Plan, PreviewChange, ProjectDetail } from "../api";
 import { floorNameFor, matchPlan } from "../floors";
+import { useDialogFocus } from "../useDialogFocus";
 
 interface Row {
   file: File;
@@ -59,6 +60,8 @@ export default function ImportDialog({
   const [busy, setBusy] = useState(false);
   const tokens = useRef<string[]>([]);
   const started = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, close, busy);
 
   const set = (i: number, patch: Partial<Row>) => setRows((list) => list.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   const targetOf = (r: Row) => (r.planId ? plans.find((p) => p.id === r.planId) : matchPlan(r.name.trim() || floorNameFor(r.file.name), plans));
@@ -138,7 +141,7 @@ export default function ImportDialog({
 
   return (
     <div className="modal-back" onClick={close}>
-      <div className="modal ip-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Pläne importieren">
+      <div ref={dialogRef} className="modal ip-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Pläne importieren" tabIndex={-1}>
         <header className="ip-head">
           <h3>Pläne importieren</h3>
           <ol className="ip-steps" aria-label="Schritte">

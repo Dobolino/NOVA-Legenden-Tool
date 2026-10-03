@@ -178,10 +178,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   }
 
   return (
-    <div className="page">
+    <div className="page project-page">
       <div className="page-inner full">
         <div className="card project-head">
-          <div className="row" style={{ justifyContent: "space-between" }}>
+          <div className="project-breadcrumb">
             <button className="btn small" onClick={() => navigate(onBack)}>
               ← Alle Projekte
             </button>
@@ -206,119 +206,128 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               </select>
             </label>
           </div>
-          <h2 className="project-title">
-            {data.meta.project_number && <span className="number">{data.meta.project_number}</span>}
-            {data.meta.name}
-          </h2>
-          <div className="head-fields">
-            <label className="field">
-              <span>Projektnummer</span>
-              <input
-                className="input"
-                style={{ width: 150 }}
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
-              />
-            </label>
-            <label className="field grow">
-              <span>Bezeichnung</span>
-              <input
-                className="input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
-              />
-            </label>
-            <button className="btn primary" disabled={busy || !headDirty} onClick={saveHead}>
-              Speichern
-            </button>
-            <label className="field">
-              <span>Nova-Version des Projekts</span>
-              <select
-                className="select"
-                value={data.meta.nova_version}
-                title="Gespeicherte Angabe zum Projekt. Keine Zusage, dass der Import versionsabhängig arbeitet."
-                onChange={async (e) => {
-                  const r = await run(() => api.updateProject(projectId, { nova_version: e.target.value }), "Nova-Version gespeichert");
+          <div className="project-heading-line">
+            <div>
+              <div className="eyebrow">Projekt</div>
+              <h2 className="project-title">
+                {data.meta.project_number && <span className="number">{data.meta.project_number}</span>}
+                {data.meta.name}
+              </h2>
+              <div className="hint">{plans.length} {plans.length === 1 ? "Geschoss" : "Geschosse"} · {data.rows.length} Symbolarten</div>
+            </div>
+            <Menu label="Projektaktionen" disabled={busy}>
+              <button
+                className="btn small"
+                disabled={busy}
+                onClick={async () => {
+                  const name = window.prompt("Name des duplizierten Projekts", `${data.meta.name} Kopie`);
+                  if (!name) return;
+                  await navigate(async () => {
+                    const r = await run(() => api.copyProject(projectId, name), "Projekt dupliziert");
+                    if (r) onOpenProject(r.id);
+                  });
+                }}
+              >
+                Projekt duplizieren
+              </button>
+              <a
+                className="btn small"
+                href={api.exportUrl(projectId)}
+                download={data.export_name}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(() => {
+                    const link = document.createElement("a");
+                    link.href = api.exportUrl(projectId);
+                    link.download = data.export_name;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                  });
+                }}
+                title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
+              >
+                Projekt als ZIP exportieren
+              </a>
+              <button
+                className="btn small"
+                disabled={busy}
+                title="Ändert nur, ob das Projekt beim Anlegen eines neuen Projekts als Vorlage erscheint."
+                onClick={async () => {
+                  const next = data.meta.use_as_template === false;
+                  const r = await run(
+                    () => api.updateProject(projectId, { use_as_template: next }),
+                    next ? "Wieder als Vorlage wählbar" : "Nicht mehr als Vorlage angeboten",
+                  );
                   if (r) setData(r);
                 }}
               >
-                <option value="19.2">Nova 19.2</option>
-                <option value="20">Nova 20</option>
-              </select>
-            </label>
+                {data.meta.use_as_template === false ? "Als Vorlage anbieten" : "Vorlage ausblenden"}
+              </button>
+              <div className="menu-divider" />
+              <button
+                className="btn danger"
+                disabled={busy}
+                aria-label="Projekt nach ‚Gelöscht‘ verschieben"
+                title="Nach ‚Gelöscht‘ verschieben: der Projektordner kommt nach _Geloescht, nichts wird endgültig gelöscht."
+                onClick={async () => {
+                  if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben? Nichts wird endgültig gelöscht.`)) return;
+                  await navigate(async () => {
+                    const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
+                    if (r) onBack();
+                  });
+                }}
+              >
+                <TrashIcon /> Projekt nach ‚Gelöscht‘ verschieben
+              </button>
+            </Menu>
           </div>
-          <div className="head-actions">
-            <button
-              className="btn small"
-              disabled={busy}
-              onClick={async () => {
-                const name = window.prompt("Name des duplizierten Projekts", `${data.meta.name} Kopie`);
-                if (!name) return;
-                await navigate(async () => {
-                  const r = await run(() => api.copyProject(projectId, name), "Projekt dupliziert");
-                  if (r) onOpenProject(r.id);
-                });
-              }}
-            >
-              Projekt duplizieren
-            </button>
-            <a
-              className="btn small"
-              href={api.exportUrl(projectId)}
-              download={data.export_name}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(() => {
-                  const link = document.createElement("a");
-                  link.href = api.exportUrl(projectId);
-                  link.download = data.export_name;
-                  document.body.appendChild(link);
-                  link.click();
-                  link.remove();
-                });
-              }}
-              title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
-            >
-              Projekt als ZIP exportieren
-            </a>
-            <button
-              className="btn small"
-              disabled={busy}
-              title="Ändert nur, ob das Projekt beim Anlegen eines neuen Projekts als Vorlage erscheint."
-              onClick={async () => {
-                const next = data.meta.use_as_template === false;
-                const r = await run(
-                  () => api.updateProject(projectId, { use_as_template: next }),
-                  next ? "Wieder als Vorlage wählbar" : "Nicht mehr als Vorlage angeboten",
-                );
-                if (r) setData(r);
-              }}
-            >
-              {data.meta.use_as_template === false ? "Als Vorlage anbieten" : "Vorlage ausblenden"}
-            </button>
-            <span className="sep" />
-            <button
-              className="btn icon danger"
-              disabled={busy}
-              aria-label="Projekt nach ‚Gelöscht‘ verschieben"
-              title="Nach ‚Gelöscht‘ verschieben: der Projektordner kommt nach _Geloescht, nichts wird endgültig gelöscht."
-              onClick={async () => {
-                if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben? Nichts wird endgültig gelöscht.`)) return;
-                await navigate(async () => {
-                  const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
-                  if (r) onBack();
-                });
-              }}
-            >
-              <TrashIcon />
-            </button>
-          </div>
-          <div className="muted-line" title={data.folder}>
-            Ordner: {data.folder} · angelegt {data.meta.created_at?.slice(0, 10)} von {data.meta.created_by}
-            {data.meta.template_from ? ` · Vorlage: ${data.meta.template_from}` : ""}
-          </div>
+          <details className="project-details">
+            <summary>Projektdetails bearbeiten{headDirty && <span className="dirty"> · Ungespeicherte Änderungen</span>}</summary>
+            <div className="head-fields">
+              <label className="field">
+                <span>Projektnummer</span>
+                <input
+                  className="input"
+                  style={{ width: 150 }}
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
+                />
+              </label>
+              <label className="field grow">
+                <span>Bezeichnung</span>
+                <input
+                  className="input"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && headDirty && saveHead()}
+                />
+              </label>
+              <button className="btn primary" disabled={busy || !headDirty} onClick={saveHead}>
+                Speichern
+              </button>
+              <label className="field">
+                <span>Nova-Version des Projekts</span>
+                <select
+                  className="select"
+                  value={data.meta.nova_version}
+                  title="Gespeicherte Angabe zum Projekt. Keine Zusage, dass der Import versionsabhängig arbeitet."
+                  onChange={async (e) => {
+                    const r = await run(() => api.updateProject(projectId, { nova_version: e.target.value }), "Nova-Version gespeichert");
+                    if (r) setData(r);
+                  }}
+                >
+                  <option value="19.2">Nova 19.2</option>
+                  <option value="20">Nova 20</option>
+                </select>
+              </label>
+            </div>
+            <div className="muted-line" title={data.folder}>
+              Ordner: {data.folder} · angelegt {data.meta.created_at?.slice(0, 10)} von {data.meta.created_by}
+              {data.meta.template_from ? ` · Vorlage: ${data.meta.template_from}` : ""}
+            </div>
+          </details>
         </div>
 
         <details
@@ -545,7 +554,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
         )}
 
         {plans.length > 0 && (
-          <div className="card">
+          <div className="card workspace-card">
             <div className="subtabs" role="tablist">
               <button
                 className={`tab ${tab === "list" ? "active" : ""}`}
