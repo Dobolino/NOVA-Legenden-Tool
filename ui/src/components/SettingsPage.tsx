@@ -144,6 +144,26 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               {update.size ? ` (${Math.round(update.size / 1e6)} MB)` : ""}.
             </p>
           )}
+          <label className="field" style={{ maxWidth: 420 }}>
+            <span>Welche Versionen</span>
+            <select
+              className="select"
+              value={status.settings.update_channel ?? "stable"}
+              disabled={busy || updating}
+              onChange={async (e) => {
+                await save({ update_channel: e.target.value as "stable" | "test" }, "Update-Kanal gespeichert");
+                checkUpdate();
+              }}
+              aria-label="Update-Kanal"
+            >
+              <option value="stable">Freigegebene Versionen</option>
+              <option value="test">Auch Testversionen (Entwicklung)</option>
+            </select>
+          </label>
+          <p className="hint">
+            Freigegebene Versionen kommen aus dem Hauptstand. Testversionen entstehen bei jeder Änderung in der Entwicklung und
+            können unfertig sein. Die Einstellung gilt nur für diesen Computer.
+          </p>
           {update && !update.available && update.message && <p className="hint">{update.message}</p>}
           {update?.available && !update.can_install && <p className="warn-text">{update.message}</p>}
           <div className="row">

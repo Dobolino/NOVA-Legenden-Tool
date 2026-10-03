@@ -9,6 +9,8 @@ import pytest
 
 from nova_legend import config, updater
 
+from test_phase1_fixes import client  # noqa: F401 - fixture
+
 SETUP = b"MZ fake setup"
 
 
@@ -56,3 +58,35 @@ def test_download_verifies_checksum(tmp_path, monkeypatch):
     info.sha256 = "0" * 64
     with pytest.raises(ValueError):
         updater.download(info, tmp_path, opener=lambda req, timeout: io.BytesIO(SETUP))
+
+
+def test_stable_channel_reads_only_the_latest_normal_release(monkeypatch):
+    monkeypatch.setattr(config, "build_number", lambda: 2)
+    urls = []
+
+    def fetch(url):
+        urls.append(url)
+        return release(f"v{config.APP_VERSION}-build.3")
+
+    assert updater.check(fetch).available
+    assert urls == [updater.API_URL]           # GitHub's "latest" never is a pre-release
+
+
+def test_test_channel_takes_the_newest_build_including_pre_releases(monkeypatch):
+    monkeypatch.setattr(config, "build_number", lambda: 5)
+    v = config.APP_VERSION
+    listing = [dict(release(f"v{v}-build.6"), prerelease=False),
+               dict(release(f"v{v}-build.9"), prerelease=True),
+               dict(release(f"v{v}-build.12"), draft=True),
+               dict(release("nightly"), prerelease=True)]
+    info = updater.check(lambda url: listing if url == updater.LIST_URL else {}, channel="test")
+    assert info.available and info.latest.endswith("(Build 9)")
+    monkeypatch.setattr(config, "build_number", lambda: 9)
+    assert not updater.check(lambda url: listing, channel="test").available
+
+
+def test_update_channel_is_a_setting(client):  # noqa: F811
+    assert client.get("/api/status").json()["settings"]["update_channel"] == "stable"
+    assert client.put("/api/settings", json={"update_channel": "test"}).status_code == 200
+    assert client.get("/api/status").json()["settings"]["update_channel"] == "test"
+    assert client.put("/api/settings", json={"update_channel": "beta"}).status_code == 422

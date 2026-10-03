@@ -124,6 +124,7 @@ class Settings:
     nova_version: str = "19.2"
     oda_path: str = ""
     ui_theme: str = "system"          # "system", "light" or "dark" (this computer)
+    update_channel: str = "stable"    # "stable": builds of main, "test": also development builds
 
     @property
     def company_db(self) -> Path:

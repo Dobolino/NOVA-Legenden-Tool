@@ -87,16 +87,19 @@ jobs:
           path: dist-installer/*.exe
           retention-days: 30
 
-      # Publish the setup as a GitHub release so it can be downloaded directly
-      # from the "Releases" page (always: .../releases/latest)
+      # Publish the setup as a GitHub release. Only builds of main become the
+      # "latest" release that installed programs update to by default; builds of
+      # other branches are pre-releases, offered only to programs set to
+      # "Auch Testversionen".
       - name: Setup als Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}-build.${{ github.run_number }}
-          name: NOVA-Legenden ${{ steps.ver.outputs.version }} (Build ${{ github.run_number }})
+          name: NOVA-Legenden ${{ steps.ver.outputs.version }} (Build ${{ github.run_number }})${{ github.ref_name != 'main' && ' Testversion' || '' }}
           body: |
-            Testversion aus dem Branch ${{ github.ref_name }}, Commit ${{ github.sha }}.
+            ${{ github.ref_name == 'main' && 'Freigegebene Version' || 'Testversion' }} aus dem Branch ${{ github.ref_name }}, Commit ${{ github.sha }}.
             Herunterladen: unten unter «Assets» die Datei NOVA-Legenden-Setup-${{ steps.ver.outputs.version }}.exe.
           target_commitish: ${{ github.sha }}
-          make_latest: "true"
+          prerelease: ${{ github.ref_name != 'main' }}
+          make_latest: ${{ github.ref_name == 'main' && 'true' || 'false' }}
           files: dist-installer/*.exe

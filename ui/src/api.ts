@@ -73,6 +73,7 @@ export interface Settings {
   nova_version: string;
   oda_path: string;
   ui_theme?: string;
+  update_channel?: "stable" | "test";
 }
 
 export interface UpdateInfo {

@@ -6,6 +6,7 @@ import logging
 import threading
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -72,6 +73,7 @@ class SettingsIn(BaseModel):
     projects_folder: str | None = None
     nova_version: str | None = None
     oda_path: str | None = None
+    update_channel: Literal["stable", "test"] | None = None
 
 
 class CategoryIn(BaseModel):
@@ -202,11 +204,11 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
 
     @app.get("/api/update/check")
     def update_check() -> dict:
-        return updater.check().to_dict()
+        return updater.check(channel=st.settings.update_channel).to_dict()
 
     @app.post("/api/update/install")
     def update_install() -> dict:
-        info = updater.check()
+        info = updater.check(channel=st.settings.update_channel)
         if not info.available:
             raise HTTPException(400, info.message or "Kein Update verfügbar")
         if not info.can_install:

@@ -4,7 +4,9 @@ Every Windows build is published as a release with the tag
 ``v<version>-build.<number>`` and the asset ``NOVA-Legenden-Setup-<version>.exe``.
 The update:
 
-1. asks the GitHub API for the latest release,
+1. asks the GitHub API for the newest release of the chosen channel:
+   "stable" takes the latest normal release (builds of main), "test" also
+   takes pre-releases (builds of development branches),
 2. compares version and build number with the running program,
 3. downloads the setup into the temp folder and checks size and SHA-256,
 4. starts the setup silently (no admin rights needed) and closes the program.
@@ -33,7 +35,9 @@ from . import config
 
 log = logging.getLogger(__name__)
 TAG_RE = re.compile(r"^v(\d+(?:\.\d+)*)(?:-build\.(\d+))?$")
-API_URL = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
+API_URL = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"   # never a pre-release
+LIST_URL = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases?per_page=30"
+CHANNELS = ("stable", "test")
 
 
 @dataclass
@@ -81,11 +85,20 @@ def _get_json(url: str, timeout: float = 10.0) -> dict:
         return json.loads(res.read().decode("utf-8"))
 
 
-def check(fetch=_get_json) -> UpdateInfo:
-    """Ask GitHub for the latest release. Never raises: errors go into .message."""
+def _newest(releases: list[dict]) -> dict:
+    """Newest release by version and build number, pre-releases included, drafts not."""
+    ranked = [(parse_tag(r.get("tag_name", "")), r) for r in releases if not r.get("draft")]
+    ranked = [(t, r) for t, r in ranked if t]
+    if not ranked:
+        return {}
+    return max(ranked, key=lambda tr: tr[0])[1]
+
+
+def check(fetch=_get_json, channel: str = "stable") -> UpdateInfo:
+    """Ask GitHub for the newest release of the channel. Never raises: errors go into .message."""
     info = UpdateInfo(current_label(), "", False, is_installed())
     try:
-        data = fetch(API_URL)
+        data = _newest(fetch(LIST_URL)) if channel == "test" else fetch(API_URL)
     except Exception as exc:  # noqa: BLE001 - network problems are reported to the user
         info.message = f"Keine Verbindung zu GitHub: {exc}"
         return info
