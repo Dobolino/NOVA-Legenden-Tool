@@ -22,6 +22,7 @@ from pathlib import Path
 
 from . import tree
 from .geometry import SymbolGeometry, parse_geometry
+from .nsb import read_nsb
 
 MOUNTING_TOKENS = ("NUP", "NAP", "UP", "AP", "EB")
 _MOUNT_RE = re.compile(r"(?<![A-Za-z0-9])(NUP|NAP|UP|AP|EB)(?![A-Za-z0-9])")
@@ -232,6 +233,17 @@ class Dataset:
                 files_3d=sorted(set(files_3d.get(item, []))),
                 attributes=attrs,
             ))
+        # symbols drawn by a bundled library (Lib/<name>.nsb), e.g. the empty boxes
+        # 10-220 / 20-220 -> BT_EB:10 / BT_EB:20
+        libs: dict[str, dict] = {}
+        for sym in symbols:
+            if sym.lib_ref and not (sym.geometry and sym.geometry.primitives) and not sym.sheet.startswith("Label"):
+                lib, _, content = sym.lib_ref.partition(":")
+                if lib not in libs:
+                    data = self.lib_file(lib)
+                    libs[lib] = read_nsb(data) if data else {}
+                if content in libs[lib]:
+                    sym.geometry = libs[lib][content]
         symbols.sort(key=lambda s: (_sort_key(s.sheet), _sort_key(s.item), s.graphic_id))
         # The datasets contain a few repeated graphic ids (e.g. 120-130 "Var. 1"
         # and "Var. 2" both as 2D-10). Number them so every symbol keeps a

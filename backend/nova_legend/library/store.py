@@ -18,7 +18,7 @@ from ..render.svg import has_fill, render_svg
 from .families import FamilyOptions, build_families, family_key, label_variant, orientation
 
 # Bump when the parser or renderer output changes: forces a rebuild of the cache
-SCHEMA_VERSION = 8      # 8: sheet graphics for parts without own graphic (luminaires)
+SCHEMA_VERSION = 9      # 8: sheet graphics of luminaires, 9: drawings from bundled .nsb libraries
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);

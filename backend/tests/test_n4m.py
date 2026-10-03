@@ -67,3 +67,23 @@ def test_linear_luminaires_of_the_catalogue_are_symbols():
     assert len(led) == 53 and led["LED_8"].name == "LED-Langfeldleuchte 8W"
     assert led["LED_8"].kind == "Engine" and led["LED_8"].graphic_id == "ST"
     assert led["LED_8"].attributes["L"] == "800" and led["LED_8"].geometry.primitives
+
+
+@pytest.mark.skipif(not V1_NZP.is_file(), reason="sample Elektroinstallationen.CH.nzp missing")
+def test_empty_box_is_drawn_from_the_bundled_library():
+    from nova_legend.parser.dataset import Dataset
+    from nova_legend.parser.nsb import read_nsb
+
+    ds = Dataset(V1_NZP)
+    box = next(s for s in ds.symbols if s.item == "10-220")
+    assert box.lib_ref == "BT_EB:10" and box.geometry is not None
+    kinds = sorted(p.kind for p in box.geometry.primitives)
+    assert kinds == ["arc", "line"]
+    circle = next(p for p in box.geometry.primitives if p.kind == "arc")
+    # same layout as the switch 10-10: radius 2.5 mm, centre 2.5 mm above WP
+    assert circle.data["full"] and abs(circle.data["radius"] - 0.0025) < 1e-9
+    assert [round(v, 6) for v in circle.data["center"]] == [0.0, 0.0025]
+    assert box.geometry.points["NP0"][:2] == [0.0, 0.0025]
+    # the reader refuses symbols it cannot draw completely instead of guessing
+    assert set(read_nsb(ds.lib_file("BT_EB"))) == {"10", "20"}
+    assert read_nsb(b"not an ole file") == {}

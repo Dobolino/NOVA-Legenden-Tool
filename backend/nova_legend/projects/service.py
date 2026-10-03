@@ -118,8 +118,11 @@ class ProjectEvaluator:
                     for layer, n in found.layers.items():
                         u["layers"][layer] += n
                 else:
+                    # objects without graphic (cable trays): the name read from the plan is
+                    # unreliable for them, the catalogue code is not
+                    shown = found.item if res.method == "ohne Grafik" and found.item else found.name
                     g = ignored.setdefault(found.source_key, {
-                        "source_key": found.source_key, "name": found.name, "reason": res.method,
+                        "source_key": found.source_key, "name": shown, "reason": res.method,
                         "manual": res.method == "manuell", "total": 0})
                     g["total"] += found.count
 

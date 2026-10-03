@@ -38,7 +38,7 @@ Projektfunktionen: Projektnummer und Bezeichnung speichern, **Projekt dupliziere
 |---|---|
 | DXF, DWG | Attribut `TypID` = Katalogcode, `Bez` = Grafikname, `Herkunft` = Datensatz. Ohne Attribute: Blockname = Symbolname. Leitungen, Masse, Beschriftungen, Plankopf und Planrahmen zählen nicht. |
 | N4D | Datensatz, Katalogcode und Grafik direkt aus dem Objekt. Beschriftungen (Label_*) zählen nicht. |
-| N4M | Nova-Modellzeichnung. Gleicher OLE-Aufbau und gleiche Objekte wie N4D, derselbe Leser. Geprüft an `gro04p.n4m`: 419 Apparate erkannt, 47 Objekte ohne Grafik nicht berücksichtigt, keine unbekannten. In der Spalte Typ steht N4M. Ein Geschoss kann von N4D auf N4M wechseln und behält seine Zeilen. |
+| N4M | Nova-Modellzeichnung. Gleicher OLE-Aufbau und gleiche Objekte wie N4D, derselbe Leser. Geprüft an `gro04p.n4m`: 442 Apparate erkannt, 24 Trassenobjekte (Kabelkanal, Winkel) nicht berücksichtigt, keine unbekannten. In der Spalte Typ steht N4M. Ein Geschoss kann von N4D auf N4M wechseln und behält seine Zeilen. |
 | Alle | Vorrang hat eine gespeicherte Entscheidung (Firmenordner, Tabelle `mappings`). |
 
 Ergebnis am Plan 1. OG: N4D 238 Apparate erkannt. DXF 236 erkannt, 5 Arten unbekannt (Gruppenzuleitung, Deckendurchbruch, LED-Langfeldleuchte 8W, Gateway, umbenannter Verteiler).
@@ -103,3 +103,11 @@ Jeder Import läuft in zwei Schritten. Gespeichert wird erst nach dem zweiten.
 3. Häkchen pro Datei wählen, was übernommen wird. Dateien ohne Änderung sind abgewählt.
 
 Die Zahlen sind dieselben wie danach in der Gesamtliste (gleiche Erkennung, gleiches Zusammenführen der Zeilen). «Neue Planversion importieren» öffnet direkt Schritt 2. Eine Vorschau gilt 30 Minuten; die Datei wird dafür nicht zweimal hochgeladen.
+
+## Vollständigkeit (Oktober 2026)
+
+- **Langfeldleuchten:** Die Artikel der Leuchtenblätter (140, T5, T8) haben keine eigene Grafik. Nova zeichnet sie mit einer parametrischen Blattgrafik. Das Programm übernimmt die Standardgrafik «00_Standard» des Blatts, gezeichnet mit Länge und Breite des Artikels: Rechteck mit einer Linie pro Leuchtmittel. Welche Variante im Plan steht, speichert die Datei nicht.
+- **Objekte ohne Grafik:** Stammt ein Objekt ohne Grafik aus einem Katalog mit 2D-Symbolen, erscheint es unter «Unbekannt» zur Prüfung. Nicht berücksichtigt werden nur noch Objekte aus Katalogen ohne 2D-Symbole (EloTrassen: Kabelkanal, Winkel). Sie stehen mit ihrem Katalogcode unter «Nicht berücksichtigt».
+- **Leerdosen:** 10-220 und 20-220 verweisen auf die Bibliothek BT_EB im Datensatz. Das Programm liest die Zeichnung daraus: Kreis mit Radius 2,5 mm über dem Einfügepunkt und Schrägstrich, dieselbe Lage wie der Schalter 10-10. Der Leser zeichnet nur Linien und Kreise. Ein Bibliothekssymbol mit anderen Elementen oder mit Werten ausserhalb seines Rahmens wird nicht verwendet, dann bleibt der Platzhalter.
+- Ergebnis: `1371_E-G-1OG.n4d` 704 Apparate, 116 Legendensymbole, alle gezeichnet. `gro04p.n4m` 442 Apparate, 35 Symbole, alle gezeichnet.
+- **Importvorschau:** Bekommt das Geschoss nach einer Vorschau eine neuere Planversion, lehnt «Übernehmen» die alte Vorschau ab. Die Datei muss neu geprüft werden.
