@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, SymbolRender } from "../api";
+import { exportDiagnostic } from "../diagnostics";
 import {
   addBlock,
   addItem,
@@ -90,6 +91,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const [exportBlock, setExportBlock] = useState("");
   const [exportGeneral, setExportGeneral] = useState(true);
   const [showGrid, setShowGrid] = useState(readGridPref);
+  const [detached, setDetached] = useState(false);
   const [dropAt, setDropAt] = useState<DropTarget | null>(null);
   const [exporting, setExporting] = useState(false);
   const dragPayload = useRef<DragPayload | null>(null);
@@ -188,12 +190,18 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
 
   // symbol drawings for the placed symbols (and those of a general part from a template project),
   // plus the small icons of the lists on the left (same drawing, without length)
+  const stripFill = Boolean(doc?.style.strip_fill);
+  const stripSeen = useRef(stripFill);
+  const symbolGen = useRef(0);
   useEffect(() => {
+    const switched = stripSeen.current !== stripFill;
+    stripSeen.current = stripFill;
+    const known = switched ? {} : symbols;
     const prims = [...(placed?.prims ?? []), ...(general?.prims ?? [])].filter((p) => p.t === "symbol");
     const need = new Map<string, LegendPrim>();
     for (const p of prims) {
       const key = symbolRequestKey({ symbol_key: p.key, length_mm: p.length_mm, width_mm: p.width_mm });
-      if (!symbols[key]) need.set(key, p);
+      if (!known[key]) need.set(key, p);
     }
     const listed = [
       ...data.rows.filter((r) => r.total > 0 && r.symbol_key).map((r) => ({ key: r.symbol_key, family_key: r.family_key })),
@@ -201,21 +209,23 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     ];
     for (const l of listed) {
       const key = symbolRequestKey({ symbol_key: l.key, length_mm: null, width_mm: null });
-      if (!symbols[key] && !need.has(key)) need.set(key, { t: "symbol", key: l.key, family_key: l.family_key, length_mm: null, width_mm: null });
+      if (!known[key] && !need.has(key)) need.set(key, { t: "symbol", key: l.key, family_key: l.family_key, length_mm: null, width_mm: null });
     }
     if (!need.size) return;
     const list = [...need.entries()];
+    const gen = ++symbolGen.current;
     api
-      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm })))
-      .then((r) =>
+      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm })), stripFill)
+      .then((r) => {
+        if (gen !== symbolGen.current || stripSeen.current !== stripFill) return;
         setSymbols((prev) => {
-          const next = { ...prev };
+          const next = switched ? {} : { ...prev };
           list.forEach(([key], i) => (next[key] = r.items[i]));
           return next;
-        }),
-      )
+        });
+      })
       .catch(() => undefined);
-  }, [placed, general, symbols, data.rows, results]);
+  }, [placed, general, symbols, data.rows, results, stripFill]);
 
   useEffect(() => {
     if (search.trim().length < 2) {
@@ -630,6 +640,10 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
           const width = canvas.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
           setZoom(Math.max(0.5, Math.min(12, round(width / W))));
         }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
+        <button className={`btn small ${detached ? "is-on" : ""}`} onClick={() => setDetached((v) => !v)}
+          title="Die Einstellungen als schwebendes Fenster über der Legende öffnen. Das Blatt bleibt weiss.">
+          {detached ? "Einstellungen andocken" : "Einstellungen lösen"}
+        </button>
         </div>
         <span style={{ flex: 1 }} />
         <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
@@ -643,7 +657,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         </div>
       </div>
 
-      <div className="legend-body">
+      <div className={`legend-body ${detached ? "detached" : ""}`}>
         <aside className="legend-outline">
           <div className="section" style={{ marginTop: 0 }}>
             Abschnitte
@@ -807,7 +821,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
           </svg>
         </div>
 
-        <aside className="legend-props">
+        <aside className={`legend-props ${detached ? "floating" : ""}`}>
           {sel?.type === "general" ? (
             <GeneralProps general={general} company={info.company} />
           ) : sel?.type === "title" ? (
@@ -1385,7 +1399,7 @@ function BlockProps({
 function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; change: (d: LegendDoc) => void }) {
   const t = doc.title;
   const set = (patch: Partial<LegendDoc["title"]>) => change({ ...doc, title: { ...t, ...patch } });
-  const mm = Math.round(doc.style.text_size * (t.scale ?? 1) * 100) / 100;
+  const mm = t.size_mm > 0 ? t.size_mm : Math.round(doc.style.text_size * (t.scale ?? 1) * 100) / 100;
   return (
     <>
       <h4>Titel</h4>
@@ -1394,12 +1408,22 @@ function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; ch
         <input className="input" value={t.text} {...field((d, v) => ({ ...d, title: { ...d.title, text: v } }))} />
       </label>
       <label className="field">
-        <span>Textgrösse (Faktor)</span>
-        <NumberInput label="Textgrösse Titel" value={t.scale ?? 1} step={0.1} onCommit={(v) => set({ scale: Math.max(0.5, Math.min(3, v)) })} />
+        <span>Textgrösse (mm)</span>
+        <NumberInput label="Textgrösse Titel" value={mm} step={0.25} onCommit={(v) => {
+          const size = Math.max(1, Math.min(20, v));
+          const base = doc.style.text_size || 1;
+          set({ size_mm: size, scale: Math.max(0.5, Math.min(3, Math.round((size / base) * 100) / 100)) });
+        }} />
       </label>
-      <p className="hint">
-        = {String(mm).replace(".", ",")} mm. Faktor 1 = gemeinsame Schriftgrösse ({String(doc.style.text_size).replace(".", ",")} mm).
-      </p>
+      <label className="field">
+        <span>Schriftart</span>
+        <select className="select" aria-label="Schriftart Titel" value={t.font || "Arial"} onChange={(e) => set({ font: e.target.value })}>
+          <option value="Arial">Arial</option>
+          <option value="Calibri">Calibri</option>
+          <option value="Verdana">Verdana</option>
+        </select>
+      </label>
+      <p className="hint">Titelgrösse, Farbe und Schriftart gelten nur für den Titel, nicht für die Einträge.</p>
       <div className="color-grid">
         <label className="color-field">
           <input type="color" value={t.color || "#000000"} onChange={(e) => set({ color: e.target.value })} aria-label="Farbe Titel" />
@@ -1493,10 +1517,28 @@ function DocProps({
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
+          <span>Abstand der Zeilen (mm)</span>
+          <NumberInput label="Abstand der Zeilen" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
+        </label>
+        <label className="field">
+          <span>Textzeilen</span>
+          <select className="select" aria-label="Textzeilen" value={String(s.text_lines ?? 0)} onChange={(e) => setStyle({ text_lines: Number(e.target.value) })}>
+            <option value="0">Automatisch</option>
+            <option value="1">1 Zeile, gleiche Höhe</option>
+            <option value="2">2 Zeilen, gleiche Höhe</option>
+            <option value="3">3 Zeilen, gleiche Höhe</option>
+          </select>
+        </label>
+        <label className="field">
           <span>Blattbreite (mm)</span>
           <NumberInput label="Blattbreite" value={s.width} step={5} min={80} max={210} onCommit={(v) => setStyle({ width: v })} />
         </label>
       </div>
+      <label className="toggle" style={{ color: "var(--fg)" }}>
+        <input type="checkbox" checked={Boolean(s.strip_fill)} onChange={(e) => setStyle({ strip_fill: e.target.checked })} />
+        Symbol-Hintergründe/Schraffuren entfernen
+      </label>
+      <p className="hint">Bei 1, 2 oder 3 Zeilen haben alle Einträge eines Abschnitts dieselbe Zeilenhöhe. Längerer Text wird auf diese Zeilenzahl gekürzt. 0 lässt die Zeile mit dem Text wachsen. Langfeldleuchten behalten ihr Seitenverhältnis.</p>
       <p className="hint">
         Blattbreite inkl. 5 mm Rand: Standard 200 mm, höchstens 210 mm. Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}
         {String(company.symbol_scale).replace(".", ",")}.
@@ -1564,7 +1606,15 @@ function DocProps({
         </button>
       </div>
       <p className="hint">Der Export speichert zuerst die Legende. Dateiname: edeco ag-{"<Bezeichnung>"}-{"<Abschnitt>"}.dxf bzw. …-Legende.dxf.</p>
-      <p className="hint">Die Datei entspricht der Vorschau: DXF R2013, Farben als Truecolor, jedes Symbol als Block. N4D wird nicht geschrieben.</p>
+      <p className="hint">Die Datei entspricht der Vorschau: DXF R2013, Farben als Truecolor, jedes Symbol als Block. N4D wird nicht geschrieben. Das Blatt bleibt weiss, unabhängig vom Hell- oder Dunkelmodus.</p>
+      {!info.oda && (
+        <p className="hint">
+          DWG braucht den ODA File Converter. DXF funktioniert ohne.{" "}
+          <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer">ODA File Converter herunterladen</a>
+        </p>
+      )}
+      <p className="hint">© 2026 edeco ag. Alle Rechte vorbehalten.</p>
+      <button className="btn small" type="button" onClick={() => exportDiagnostic(projectId, notify)}>Prüfbericht exportieren</button>
     </>
   );
 }

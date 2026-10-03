@@ -395,7 +395,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           ) : (
             <p>
               <span className="badge warn">nicht installiert</span> DWG-Import und -Export bleiben ausgeschaltet.
-              Download: opendesign.com → Guest Files → ODA File Converter.
+              DXF funktioniert ohne Converter.{" "}
+              <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer">ODA File Converter herunterladen</a>.
             </p>
           )}
         </div>

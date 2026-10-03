@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type IconName = "projects" | "library" | "categories" | "settings" | "plus" | "search" | "sun" | "moon" | "chevron" | "download" | "file";
+export type IconName = "projects" | "library" | "categories" | "settings" | "plus" | "search" | "sun" | "moon" | "chevron" | "download" | "file" | "help";
 
 /** Small, consistent UI icons. The surrounding control provides the accessible name. */
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -16,6 +16,7 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     chevron: <path d="m9 5 7 7-7 7" />,
     download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" /></>,
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h5" /></>,
+    help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.2 2.4c-.8.3-1.2.8-1.2 1.6V14" /><path d="M12 17h.01" /></>,
   };
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }

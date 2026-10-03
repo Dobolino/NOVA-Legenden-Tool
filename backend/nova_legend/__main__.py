@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 
             webview.settings["ALLOW_DOWNLOADS"] = True   # project export (ZIP)
 
-            window = webview.create_window(f"NOVA-Legenden {config.APP_VERSION}", url,
+            window = webview.create_window(f"edeco ag - NOVA Legenden {config.APP_VERSION}", url,
                                            width=1400, height=900, min_size=(900, 600))
             app.state.shutdown = window.destroy  # used by the program update
             from . import dialogs

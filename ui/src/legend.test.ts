@@ -36,7 +36,8 @@ import type { LegendDoc } from "./legend.ts";
 
 const style = {
   font: "Arial", text_size: 2.5, symbol_scale: 1, grid: "standard", row: 4.55, text_offset: 9.75,
-  columns: 2, width: 200, margin: 5, plan_scale: 50, section_gap: 0, frame_on: false, frame: "#000000",
+  columns: 2, width: 200, margin: 5, plan_scale: 50, section_gap: 0, entry_gap: 0, text_lines: 0,
+  strip_fill: false, frame_on: false, frame: "#000000",
 };
 
 function item(id: string, family: string | null) {
@@ -48,7 +49,7 @@ function doc(): LegendDoc {
   return {
     version: 2,
     style,
-    title: { text: "Legende", scale: 1, color: "#000000", border_on: false, border: "#000000" },
+    title: { text: "Legende", scale: 1, size_mm: 0, font: "Arial", color: "#000000", border_on: false, border: "#000000" },
     blocks: [
       { id: "a", category_id: "licht", title: "Licht", layer: "E_Licht", collapsed: false, title_scale: 1, style: sectionStyle("#1971c2"),
         items: [item("i1", "lampe"), item("i2", "spot")] },

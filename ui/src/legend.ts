@@ -57,6 +57,9 @@ export interface LegendStyle {
   margin: number;
   plan_scale: number;
   section_gap: number;
+  entry_gap: number; // millimetres between rows; 0 means the rows touch
+  text_lines: number; // 0 automatic, 1–3 fixed line count and one row height
+  strip_fill: boolean; // legend-wide: drop symbol fills and hatches, keep the strokes
   frame_on: boolean; // border round the whole legend
   frame: string;
 }
@@ -64,7 +67,7 @@ export interface LegendStyle {
 export interface LegendDoc {
   version: number;
   style: LegendStyle;
-  title: { text: string; scale: number; color: string; border_on: boolean; border: string };
+  title: { text: string; scale: number; size_mm: number; font: string; color: string; border_on: boolean; border: string };
   blocks: LegendBlock[];
 }
 

@@ -3,19 +3,21 @@ import { api, Category, Options, setDatasetNames, Status, UpdateInfo } from "./a
 import Library from "./components/Library";
 import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
+import HelpPage from "./components/HelpPage";
 import ProjectsPage from "./components/ProjectsPage";
 import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
 import { NavigationProvider, useNavigation } from "./Navigation";
 import { Icon } from "./components/Icons";
 import edecoLogo from "./assets/edeco-logo.svg?raw";
 
-type Tab = "projects" | "library" | "categories" | "settings";
+type Tab = "projects" | "library" | "categories" | "settings" | "help";
 
 const NAVIGATION: { id: Tab; label: string; description: string }[] = [
   { id: "projects", label: "Projekte", description: "Pläne und Legenden" },
   { id: "library", label: "Bibliothek", description: "Symbole und Varianten" },
   { id: "categories", label: "Kategorien", description: "Firmenweite Ordnung" },
   { id: "settings", label: "Einstellungen", description: "Programm und Daten" },
+  { id: "help", label: "Hilfe", description: "Anleitung und Prüfbericht" },
 ];
 
 export interface Toast {
@@ -109,7 +111,7 @@ function AppContent() {
           <div
             className="brand-logo"
             role="img"
-            aria-label="edeco"
+            aria-label="edeco ag"
             dangerouslySetInnerHTML={{ __html: edecoLogo.replace(/<\?xml[^?]*\?>/, "") }}
           />
           <div className="brand-name">NOVA<span>Legenden</span></div>
@@ -130,7 +132,8 @@ function AppContent() {
         </nav>
         <div className="nav-footer">
           <span className="nav-footer-label">NOVA-Legenden</span>
-          <span>Elektroplanung · edeco</span>
+          <span>Elektroplanung · edeco ag</span>
+          <span>© 2026 edeco ag. Alle Rechte vorbehalten.</span>
           <span className="powered">Powered by Trimble Nova</span>
         </div>
       </aside>
@@ -196,6 +199,7 @@ function AppContent() {
               onChanged={reload}
             />
           )}
+          {tab === "help" && <HelpPage notify={notify} />}
           {tab === "settings" && status && (
             <SettingsPage
               status={status}

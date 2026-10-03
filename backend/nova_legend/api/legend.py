@@ -42,6 +42,7 @@ class SymbolRequest(BaseModel):
 
 class SymbolsIn(BaseModel):
     items: list[SymbolRequest]
+    strip_fill: bool = False
 
 
 class DescriptionIn(BaseModel):
@@ -109,6 +110,56 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
     def require_admin() -> None:
         if not company_legend()["is_admin"]:
             raise HTTPException(403, ADMIN_ONLY)
+
+    @app.get("/api/diagnostics")
+    def diagnostics(project_id: str = "") -> dict:
+        """Structured state for a support report. No drawing geometry."""
+        datasets = []
+        try:
+            for d in st.library.datasets():
+                datasets.append({"id": d.get("id"), "version": d.get("version"),
+                                 "symbols": d.get("symbol_count"), "file": d.get("file")})
+        except Exception as exc:  # noqa: BLE001 - the report should still be usable
+            datasets = [{"error": str(exc)}]
+        out: dict = {
+            "programm": "edeco ag - NOVA Legenden",
+            "version": config.APP_VERSION,
+            "benutzer": config.current_user(),
+            "oda_vorhanden": bool(st.settings.oda_path or config.find_oda_converter()),
+            "firmenordner": st.settings.company_folder or "",
+            "firmendatei": str(st.company.db_path),
+            "firmenfehler": st.company_error or "",
+            "datensaetze": datasets,
+            "symbole": len(st.library.symbols()),
+            "sync": st.sync_report,
+        }
+        if project_id:
+            try:
+                p = project(project_id)
+                ev = evaluator()
+                result = ev.evaluate(p)
+                stored = p.legend()
+                doc = normalize(stored["doc"]) if stored else None
+                out["projekt"] = {
+                    "id": p.id,
+                    "name": p.meta().get("name"),
+                    "nummer": p.meta().get("project_number"),
+                    "ordner": str(p.folder),
+                    "geschosse": len(result.get("plans") or []),
+                    "zeilen": len(result.get("rows") or []),
+                    "unbekannt": len(result.get("unknown") or []),
+                    "ignoriert": len(result.get("ignored") or []),
+                    "legende": bool(doc),
+                    "stil": doc["style"] if doc else None,
+                    "titel": doc["title"] if doc else None,
+                    "abschnitte": [
+                        {"titel": b["title"], "eintraege": len(b["items"]), "ebene": b.get("layer")}
+                        for b in (doc["blocks"] if doc else [])
+                    ],
+                }
+            except Exception as exc:  # noqa: BLE001
+                out["projekt_fehler"] = str(exc)
+        return out
 
     @app.get("/api/company/legend")
     def get_company_legend() -> dict:
@@ -203,7 +254,8 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             if geo is None:
                 out.append({**base, "svg": "", "missing": st.library.symbol(req.symbol_key) is None})
                 continue
-            svg = render_svg(geo, None, show_points=False, show_fill=fills.get(req.family_key or "", True),
+            show_fill = False if body.strip_fill else fills.get(req.family_key or "", True)
+            svg = render_svg(geo, None, show_points=False, show_fill=show_fill,
                              own_colors=True)
             m = _VIEWBOX.search(svg)
             out.append({**base, "svg": svg, "box": [float(v) for v in m.groups()] if m else [0, 0, 5, 5]})
@@ -245,14 +297,20 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         result = ev.evaluate(p)
         meta = p.meta()
         title = "Legende " + " ".join(x for x in (meta.get("project_number"), meta.get("name")) if x)
-        colors = {c["id"]: c.get("color") for c in category_colors(p, ev)}
+        picked = category_colors(p, ev)
+        colors = {c["id"]: c.get("color") for c in picked}
+        layer_categories = {}
+        for c in picked:
+            if c.get("layer"):
+                layer_categories.setdefault(c["layer"], c["id"])
         style = body.style if body and body.style else project_style(p)
         descriptions = st.company.descriptions()
         gen = load_general()
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
                       descriptions, title.strip(), style=style, colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
-                      ap_covered=norm_text(AP_NOTE) in set(gen.texts))
+                      ap_covered=norm_text(AP_NOTE) in set(gen.texts),
+                      layer_categories=layer_categories)
         return {"doc": doc}
 
     @app.post("/api/projects/{project_id}/legend/layout")
@@ -354,7 +412,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         company = st.company.descriptions().get(family_key) if family_key else None
         pool = template_texts()
         ranked = process.extract(q, pool, scorer=fuzz.token_set_ratio, limit=8) if q else []
-        items = [{"text": t, "score": int(s), "source": "Legende edeco"} for t, s, _ in ranked if s >= 40]
+        items = [{"text": t, "score": int(s), "source": "Legende edeco ag"} for t, s, _ in ranked if s >= 40]
         if company:
             items.insert(0, {"text": company, "score": 100, "source": "Firmentext"})
         return {"items": items}

@@ -109,12 +109,14 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
     return {"font": "Arial", "text_size": text_size, "symbol_scale": symbol_scale,
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
-            "section_gap": 0.0, "frame_on": False, "frame": "#000000"}
+            "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0, "strip_fill": False,
+            "frame_on": False, "frame": "#000000"}
 
 
 def empty_doc(title: str = "", style: dict | None = None) -> dict:
     return {"version": DOC_VERSION, "style": style or default_style(),
-            "title": {"text": title, "scale": 1.0, "color": "#000000", "border_on": False, "border": "#000000"},
+            "title": {"text": title, "scale": 1.0, "size_mm": 0.0, "font": "Arial",
+                      "color": "#000000", "border_on": False, "border": "#000000"},
             "blocks": []}
 
 
@@ -144,6 +146,13 @@ def normalize_style(value) -> dict:
     style["plan_scale"] = _num(v.get("plan_scale"), 50, 1, 1000)
     style["font"] = str(v.get("font") or "Arial")[:40]
     style["section_gap"] = _num(v.get("section_gap"), 0.0, 0, 50)
+    style["entry_gap"] = _num(v.get("entry_gap"), 0.0, 0, 20)
+    try:
+        lines = int(v.get("text_lines") or 0)
+    except (TypeError, ValueError):
+        lines = 0
+    style["text_lines"] = lines if lines in (1, 2, 3) else 0
+    style["strip_fill"] = bool(v.get("strip_fill"))
     style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
     style["frame"] = _hex(v.get("frame"), "#000000")
@@ -165,6 +174,8 @@ def normalize(doc: dict | None) -> dict:
     old = int(_num(doc.get("version"), 1))
     out = {"version": DOC_VERSION, "style": style,
            "title": {"text": str(title.get("text", ""))[:200], "scale": _scale(title.get("scale")),
+                     "size_mm": _num(title.get("size_mm"), 0, 0, 20),
+                     "font": str(title.get("font") or "Arial")[:40],
                      "color": _hex(title.get("color"), "#000000"),
                      "border_on": bool(title.get("border_on")), "border": _hex(title.get("border"), "#000000")},
            "blocks": []}
@@ -233,8 +244,11 @@ def _item(it, uid) -> dict | None:
 def propose(rows: list[dict], categories: list[dict], by_category: bool,
             descriptions: dict[str, str], title: str, style: dict | None = None,
             colors: dict[str, str] | None = None, covered: set[str] | None = None,
-            ap_covered: bool = False) -> dict:
+            ap_covered: bool = False, layer_categories: dict[str, str] | None = None) -> dict:
     """New legend with every apparatus in use, grouped by the first visible category.
+
+    A symbol that sits on plan layers of two or more categories is entered in
+    each of those categories, so each copy keeps that category's layer colour.
 
     ``covered`` holds the family keys the general part already shows; they are
     left out. ``ap_covered`` leaves out the AP note when the general part has it.
@@ -265,17 +279,26 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
         if int(row.get("total") or 0) <= 0 or not row.get("symbol_key"):
             continue
         visible = [c for c in row.get("categories") or [] if c in cats and not cats[c].get("hidden")]
-        if row.get("categories") and not visible:
+        from_layers: list[str] = []
+        for name in row.get("layers") or {}:
+            cid = (layer_categories or {}).get(name)
+            if cid and cid in cats and not cats[cid].get("hidden") and cid not in from_layers:
+                from_layers.append(cid)
+        if len(from_layers) >= 2:
+            targets: list[str | None] = list(from_layers)
+        elif row.get("categories") and not visible:
             continue    # only in hidden categories
+        else:
+            targets = [visible[0] if visible else None]
         if covered and row["family_key"] in covered:
             continue    # the general part already shows it
-        cid = visible[0] if visible else None
         has_ap = has_ap or any(m in ("AP", "NAP") for m in (row.get("mountings") or {}))
-        block_for(cid)["items"].append({
-            "id": new_id(), "kind": "symbol", "family_key": row["family_key"],
-            "symbol_key": row["symbol_key"],
-            "text": descriptions.get(row["family_key"]) or row.get("title") or "",
-            "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
+        for cid in targets:
+            block_for(cid)["items"].append({
+                "id": new_id(), "kind": "symbol", "family_key": row["family_key"],
+                "symbol_key": row["symbol_key"],
+                "text": descriptions.get(row["family_key"]) or row.get("title") or "",
+                "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
     doc["blocks"] = sorted(blocks.values(), key=lambda b: order.get(b["category_id"], 999))
     if has_ap and doc["blocks"] and not ap_covered:
         first = next((b for b in doc["blocks"] if b["category_id"] == "allgemein"), doc["blocks"][0])

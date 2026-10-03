@@ -94,6 +94,7 @@ class ProjectEvaluator:
                             "sources": set(),
                             "total": 0,
                             "datasets": set(),
+                            "layers": defaultdict(int),
                         }
                     row = rows[row_key]
                     row["datasets"].add(sym.dataset)
@@ -102,6 +103,7 @@ class ProjectEvaluator:
                     if found.count:
                         row["mountings"][sym.mounting or "-"] += found.count
                         for layer, amount in found.layers.items():
+                            row["layers"][layer] += amount
                             for cid in row["categories"]:
                                 self.layer_usage[cid][layer] += amount
                     if found.name and found.name.lower() != (row["title"] or "").lower():
@@ -135,6 +137,7 @@ class ProjectEvaluator:
             row["methods"] = sorted(row["methods"])
             row["sources"] = sorted(row["sources"])
             row["datasets"] = sorted(row["datasets"], key=lambda d: (".V2." not in d, d))
+            row["layers"] = dict(row.get("layers") or {})
             out_rows.append(row)
         out_rows.sort(key=lambda r: (min((order.get(c, 999) for c in r["categories"]), default=999),
                                      r["title"].lower()))

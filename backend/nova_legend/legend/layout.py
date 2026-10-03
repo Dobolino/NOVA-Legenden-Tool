@@ -138,7 +138,12 @@ def _symbol_box(item: dict, size, style: dict, max_w: float | None = None) -> di
             x0, y0, x1, y1, ax, ay, engine = _anchor(size)
             left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
             # the factor of this symbol enlarges it; the row grows by whole grid rows
-            scale = symbol_scale((left + right, 2 * max(up, down)), style, engine, max_w) * factor
+            limit = max_w
+            span, tall = left + right, up + down
+            # long luminaires keep their proportion and may use more of the column
+            if limit and tall > 1e-6 and span / tall >= 2.5:
+                limit = limit * 1.45
+            scale = symbol_scale((span, 2 * max(up, down)), style, engine, limit) * factor
             return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
         half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
         return box(half, half, half, half)
@@ -180,14 +185,16 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     title = doc.get("title") or {}
     text = str(title.get("text", "")).strip()
     if text and not only_block:
-        tts = ts * float(title.get("scale") or 1.0)
+        own = float(title.get("size_mm") or 0)
+        tts = own if own > 0 else ts * float(title.get("scale") or 1.0)
         framed = bool(title.get("border_on"))
         pad = 1.5 if framed else 0.0          # room between the title and its border
         top = y
         y += pad
         for line in wrap(text, tts, inner - 2 * pad, True):
             prims.append({"t": "text", "x": margin + pad, "y": y + tts, "size": tts, "text": line, "bold": True,
-                          "color": title.get("color") or "#000000"})
+                          "color": title.get("color") or "#000000",
+                          "font": title.get("font") or style.get("font") or "Arial"})
             y += tts * LINE_FACTOR
         y += pad
         if framed:
@@ -225,6 +232,9 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     colw = (inner - 2 * pad) / cols
     items = [it for it in block["items"] if not it.get("hidden")]
     boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, colw / 2) for it in items}
+    cap = _line_cap(style)
+    gap_mm = max(0.0, float(style.get("entry_gap") or 0.0))
+    fixed = max((_slot_height(it, boxes[it["id"]], ts, row, cap) for it in items), default=None) if cap and items else None
     # one symbol axis (insertion points) and one text line for the section,
     # right of the symbol reaching furthest to the right of the axis
     axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
@@ -234,8 +244,12 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     for c in range(cols):
         cx0 = x0 + pad + c * colw
         cy = top + head_h + pad
-        for item in items[c * per_col:(c + 1) * per_col]:
-            cy += _entry(item, boxes[item["id"]], body, block, cx0, cy, colw, ts, row, axis, text_x, st)
+        chunk = items[c * per_col:(c + 1) * per_col]
+        for i, item in enumerate(chunk):
+            cy += _entry(item, boxes[item["id"]], body, block, cx0, cy, colw, ts, row, axis, text_x, st,
+                         fixed, cap, bool(style.get("strip_fill")))
+            if gap_mm and i < len(chunk) - 1:
+                cy += gap_mm
         col_heights.append(cy - (top + head_h + pad))
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
@@ -261,18 +275,41 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     return top + total_h
 
 
-def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st) -> float:
+def _line_cap(style: dict) -> int:
+    """1–3 reserves that many text lines and one row height. 0 keeps the automatic height."""
+    try:
+        n = int(style.get("text_lines") or 0)
+    except (TypeError, ValueError):
+        return 0
+    return n if n in (1, 2, 3) else 0
+
+
+def _slot_height(item, box, ts, row, lines_n: int) -> float:
+    its = ts * float(item.get("text_scale") or 1.0)
+    text_h = lines_n * its * LINE_FACTOR
+    sym_h = 2 * max(box["up"], box["down"])
+    need = max(text_h + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
+    return row * max(1, math.ceil(need / row - 1e-3))
+
+
+def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
+           fixed_h: float | None = None, lines_n: int = 0, strip_fill: bool = False) -> float:
     """Draw one entry at the top of its slot, return the slot height."""
     kind = item["kind"]
     its = ts * float(item.get("text_scale") or 1.0)
     lh = its * LINE_FACTOR
     tx = cx0 + text_x
     lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
-    text_h = len(lines) * lh
+    if lines_n:
+        lines = lines[:lines_n] or [""]
+        text_h = lines_n * lh
+    else:
+        text_h = len(lines) * lh
     # the insertion point sits on the middle of the row: room for the larger extent both ways
     sym_h = 2 * max(box["up"], box["down"])
     need = max(text_h + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
-    h = row * max(1, math.ceil(need / row - 1e-3))      # whole grid rows (the scale is rounded)
+    natural = row * max(1, math.ceil(need / row - 1e-3))      # whole grid rows (the scale is rounded)
+    h = fixed_h if fixed_h is not None else natural
     mid = cy + h / 2
     sx = cx0 + axis
     w = box["left"] + box["right"]
@@ -282,15 +319,17 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st) -> f
                     "cx": round(sx, 3), "cy": round(mid, 3), "scale": box["scale"], "rot": item.get("rotation", 0),
                     "ax": round(box["ax"], 4), "ay": round(box["ay"], 4),
                     "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
-                    "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or ""})
+                    "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
+                    "strip_fill": strip_fill})
     elif kind == "line":
         out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
                     "layer": block.get("layer") or ""})
     elif kind == "note":
         out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"]})
-    # baseline so the middle of the text block sits on the middle of the row
-    base = mid - (len(lines) - 1) * lh / 2 + its * 0.32
+    # With a fixed line count the first baseline is shared. Otherwise the text block is centred.
+    shown = lines_n if lines_n else len(lines)
+    base = mid - (shown - 1) * lh / 2 + its * 0.32
     for i, line in enumerate(lines):
         out.append({"t": "text", "x": round(tx, 3), "y": round(base + i * lh, 3), "size": round(its, 3),
                     "text": line, "bold": False, "color": st["text"], "item": item["id"]})

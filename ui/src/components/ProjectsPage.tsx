@@ -73,7 +73,6 @@ export default function ProjectsPage({ categories, notify, onOpenSettings }: Pro
 
         <div className="project-metrics" aria-label="Projektübersicht in Zahlen">
           <div><span>Projekte</span><strong>{items.length}</strong><Icon name="projects" size={22} /></div>
-          <div><span>Importierte Geschosse</span><strong>{items.reduce((sum, p) => sum + p.plan_count, 0)}</strong><Icon name="file" size={22} /></div>
           <div><span>Als Vorlage verfügbar</span><strong>{items.filter((p) => p.use_as_template !== false).length}</strong><Icon name="library" size={22} /></div>
         </div>
 

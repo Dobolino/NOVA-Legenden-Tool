@@ -24,12 +24,21 @@ from .general import GeneralPart
 from .model import tint
 
 LINETYPES = {"solid": "CONTINUOUS", "dashed": "DASHED", "dotted": "DOT", "dashdot": "DASHDOT"}
+FONT_FILES = {"Arial": "arial.ttf", "Arial Bold": "arialbd.ttf", "Calibri": "calibri.ttf", "Verdana": "verdana.ttf"}
 TEXT_LAYER = "X_Text"
 FRAME_LAYER = "X_Geometrie"
 
 
 def _rgb(color: str) -> tuple[int, int, int]:
     return int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+
+
+def _text_style(doc, font: str, bold: bool) -> str:
+    font = (font or "Arial").strip() or "Arial"
+    name = "Arial Bold" if bold and font == "Arial" else font
+    if name not in doc.styles:
+        doc.styles.add(name, font=FONT_FILES.get(name, "arial.ttf"))
+    return name
 
 
 def _layer(doc, name: str) -> str:
@@ -79,7 +88,8 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                 if not p["text"]:
                     continue
                 txt = msp.add_text(p["text"], height=p["size"], dxfattribs={
-                    "layer": _layer(doc, TEXT_LAYER), "style": "Arial Bold" if p.get("bold") else "Arial"})
+                    "layer": _layer(doc, TEXT_LAYER),
+                    "style": _text_style(doc, p.get("font") or font, bool(p.get("bold")))})
                 txt.set_placement((p["x"] + dx, Y(p["y"] + dy)))
                 txt.rgb = _rgb(p["color"])
             elif t == "line":
@@ -156,7 +166,7 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, f
 
 
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
-    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}"
+    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|{int(bool(prim.get('strip_fill')))}"
     if key in cache:
         return cache[key]
     base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
@@ -176,11 +186,14 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         fill = own_paint(p.color, mixed, True)
         if p.kind == "hatch":
             fill = tint(fill, 0.65)       # the preview shows hatches at 35 % opacity
+        if prim.get("strip_fill") and (p.kind == "hatch" or p.filled):
+            if p.kind == "hatch":
+                continue
         if p.kind == "line":
             colored(blk.add_line(_mm(d["start"]), _mm(d["end"])), line)
             continue
         if p.kind == "arc" and d.get("full"):
-            if p.filled:
+            if p.filled and not prim.get("strip_fill"):
                 h = colored(blk.add_hatch(), fill)
                 h.paths.add_polyline_path([_mm(q) for q in sample_arc(d, 48)], is_closed=True)
             colored(blk.add_circle(_mm(d["center"]), d["radius"] * 1000), line)
@@ -205,7 +218,7 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         if len(pts) < 2:
             continue
         mm = [_mm(q) for q in pts]
-        if p.filled and len(mm) >= 3:
+        if p.filled and len(mm) >= 3 and not prim.get("strip_fill"):
             h = colored(blk.add_hatch(), fill)
             h.paths.add_polyline_path(mm, is_closed=True)
         colored(blk.add_lwpolyline(mm, close=closed), line)

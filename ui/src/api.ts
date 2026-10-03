@@ -544,8 +544,10 @@ export const api = {
   companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),
   saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number }) =>
     request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
-  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[]) =>
-    request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items }),
+  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[], stripFill = false) =>
+    request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items, strip_fill: stripFill }),
+  diagnostics: (projectId = "") =>
+    request<Record<string, unknown>>("GET", `/api/diagnostics${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`),
   legendTexts: (q: string, familyKey = "") =>
     request<{ items: { text: string; score: number; source: string }[] }>(
       "GET",

@@ -637,3 +637,40 @@ def test_release_check_lists_what_is_open(env, monkeypatch):  # noqa: F811
     done = client.get(f"/api/projects/{pid}/review").json()
     blocking = [c["id"] for c in done["checks"] if c["level"] == "block"]
     assert done["ready"] is True and blocking == []
+
+
+def test_fixed_text_lines_share_one_row_height_and_drop_the_extra_lines():
+    doc = normalize({"version": 3, "style": {"text_lines": 2, "entry_gap": 1.5}, "blocks": [block("A", 3)]})
+    doc["blocks"][0]["items"][1]["text"] = "Langer Text " * 12
+    lay = layout(doc)
+    heights = [round(h["h"], 3) for h in boxes(lay)]
+    assert len(set(heights)) == 1
+    lines = [t for t in lay["prims"] if t["t"] == "text" and t.get("item") == "A1"]
+    assert 1 <= len(lines) <= 2
+
+
+def test_linear_symbol_keeps_its_proportion():
+    items = [{"id": "s0", "kind": "symbol", "symbol_key": "k", "text": "Langfeld"}]
+    doc = normalize({"version": 3, "blocks": [{"id": "S", "title": "Licht", "items": items}]})
+    lay = layout(doc, {"s0": (40.0, 4.0, False)})
+    sym = next(p for p in lay["prims"] if p["t"] == "symbol")
+    assert sym["w"] / sym["h"] == pytest.approx(10, rel=0.05)
+    assert sym["w"] > sym["h"] * 2
+
+
+def test_symbol_on_two_layers_is_proposed_in_both_categories():
+    sample = row("leuchte", ["schalter"])
+    sample["layers"] = {"E_Licht": 2, "E_Starkstrom": 1}
+    doc = propose([sample], CATS, True, {}, "L",
+                  layer_categories={"E_Licht": "schalter", "E_Starkstrom": "allgemein"})
+    placed = {(b["category_id"], i["family_key"]) for b in doc["blocks"] for i in b["items"] if i["kind"] == "symbol"}
+    assert placed == {("schalter", "leuchte"), ("allgemein", "leuchte")}
+
+
+def test_diagnostics_report_has_no_geometry(env):
+    client, _folder = env
+    res = client.get("/api/diagnostics")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["programm"] == "edeco ag - NOVA Legenden"
+    assert "svg" not in body
