@@ -44,6 +44,8 @@ class LibraryIndex:
             if s.part_name:
                 self.by_name[s.part_name.lower()].append(s)
         self.datasets = datasets
+        # catalogues that have 2D symbols at all (EloTrassen has none: its objects are trays)
+        self.with_symbols = {s.dataset for s in symbols}
         # Newest first: V2 before V1 when the dataset is not known
         self.order = [d["id"] for d in sorted(datasets, key=lambda d: d["id"], reverse=True)]
         self.order.sort(key=lambda i: 0 if ".V2." in i else 1)
@@ -112,6 +114,11 @@ def resolve(found: Found, index: LibraryIndex, mappings: dict[str, str]) -> Reso
                 return Resolution(None, "ignoriert", "Beschriftung")
             return Resolution(sym.key, "erkannt", "Katalogcode")
         if found.features.get("has_graphic") is False:
+            # Only objects of a catalogue without any 2D symbols (cable trays) are left
+            # out silently. An apparatus of an electrical catalogue without a drawing
+            # is shown under "Unbekannt" so the legend is not incomplete unnoticed.
+            if ds and ds in index.with_symbols:
+                return Resolution(None, "unbekannt", "ohne Grafik")
             return Resolution(None, "ignoriert", "ohne Grafik")
 
     cands = index.by_name_any(found.name) or (

@@ -92,3 +92,20 @@ def test_warning_thresholds():
     assert warnings(result(0, 50), False) == []                    # a new floor has nothing to lose
     fmt = warnings(result(10, 10), True, "n4d", "dxf")
     assert fmt[0]["level"] == "info" and "Bisher N4D, neu DXF" in fmt[0]["text"]
+
+
+def test_a_stale_preview_cannot_overwrite_a_newer_import(env):  # noqa: F811
+    client, tmp = env
+    pid = client.post("/api/projects", json={"name": "Veraltet"}).json()["id"]
+    first = post(client, pid, nova_like_dxf(tmp / "eg.dxf")).json()
+    plan = client.post(f"/api/projects/{pid}/plans/commit", json={"token": first["token"]}).json()["plans"][0]
+    old = post(client, pid, smaller_plan(tmp / "klein.dxf"), plan_id=plan["id"]).json()     # preview A
+    newer = post(client, pid, nova_like_dxf(tmp / "eg2.dxf"), plan_id=plan["id"]).json()     # preview B
+    assert client.post(f"/api/projects/{pid}/plans/commit", json={"token": newer["token"]}).status_code == 200
+    stale = client.post(f"/api/projects/{pid}/plans/commit", json={"token": old["token"]})
+    assert stale.status_code == 409 and "seit der Vorschau geändert" in stale.json()["detail"]
+    detail = client.get(f"/api/projects/{pid}").json()
+    assert detail["plans"][0]["versions"] == 2                       # preview A did not land
+    switch = next(r for r in detail["rows"] if r["title"] == "Schalter, Schema 0")
+    assert switch["total"] == 4
+    assert client.post(f"/api/projects/{pid}/plans/commit", json={"token": old["token"]}).status_code == 410

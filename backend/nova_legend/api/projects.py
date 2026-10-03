@@ -321,6 +321,8 @@ def register(app: FastAPI, st) -> None:
             compared = preview.compare(ev.summarize(previous), ev.summarize(after_rows))
             token = uuid.uuid4().hex
             staged[token] = {"project": p.id, "plan_id": plan_id, "name": name, "filename": file.filename or "",
+                             # the floor as it was previewed: a later import makes this preview stale
+                             "base_version": plan.get("current_version") if plan else None,
                              "src": src, "suffix": suffix, "result": result, "tmp": tmp,
                              "created": time.monotonic()}
         except BaseException:
@@ -340,6 +342,12 @@ def register(app: FastAPI, st) -> None:
         entry = staged.get(body.token)
         if not entry or entry["project"] != p.id:
             raise HTTPException(410, "Die Vorschau ist abgelaufen. Bitte die Datei noch einmal prüfen.")
+        if entry["plan_id"] is not None:
+            now = next((pl for pl in p.plans() if pl["id"] == entry["plan_id"]), None)
+            if now is None or now.get("current_version") != entry["base_version"]:
+                drop_staged(body.token)
+                raise HTTPException(409, "Das Geschoss wurde seit der Vorschau geändert. Bitte die Datei noch einmal "
+                                         "prüfen, damit du die aktuellen Änderungen siehst.")
         try:
             store(p, entry["plan_id"], entry["name"], entry["filename"], entry["src"], entry["suffix"],
                   entry["result"])

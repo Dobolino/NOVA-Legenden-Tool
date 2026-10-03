@@ -86,7 +86,7 @@ def test_api_library_flow(home):
     client = TestClient(create_app(state, ui_dir=home / "no-ui"))
 
     status = client.get("/api/status").json()
-    assert status["symbol_count"] == 2346
+    assert status["symbol_count"] == 2346 + 53      # + linear luminaires (sheet graphic of sheet 140)
 
     res = client.get("/api/library/families", params={"q": "schalter schema 0"}).json()
     fam = next(i for i in res["items"] if i["title"] == "Schalter, Schema 0")

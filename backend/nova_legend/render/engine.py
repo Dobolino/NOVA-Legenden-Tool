@@ -14,6 +14,10 @@ builds a SymbolGeometry with the real proportions:
   Fill = filled sectors (8 triangles around the centre)
 * Verteiler: box B x T with Darstellung 1 cross, 2 diagonal, 3 diagonal
   filled, 4 filled, 5 empty
+* Langfeldleuchte (linear luminaires, sheet graphic of sheets 140, T5, T8):
+  box L x B; DArt 0 (standard) with one line per tube (AnzR) along the
+  length, DArt 1 plain box, DArt 2 (suspended) box with a line across;
+  MitSicherheitsleuchte=True adds a filled square at one end
 
 Inner symbols from Nova libraries (Symbol=L_1|geoSL) are not drawn. The
 result is marked as a simplified preview (groups == ["engine"]).
@@ -54,6 +58,13 @@ def _size(expr: str | None, attrs: dict[str, str], fallback_key: str) -> float:
     if not value or value <= 0:
         value = DEFAULT_MM
     return value / 1000.0 / PLAN_SCALE
+
+
+def _attr(expr: str | None, attrs: dict[str, str]) -> str | None:
+    """'*Ctx1' -> attribute Ctx1, a plain value stays."""
+    if expr and expr.strip().startswith("*"):
+        return attrs.get(expr.strip()[1:])
+    return expr
 
 
 def _params(content: str) -> tuple[str, dict[str, str]]:
@@ -116,6 +127,24 @@ def engine_geometry(content: str | None, attrs: dict[str, str]) -> SymbolGeometr
             prims.append(_line(box[0], box[2]))
         if mode == "1":
             prims.append(_line(box[1], box[3]))
+    elif kind == "Langfeldleuchte":
+        w = _size(p.get("L"), attrs, "L")
+        h = _size(p.get("B"), attrs, "B")
+        box = _rect(w, h)
+        prims.append(_polygon(box))
+        dart = (p.get("DArt") or "0").strip()
+        if dart == "0":
+            tubes = max(1, min(4, int(_num(_attr(p.get("AnzR"), attrs)) or 1)))
+            for i in range(1, tubes + 1):
+                y = -h / 2 + h * i / (tubes + 1)
+                prims.append(_line((-w / 2, y), (w / 2, y)))
+        elif dart == "2":
+            prims.append(_line((0.0, -h / 2), (0.0, h / 2)))
+        if (p.get("MitSicherheitsleuchte") or "").strip().lower() == "true":
+            side = min(h, w) * 0.8
+            x0 = w / 2 - side - h * 0.1
+            prims.append(_polygon([(x0, -side / 2), (x0 + side, -side / 2), (x0 + side, side / 2), (x0, side / 2)],
+                                  filled=True))
     elif kind in ("2DNeutral", "BauteileGrundriss"):
         typ = p.get("Typ", "0")
         w = _size(p.get("A") or p.get("L"), attrs, "L")

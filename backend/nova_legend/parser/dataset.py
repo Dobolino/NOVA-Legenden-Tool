@@ -160,9 +160,14 @@ class Dataset:
         graphic = self.trees["Graphic"].root
         files_3d: dict[str, list[str]] = {}
         items_2d = []
+        sheet_graphics: dict[str, list] = {}
         for gi in graphic.find_all("GraphicItem"):
             item = gi.get("Item")
             if not item:
+                # A 2D graphic of a whole sheet (linear luminaires: one parametric
+                # drawing for every part of the sheet, sized by the part's L and B)
+                if gi.get("Sheet") and gi.get("Usage") != "3D" and gi.get("Type") not in ("3DGeo", ""):
+                    sheet_graphics.setdefault(gi.get("Sheet"), []).append(gi)
                 continue
             if gi.get("Usage") == "3D" or gi.get("Type") == "3DGeo":
                 if gi.get("GraphicFile"):
@@ -170,15 +175,26 @@ class Dataset:
                 continue
             items_2d.append(gi)
 
+        # parts without a 2D graphic of their own get the first graphic of their
+        # sheet ("00_Standard"); the plan does not say which variant was placed
+        with_own = {(gi.get("Sheet", ""), gi.get("Item", "")) for gi in items_2d}
+        sheet_items: list[tuple] = []
+        for sheet_id, graphics in sheet_graphics.items():
+            for part_id in self.sheets.get(sheet_id, {}).get("parts", {}):
+                if (sheet_id, part_id) not in with_own:
+                    sheet_items.append((graphics[0], part_id))
+
         symbols: list[Symbol] = []
-        for gi in items_2d:
-            item = gi.get("Item", "")
+        for gi, forced_item in [(gi, None) for gi in items_2d] + sheet_items:
+            item = forced_item or gi.get("Item", "")
             sheet_id = gi.get("Sheet", "")
             sheet = self.sheets.get(sheet_id, {})
             part = sheet.get("parts", {}).get(item, {})
             attrs = dict(sheet.get("defaults", {}))
             attrs.update(part)
-            name = gi.get("Description") or part.get("Description") or item
+            # a sheet graphic is named after its variant ("00_Standard"): use the part name
+            name = (part.get("Description") or item) if forced_item else (
+                gi.get("Description") or part.get("Description") or item)
             kind = gi.get("Type", "")
             geo = None
             if gi.get("Geometry") and kind in ("Geometry", "Symbol"):
@@ -208,7 +224,7 @@ class Dataset:
                 kind=kind,
                 usage=gi.get("Usage", ""),
                 place_mode=gi.get("PlaceMode", ""),
-                mounting=detect_mounting(gi.get("Description"), part.get("Description"),
+                mounting=detect_mounting(None if forced_item else gi.get("Description"), part.get("Description"),
                                          sheet.get("description"), self.folders.get(item)),
                 geometry=geo,
                 engine=gi.get("Content") if kind == "Engine" else None,

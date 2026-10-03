@@ -85,3 +85,34 @@ def test_named_source_dataset_is_never_replaced_by_another_catalogue():
     # the user's decision still wins
     assert resolve(Found("k1", "Steckdose T13", dataset=v1, item="90-30"), index,
                    {"k1": f"{v2}|90-30"}).status == "zugeordnet"
+
+
+def test_objects_without_graphic_are_only_ignored_for_catalogues_without_symbols():
+    from types import SimpleNamespace as S
+
+    from nova_legend.importer.model import Found
+    from nova_legend.importer.recognize import LibraryIndex, resolve
+
+    elo = "Trimble.Elektroinstallationen.CH"
+    index = LibraryIndex([S(key=f"{elo}|10|10-10|2D-10", dataset=elo, item="10-10", name="Schalter",
+                            part_name="", sheet="10", graphic_id="2D-10")],
+                         [{"id": elo, "long_name": "Elektro"}, {"id": "Plancal.EloTrassen", "long_name": "Trassen"}])
+    lamp = Found("n4d:x", "Spezialleuchte", 5, elo, "999-1", "999", features={"has_graphic": False})
+    tray = Found("n4d:y", "Kabelkanal", 19, "Plancal.EloTrassen", "Kabelkanal", "Tra1",
+                 features={"has_graphic": False})
+    assert (resolve(lamp, index, {}).status, resolve(lamp, index, {}).method) == ("unbekannt", "ohne Grafik")
+    assert resolve(tray, index, {}).status == "ignoriert"
+
+
+def test_linear_luminaires_get_the_sheet_graphic_sized_by_the_part(tmp_path):
+    from nova_legend.render.engine import engine_geometry
+    from nova_legend.render.svg import geometry_bounds
+
+    content = "Langfeldleuchte;L=*;B=*;H=*;AnzR=*Ctx1;Abgependelt=False; MitSicherheitsleuchte=False; DArt=0 ;GZusatz=UNDEF"
+    geo = engine_geometry(content, {"L": "800", "B": "80", "Ctx1": "2"})
+    x0, y0, x1, y1 = geometry_bounds(geo)
+    assert round((x1 - x0) * 1000, 2) == 16.0 and round((y1 - y0) * 1000, 2) == 1.6     # 800 x 80 mm at 1:50
+    assert sum(1 for p in geo.primitives if p.kind == "line") == 2                       # one line per tube
+    safety = engine_geometry(content.replace("MitSicherheitsleuchte=False", "MitSicherheitsleuchte=True"),
+                             {"L": "800", "B": "80"})
+    assert any(p.filled for p in safety.primitives)

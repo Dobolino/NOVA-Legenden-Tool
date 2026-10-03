@@ -53,3 +53,17 @@ def test_other_files_are_refused(env, tmp_path):  # noqa: F811
     bad.write_bytes(b"%PDF")
     res = import_dxf(client, pid, bad)
     assert res.status_code == 400 and "N4M" in res.json()["detail"]
+
+
+V1_NZP = SAMPLES / "Elektroinstallationen.CH.nzp"
+
+
+@pytest.mark.skipif(not V1_NZP.is_file(), reason="sample Elektroinstallationen.CH.nzp missing")
+def test_linear_luminaires_of_the_catalogue_are_symbols():
+    from nova_legend.parser.dataset import Dataset
+
+    ds = Dataset(V1_NZP)
+    led = {s.item: s for s in ds.symbols if s.sheet == "140"}
+    assert len(led) == 53 and led["LED_8"].name == "LED-Langfeldleuchte 8W"
+    assert led["LED_8"].kind == "Engine" and led["LED_8"].graphic_id == "ST"
+    assert led["LED_8"].attributes["L"] == "800" and led["LED_8"].geometry.primitives
