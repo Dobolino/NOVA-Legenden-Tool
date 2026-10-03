@@ -1,6 +1,6 @@
 /** Floor label from a plan file name. «3_1.OG.dxf» becomes «1. OG». */
 
-const NUMBERED = /(\d+)\s*\.\s*(OG|UG|DG|STOCK)/i;
+const NUMBERED = /(\d+)\s*\.?\s*(OG|UG|DG|STOCK)(?![A-Za-z])/i; // «1.OG», «1. OG» and «1OG»
 const BARE = /(?:^|[_\s.-])(EG|UG|DG|OG)(?:$|[_\s.-])/i;
 
 export function floorNameFromFilename(filename: string): string | null {
@@ -14,9 +14,9 @@ export function floorNameFromFilename(filename: string): string | null {
   return bare ? bare[1].toUpperCase() : null;
 }
 
-const PLAN_FILE = /\.(dxf|dwg|n4d)$/i;
+const PLAN_FILE = /\.(dxf|dwg|n4d|n4m)$/i;
 
-/** Only plan files (DXF, DWG, N4D) of a drop or a file dialog. */
+/** Only plan files (DXF, DWG, N4D, N4M) of a drop or a file dialog. */
 export function planFiles<T extends { name: string }>(files: T[]): T[] {
   return files.filter((f) => PLAN_FILE.test(f.name));
 }

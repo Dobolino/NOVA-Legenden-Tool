@@ -22,7 +22,7 @@ from ..projects.floors import resolve_plan_name
 from ..projects.service import ProjectEvaluator
 from ..projects.store import ProjectManager, export_filename
 
-FORMATS = {".dxf": "dxf", ".dwg": "dwg", ".n4d": "n4d"}
+FORMATS = {".dxf": "dxf", ".dwg": "dwg", ".n4d": "n4d", ".n4m": "n4m"}
 
 
 class ProjectIn(BaseModel):
@@ -205,7 +205,7 @@ def register(app: FastAPI, st) -> None:
         p = project(project_id)
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in FORMATS:
-            raise HTTPException(400, "Nur DXF-, DWG- oder N4D-Dateien können importiert werden.")
+            raise HTTPException(400, "Nur DXF-, DWG-, N4D- oder N4M-Dateien können importiert werden.")
         tmp = Path(tempfile.mkdtemp(prefix="nl_import_"))
         try:
             src = tmp / f"plan{suffix}"
@@ -214,8 +214,8 @@ def register(app: FastAPI, st) -> None:
             try:
                 if suffix == ".dxf":
                     result = read_dxf(src)
-                elif suffix == ".n4d":
-                    result = read_n4d(src)
+                elif suffix in (".n4d", ".n4m"):
+                    result = read_n4d(src, FORMATS[suffix])
                 else:
                     result = read_dwg(src, st.settings.oda_path or config.find_oda_converter())
             except ConverterMissing as exc:

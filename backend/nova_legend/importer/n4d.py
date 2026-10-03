@@ -1,4 +1,9 @@
-"""Read a Nova plan (.n4d).
+"""Read a Nova plan (.n4d) or a Nova model drawing (.n4m).
+
+Both are the same OLE container (streams Header, Version, Elements, Bitmap or
+BITMAP, OLEClients) with the same object records, so one reader serves both.
+Source keys keep the prefix "n4d:" for both, so a floor imported as N4D and
+later as N4M matches its rows exactly.
 
 Uses the read-only probe from Phase 0: every Nova object that references a
 dataset gives dataset id, catalogue code, graphic id and layer. Objects
@@ -32,7 +37,7 @@ def n4d_layer_colors(elements: bytes) -> dict[str, str]:
     return {name: c.most_common(1)[0][0] for name, c in votes.items()}
 
 
-def read_n4d(path: str | Path) -> ImportResult:
+def read_n4d(path: str | Path, fmt: str = "n4d") -> ImportResult:
     report = analyse(path)
     ole = olefile.OleFileIO(str(path))
     try:
@@ -40,7 +45,7 @@ def read_n4d(path: str | Path) -> ImportResult:
     finally:
         ole.close()
     colors = n4d_layer_colors(elements)
-    result = ImportResult("n4d", info={"version_stream": report.version_stream,
+    result = ImportResult(fmt, info={"version_stream": report.version_stream,
                                        "datasets": report.datasets})
     result.layers = [Layer(name, colors.get(name, "")) for name in report.layers]
     found: dict[str, Found] = {}

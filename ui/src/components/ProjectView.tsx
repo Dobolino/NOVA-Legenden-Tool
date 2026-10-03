@@ -114,7 +114,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   function openImport(list: File[]) {
     const files = planFiles(list);
     if (!files.length) {
-      notify("Nur DXF-, DWG- oder N4D-Dateien können importiert werden.", true);
+      notify("Nur DXF-, DWG-, N4D- oder N4M-Dateien können importiert werden.", true);
       return;
     }
     setPending(files);
@@ -353,7 +353,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             {importStatus?.kind === "busy" && <span className="hint">· importiert …</span>}
           </summary>
           <p className="desc">
-            Ein Plan pro Geschoss. Datei hierher ziehen oder unten wählen. Formate: DXF und N4D, DWG mit ODA File
+            Ein Plan pro Geschoss. Datei hierher ziehen oder unten wählen. Formate: DXF, N4D und N4M (Nova-Modell), DWG mit ODA File
             Converter. Geschosse sortierst du durch Ziehen am Griff ⠿ oder mit ↑ ↓.
           </p>
           {plans.length > 0 && (
@@ -486,7 +486,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
           <input
             ref={reimportRef}
             type="file"
-            accept=".dxf,.dwg,.n4d"
+            accept=".dxf,.dwg,.n4d,.n4m"
             style={{ display: "none" }}
             onChange={(e) => {
               const f = e.target.files?.[0];
@@ -498,7 +498,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             <input
               ref={fileRef}
               type="file"
-              accept=".dxf,.dwg,.n4d"
+              accept=".dxf,.dwg,.n4d,.n4m"
               multiple
               style={{ display: "none" }}
               onChange={(e) => {
@@ -511,7 +511,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               Pläne importieren …
             </button>
             <span className="hint" style={{ lineHeight: "34px" }}>
-              Mehrere DXF, DWG oder N4D auf einmal: wählen oder hierher ziehen. Danach Geschossnamen prüfen.
+              Mehrere DXF, DWG, N4D oder N4M auf einmal: wählen oder hierher ziehen. Danach Geschossnamen prüfen.
             </span>
           </div>
           {importStatus && (

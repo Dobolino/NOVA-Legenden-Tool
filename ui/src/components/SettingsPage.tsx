@@ -364,7 +364,7 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <div className="card">
           <h3>DWG-Unterstützung (ODA File Converter)</h3>
           <p className="desc">
-            Nur für DWG-Dateien nötig. DXF und N4D funktionieren ohne. Der Converter ist kostenlos und wird separat von
+            Nur für DWG-Dateien nötig. DXF, N4D und N4M funktionieren ohne. Der Converter ist kostenlos und wird separat von
             der Open Design Alliance installiert.
           </p>
           {status.oda ? (
