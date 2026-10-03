@@ -18,7 +18,7 @@ from ..legend import general as general_part
 from ..legend.export import build_dxf, dxf_to_dwg
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
-from ..legend.model import AP_NOTE, GRIDS, MARGIN, SHEET_WIDTH, normalize, normalize_style, propose, template_texts
+from ..legend.model import AP_NOTE, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
 from ..projects.store import Project, safe_folder_name
 from ..render.engine import engine_geometry
 from ..render.svg import geometry_bounds, render_svg
@@ -178,7 +178,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
 
     def load_general() -> general_part.GeneralPart:
         path = st.company.legend_settings()["legend_general_path"]
-        return general_part.load(path, SHEET_WIDTH - 2 * MARGIN, st.settings.oda_path or config.find_oda_converter(),
+        return general_part.load(path, MAX_SHEET_WIDTH - 2 * MARGIN, st.settings.oda_path or config.find_oda_converter(),
                                  project_layout=template_layout)
 
     def template_layout(folder: Path):

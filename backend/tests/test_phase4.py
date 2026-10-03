@@ -578,3 +578,32 @@ def test_title_size_and_border_and_a_frame_round_the_legend():
     doc["title"]["border_on"] = False
     doc["style"]["frame_on"] = False
     assert not [p for p in layout(doc)["prims"] if p["t"] == "rect" and p.get("block") in ("title", "frame")]
+
+
+def test_sheet_width_is_adjustable_standard_200_at_most_210():
+    assert normalize({})["style"]["width"] == 200
+    assert normalize({"style": {"width": 230}})["style"]["width"] == 210
+    doc = normalize({"version": 3, "style": {"width": 210}, "blocks": [block("A", 6, "Text " * 6)]})
+    lay = layout(doc)
+    assert lay["width"] == 210
+    assert max(h["x"] + h["w"] for h in boxes(lay)) <= 205 + 1e-6
+    doc["style"]["width"] = 150
+    narrow = layout(doc, general={"w": 180, "h": 30})
+    gen = next(p for p in narrow["prims"] if p.get("role") == "general")
+    assert narrow["width"] == 150 and gen["w"] == 140 and abs(gen["h"] - 30 * 140 / 180) < 1e-6
+    assert gen["fit"] < 1
+
+
+def test_narrow_sheet_shrinks_the_general_part_in_the_dxf(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    client.put("/api/company/legend", json={"general_path": str(_template_dxf(tmp_path / "a.dxf"))})
+    pid = _project(client, tmp)
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    doc["style"]["width"] = 150
+    client.put(f"/api/projects/{pid}/legend", json={"doc": doc})
+    res = client.get(f"/api/projects/{pid}/legend/export", params={"general": "true"})
+    (tmp_path / "n.dxf").write_bytes(res.content)
+    out = ezdxf.readfile(tmp_path / "n.dxf")
+    ins = next(i for i in out.modelspace().query("INSERT") if i.dxf.name == "Allgemeinteil")
+    assert abs(ins.dxf.xscale - 140 / 180) < 1e-3

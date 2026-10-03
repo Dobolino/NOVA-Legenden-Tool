@@ -161,16 +161,18 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     row = style["row"]
     margin = style["margin"]
     gap = max(0.0, float(style.get("section_gap") or 0.0))
-    width = min(style["width"], 200.0)
+    width = max(80.0, min(style["width"], 210.0))
     inner = width - 2 * margin
     cols = 3 if style["columns"] >= 3 else 2
     prims: list[dict] = []
     y = margin
 
     if general and include_general and general.get("h"):
-        gw, gh = min(general["w"], inner), general["h"]
+        # the general part shrinks with a narrower sheet, keeping its proportions
+        fit = min(1.0, inner / general["w"]) if general.get("w") else 1.0
+        gw, gh = general["w"] * fit, general["h"] * fit
         prims.append({"t": "rect", "x": margin, "y": y, "w": gw, "h": gh, "fill": None, "stroke": None,
-                      "role": "general"})
+                      "role": "general", "fit": round(fit, 5)})
         prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
                       "x": margin, "y": y, "w": gw, "h": gh})
         y += gh + row

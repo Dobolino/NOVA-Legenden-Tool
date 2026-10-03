@@ -17,7 +17,9 @@ from pathlib import Path
 
 DOC_VERSION = 3
 AP_NOTE = "Unterscheidung UP / AP (halbausgefüllt)"
-SHEET_WIDTH = 200.0          # mm, including the margin
+SHEET_WIDTH = 200.0          # mm, including the margin (standard)
+MAX_SHEET_WIDTH = 210.0      # widest sheet the user may choose
+MIN_SHEET_WIDTH = 80.0
 MARGIN = 5.0
 
 # Grid presets. "standard" follows the existing edeco legend.
@@ -142,6 +144,7 @@ def normalize_style(value) -> dict:
     style["plan_scale"] = _num(v.get("plan_scale"), 50, 1, 1000)
     style["font"] = str(v.get("font") or "Arial")[:40]
     style["section_gap"] = _num(v.get("section_gap"), 0.0, 0, 50)
+    style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
     style["frame"] = _hex(v.get("frame"), "#000000")
     return style

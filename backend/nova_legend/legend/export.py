@@ -118,16 +118,30 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
     if general and general.kind == "project":
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
         if g:
-            draw(general.prims, g["x"], g["y"])
+            draw(_scaled(general.prims, g.get("fit", 1.0)), g["x"], g["y"])
     if general and general.kind == "dxf":
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
         if g:
-            _import_general(doc, msp, general, g["x"], Y(g["y"] + g["h"]))
+            _import_general(doc, msp, general, g["x"], Y(g["y"] + g["h"]), g.get("fit", 1.0))
     draw(lay["prims"])
     return doc
 
 
-def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float) -> None:
+def _scaled(prims: list[dict], k: float) -> list[dict]:
+    """Primitives of a general part from a template project, shrunk to a narrower sheet."""
+    if k == 1.0:
+        return prims
+    out = []
+    for p in prims:
+        q = dict(p)
+        for key in ("x", "y", "w", "h", "cx", "cy", "x1", "x2", "y1", "y2", "r", "size", "scale"):
+            if isinstance(q.get(key), (int, float)):
+                q[key] = q[key] * k
+        out.append(q)
+    return out
+
+
+def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, fit: float = 1.0) -> None:
     import ezdxf
     from ezdxf.addons import Importer
 
@@ -136,7 +150,7 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float) -
     imp = Importer(src, doc)
     imp.import_entities(src.modelspace(), target_layout=blk)
     imp.finalize()
-    sc = general.scale
+    sc = general.scale * fit
     msp.add_blockref("Allgemeinteil", (x - general.ext_min[0] * sc, y_bottom - general.ext_min[1] * sc),
                      dxfattribs={"xscale": sc, "yscale": sc, "layer": _layer(doc, FRAME_LAYER)})
 

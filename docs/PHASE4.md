@@ -5,7 +5,7 @@ Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Zi
 ## Aufbau der Legende
 
 ```
-┌───────────────────────── max. 200 mm inkl. Rand ─────────────────────────┐
+┌───────────────────────── Standard 200 mm, max. 210 mm inkl. Rand ─────────────────────────┐
 │ Allgemeinteil (vom Server, gesperrt)                                     │
 │ Titel                                                                    │
 │ ███ Leuchten ███████████████████████████████████████████████ Kopfleiste  │
@@ -15,7 +15,7 @@ Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Zi
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-- Blatt höchstens 200 mm breit (Rand 5 mm). 2 oder 3 Spalten teilen die Breite.
+- Blattbreite einstellbar im Feld «Legende»: Standard 200 mm, höchstens 210 mm, inklusive 5 mm Rand. 2 oder 3 Spalten teilen die Breite. Bei einem schmaleren Blatt verkleinert sich der Allgemeinteil im gleichen Verhältnis, in Vorschau und Export.
 - Kein freies Millimeter-Schieben. Alles sitzt auf dem festen Raster. Einträge ziehst du mit der Maus an einen anderen Platz oder in einen anderen Abschnitt, auf dem Blatt und in der linken Liste. ↑ ↓ und die Pfeiltasten gehen auch.
 - Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Platzhalter im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
 - In jeder Spalte eines Abschnitts liegen alle Symbole mit ihrem Einfügepunkt auf einer senkrechten Achse. Liegt der Einfügepunkt nicht in der mittleren Hälfte des Symbols (Leitungen, Bus-Taster), gilt die Mitte des Symbols. Beschriftungen wie «2» oder «3» neben der Steckdose zählen nicht zur Mitte. Alle Texte beginnen auf einer zweiten senkrechten Linie rechts vom Symbol, das am weitesten nach rechts reicht. Symbol und Text teilen sich die waagrechte Mitte der Zeile.

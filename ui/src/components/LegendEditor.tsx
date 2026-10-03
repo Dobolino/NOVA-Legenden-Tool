@@ -872,7 +872,7 @@ function Prim({
           return <image x={p.x} y={p.y} width={p.w} height={p.h} href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(general.svg)}`} preserveAspectRatio="xMinYMin meet" />;
         if (general?.kind === "project")
           return (
-            <g transform={`translate(${p.x} ${p.y})`}>
+            <g transform={`translate(${p.x} ${p.y}) scale(${p.fit ?? 1})`}>
               {general.prims.map((q, i) => (
                 <Prim key={i} p={q} symbols={symbols} general={null} sel={null} stale={new Set()} onSelect={() => undefined} inert />
               ))}
@@ -1055,15 +1055,33 @@ type FieldFn = (apply: (d: LegendDoc, value: string) => LegendDoc) => {
 };
 
 /** Number field: one change (one undo step) when leaving the field or pressing Enter. */
-function NumberInput({ value, step, placeholder, label, onCommit }: { value: number | null; step: number; placeholder?: string; label?: string; onCommit: (v: number) => void }) {
+function NumberInput({
+  value,
+  step,
+  placeholder,
+  label,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number | null;
+  step: number;
+  placeholder?: string;
+  label?: string;
+  min?: number;
+  max?: number;
+  onCommit: (v: number) => void;
+}) {
   const [text, setText] = useState(value == null ? "" : String(value));
   useEffect(() => setText(value == null ? "" : String(value)), [value]);
   const done = () => {
-    const v = Number(text.replace(",", "."));
-    if (text.trim() === "" || !Number.isFinite(v)) {
+    const raw = Number(text.replace(",", "."));
+    if (text.trim() === "" || !Number.isFinite(raw)) {
       setText(value == null ? "" : String(value));
       return;
     }
+    const v = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, raw));
+    setText(String(v)); // show the value that applies, e.g. 210 after typing 250
     if (v !== value) onCommit(v);
   };
   return (
@@ -1459,14 +1477,12 @@ function DocProps({
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
-          <span>Blattbreite</span>
-          <span className="hint" style={{ lineHeight: "34px" }}>
-            {s.width} mm inkl. Rand
-          </span>
+          <span>Blattbreite (mm)</span>
+          <NumberInput label="Blattbreite" value={s.width} step={5} min={80} max={210} onCommit={(v) => setStyle({ width: v })} />
         </label>
       </div>
       <p className="hint">
-        Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}
+        Blattbreite inkl. 5 mm Rand: Standard 200 mm, höchstens 210 mm. Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}
         {String(company.symbol_scale).replace(".", ",")}.
       </p>
       <button
