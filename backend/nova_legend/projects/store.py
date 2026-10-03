@@ -13,14 +13,17 @@ template for a new project (settings and legend layout, no plans).
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 import sqlite3
+import tempfile
 import zipfile
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Iterator
+from uuid import uuid4
 
 from ..config import current_user
 
@@ -28,6 +31,7 @@ PROJECT_FILE = "projekt.nlproj"
 PLANS_DIR = "Plaene"
 TRASH_DIR = "_Geloescht"
 SCHEMA_VERSION = 1
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -259,56 +263,98 @@ class Project:
         elements that disappeared become 0; their source key stays so a later
         import can fill the same row again.
         """
-        previous_id = self._current_version_id(plan_id)
-        previous = self.elements(previous_id) if previous_id else []
-        old_stored = ""
-        if previous_id:
+        stored = None
+        old_path = None
+        try:
             with self.tx() as con:
-                row = con.execute("SELECT stored_file FROM plan_versions WHERE id=?",
-                                  (previous_id,)).fetchone()
-                old_stored = (row["stored_file"] or "") if row else ""
-        plans_dir = self.folder / PLANS_DIR
-        plans_dir.mkdir(parents=True, exist_ok=True)
-        stored = plans_dir / f"{plan_id}_{safe_folder_name(original_name)}"
-        shutil.copy2(source, stored)
-        if old_stored:
-            old_path = self.folder / old_stored
-            if old_path.is_file() and old_path.resolve() != stored.resolve():
-                old_path.unlink()
-        rows = merge_found(previous, result.found)
-        with self.tx() as con:
-            cur = con.execute(
-                "INSERT INTO plan_versions (plan_id, file_name, stored_file, format, imported_at, "
-                "imported_by, info, ignored) VALUES (?,?,?,?,?,?,?,?)",
-                (plan_id, original_name, str(stored.relative_to(self.folder)), result.format, _now(),
-                 current_user(), json.dumps(result.info, ensure_ascii=False, default=str),
-                 json.dumps(result.ignored, ensure_ascii=False)))
-            vid = int(cur.lastrowid)
-            con.executemany(
-                "INSERT INTO plan_elements VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                [(vid, row["source_key"], row["name"], row["count"], row["dataset"], row["item"],
-                  row["sheet"], row["graphic_name"], row["graphic_id"],
-                  json.dumps(row["layers"], ensure_ascii=False),
-                  json.dumps(row["features"])) for row in rows])
-            con.execute("UPDATE plans SET current_version=? WHERE id=?", (vid, plan_id))
-            for layer in result.layers:
-                con.execute("INSERT OR REPLACE INTO layers VALUES (?,?,?,?)",
-                            (layer.name, layer.color, layer.linetype, result.format))
+                # Serialize imports/detaches before reading the previous version.
+                con.execute("BEGIN IMMEDIATE")
+                plan = con.execute("SELECT current_version FROM plans WHERE id=?", (plan_id,)).fetchone()
+                if plan is None:
+                    raise ValueError("Plan nicht gefunden")
+                previous_id = plan["current_version"]
+                previous = self._elements(con, previous_id) if previous_id else []
+                if previous_id:
+                    row = con.execute("SELECT stored_file FROM plan_versions WHERE id=?", (previous_id,)).fetchone()
+                    if row and row["stored_file"]:
+                        old_path = self._plan_file(row["stored_file"])
+                # Never overwrite the existing file, even when both uploads have the same name.
+                plans_dir = self._plan_file(f"{PLANS_DIR}/new-file").parent
+                plans_dir.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=plans_dir, prefix=f"{plan_id}_",
+                                                 suffix=f"_{safe_folder_name(original_name)}",
+                                                 delete=False) as target:
+                    stored = Path(target.name)
+                    with source.open("rb") as incoming:
+                        shutil.copyfileobj(incoming, target)
+                rows = merge_found(previous, result.found)
+                cur = con.execute(
+                    "INSERT INTO plan_versions (plan_id, file_name, stored_file, format, imported_at, "
+                    "imported_by, info, ignored) VALUES (?,?,?,?,?,?,?,?)",
+                    (plan_id, original_name, f"{PLANS_DIR}/{stored.name}", result.format, _now(),
+                     current_user(), json.dumps(result.info, ensure_ascii=False, default=str),
+                     json.dumps(result.ignored, ensure_ascii=False)))
+                vid = int(cur.lastrowid)
+                con.executemany(
+                    "INSERT INTO plan_elements VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    [(vid, row["source_key"], row["name"], row["count"], row["dataset"], row["item"],
+                      row["sheet"], row["graphic_name"], row["graphic_id"],
+                      json.dumps(row["layers"], ensure_ascii=False),
+                      json.dumps(row["features"])) for row in rows])
+                con.execute("UPDATE plans SET current_version=? WHERE id=?", (vid, plan_id))
+                for layer in result.layers:
+                    con.execute("INSERT OR REPLACE INTO layers VALUES (?,?,?,?)",
+                                (layer.name, layer.color, layer.linetype, result.format))
+        except Exception:
+            if stored:
+                self._cleanup_file(stored)
+            raise
+        # The new file and version are now committed. Cleanup failure must not undo them.
+        if old_path:
+            self._cleanup_file(old_path)
         return vid
+
+    def _plan_file(self, stored: str) -> Path:
+        """Treat paths in a shared project database as untrusted, on either OS."""
+        relative = Path(stored.replace("\\", "/"))
+        if PureWindowsPath(stored).drive or relative.is_absolute() or len(relative.parts) != 2 \
+                or relative.parts[0] != PLANS_DIR or relative.parts[1] in {".", ".."}:
+            raise ValueError("Ungültiger Pfad der Plandatei: nur Dateien im Projektordner Plaene sind erlaubt.")
+        allowed = self.folder.resolve() / PLANS_DIR
+        path = (self.folder / relative).resolve()
+        if path.parent != allowed:
+            raise ValueError("Ungültiger Pfad der Plandatei: Verknüpfung verlässt den Ordner Plaene.")
+        return path
+
+    @staticmethod
+    def _cleanup_file(path: Path) -> None:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            log.warning("Alte/temporäre Plandatei konnte nicht entfernt werden: %s", path, exc_info=True)
 
     def detach_file(self, plan_id: int) -> None:
         """Delete the plan file. Elements, counts and the floor stay."""
-        version_id = self._current_version_id(plan_id)
-        if not version_id:
-            return
-        with self.tx() as con:
-            row = con.execute("SELECT stored_file FROM plan_versions WHERE id=?", (version_id,)).fetchone()
-            stored = (row["stored_file"] or "") if row else ""
-            con.execute("UPDATE plan_versions SET file_name='', stored_file='' WHERE id=?", (version_id,))
-        if stored:
-            path = self.folder / stored
-            if path.is_file():
-                path.unlink()
+        staged = path = None
+        try:
+            with self.tx() as con:
+                con.execute("BEGIN IMMEDIATE")
+                row = con.execute("SELECT v.id, v.stored_file FROM plans p JOIN plan_versions v "
+                                  "ON v.id=p.current_version WHERE p.id=?", (plan_id,)).fetchone()
+                if not row:
+                    return
+                if row["stored_file"]:
+                    path = self._plan_file(row["stored_file"])
+                    if path.is_file():
+                        staged = self._plan_file(f"{PLANS_DIR}/.{uuid4().hex}.detaching")
+                        path.rename(staged)
+                con.execute("UPDATE plan_versions SET file_name='', stored_file='' WHERE id=?", (row["id"],))
+        except Exception:
+            if staged and staged.exists() and path:
+                staged.rename(path)
+            raise
+        if staged:
+            self._cleanup_file(staged)
 
     def delete_sources(self, source_keys: list[str]) -> None:
         """Remove rows from the current version of every floor."""
@@ -368,7 +414,11 @@ class Project:
 
     def elements(self, version_id: int) -> list[dict]:
         with self.tx() as con:
-            rows = con.execute("SELECT * FROM plan_elements WHERE version_id=?", (version_id,)).fetchall()
+            return self._elements(con, version_id)
+
+    @staticmethod
+    def _elements(con: sqlite3.Connection, version_id: int) -> list[dict]:
+        rows = con.execute("SELECT * FROM plan_elements WHERE version_id=?", (version_id,)).fetchall()
         out = []
         for r in rows:
             d = dict(r)

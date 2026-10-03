@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, SymbolRender } from "../api";
 import {
@@ -41,6 +41,8 @@ import {
   updateSectionStyle,
 } from "../legend";
 import { TrashIcon } from "./Icons";
+import { SaveSession } from "../saveSession";
+import { useNavigation } from "../Navigation";
 
 interface Props {
   projectId: string;
@@ -92,9 +94,8 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const dragPayload = useRef<DragPayload | null>(null);
   const sheetDrag = useRef<{ block: string; item: string; x: number; y: number; active: boolean } | null>(null);
   const justDragged = useRef(false);
-  const lastSaved = useRef<LegendDoc | null>(null);
-  const saveGate = useRef({ generation: 0 });
-  const saveAbort = useRef<AbortController | null>(null);
+  const [saveSession] = useState(() => new SaveSession(projectId, api.saveLegend));
+  const { register } = useNavigation();
   const layoutGate = useRef({ generation: 0 });
   const fieldBefore = useRef<LegendDoc | null>(null);
 
@@ -115,7 +116,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         if (!alive) return;
         setInfo(r);
         if (r.legend) {
-          lastSaved.current = r.legend.doc;
+          saveSession.initialize(r.legend.doc);
           // entries the general part already shows: hidden (one undo step), not deleted
           const hidden = hideCovered(r.legend.doc, r.in_general);
           setHist(hidden === r.legend.doc ? historyOf(r.legend.doc) : push(historyOf(r.legend.doc), hidden));
@@ -124,9 +125,12 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
             notify(`${n} Einträge ausgeblendet: Der Allgemeinteil zeigt sie schon. Rückgängig mit Strg+Z.`);
           }
           setSavedInfo(`${formatStamp(r.legend.updated_at)} von ${r.legend.updated_by}`);
-        } else setHist(null);
+        } else {
+          saveSession.initialize(null);
+          setHist(null);
+        }
       })
-      .catch((e) => notify((e as Error).message, true));
+      .catch((e) => alive && notify((e as Error).message, true));
     api
       .legendGeneral(projectId)
       .then((g) => alive && setGeneral(g))
@@ -134,30 +138,34 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     return () => {
       alive = false;
     };
-  }, [projectId, notify]);
+  }, [projectId, notify, saveSession]);
+
+  // Register the latest rendered edit before navigation events can flush it.
+  useLayoutEffect(() => { saveSession.update(doc); }, [doc, saveSession]);
+
+  const saveNow = useCallback(async (): Promise<void> => {
+    if (!saveSession.dirty) return;
+    setSaveState("saving");
+    try {
+      await saveSession.flush();
+      const r = saveSession.result;
+      setSaveState("saved");
+      if (r) setSavedInfo(`${formatStamp(r.legend.updated_at)} von ${r.legend.updated_by}`);
+    } catch (e) {
+      setSaveState("error");
+      notify(`Legende nicht gespeichert: ${(e as Error).message}. Bitte erneut versuchen; deine Änderungen bleiben im Editor.`, true);
+      throw e;
+    }
+  }, [notify, saveSession]);
+
+  useEffect(() => register({ flush: saveNow, dirty: () => saveSession.dirty }), [register, saveNow, saveSession]);
 
   useEffect(() => {
-    if (!doc || doc === lastSaved.current) return;
+    if (!saveSession.dirty) return;
     setSaveState("saving");
-    const handle = window.setTimeout(async () => {
-      saveAbort.current?.abort();
-      const ctrl = new AbortController();
-      saveAbort.current = ctrl;
-      const generation = beginSave(saveGate.current);
-      try {
-        const r = await api.saveLegend(projectId, doc, ctrl.signal);
-        if (!isCurrentSave(saveGate.current, generation)) return; // a newer save is on its way
-        lastSaved.current = doc;
-        setSaveState("saved");
-        setSavedInfo(`${formatStamp(r.legend.updated_at)} von ${r.legend.updated_by}`);
-      } catch (e) {
-        if ((e as Error).name === "AbortError" || !isCurrentSave(saveGate.current, generation)) return;
-        setSaveState("error");
-        notify(`Legende nicht gespeichert: ${(e as Error).message}`, true);
-      }
-    }, 700);
+    const handle = window.setTimeout(() => { saveNow().catch(() => undefined); }, 700);
     return () => window.clearTimeout(handle);
-  }, [doc, projectId, notify]);
+  }, [doc, saveNow, saveSession]);
 
   // layout from the backend (same code as the DXF export)
   useEffect(() => {
@@ -431,18 +439,6 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   }
 
   // -- save now and export ----------------------------------------------------------------
-
-  async function saveNow(): Promise<void> {
-    if (!doc || doc === lastSaved.current) return;
-    saveAbort.current?.abort();
-    const generation = beginSave(saveGate.current);
-    const r = await api.saveLegend(projectId, doc);
-    if (isCurrentSave(saveGate.current, generation)) {
-      lastSaved.current = doc;
-      setSaveState("saved");
-      setSavedInfo(`${formatStamp(r.legend.updated_at)} von ${r.legend.updated_by}`);
-    }
-  }
 
   async function exportFile(format: "dxf" | "dwg", block: string, withGeneral: boolean) {
     if (format === "dwg" && !info?.oda) {

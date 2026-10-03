@@ -43,6 +43,21 @@ python -m pytest backend\tests -q
 
 Tests mit echten Nova-Dateien laufen nur, wenn der Ordner `samples` die Beispieldateien enthält. Dieser Ordner und alle Ausgaben stehen in `.gitignore`. So landen keine Trimble- oder Firmendaten im Repository.
 
+Frontend- und Browser-Regressionstests:
+
+```
+cd ui
+npm ci
+npm test
+npm run build
+cd ..
+python -m pip install -r backend/requirements-browser-tests.txt
+python -m playwright install chromium
+python -m pytest backend/tests/test_editor_navigation.py -q
+```
+
+Die Browsertests verwenden temporäre Projekte und eine eigene lokale API. Sie prüfen sofortige Projekt- und Reiterwechsel, Speicherfehler mit erneutem Versuch, laufende Autosaves und das Duplizieren mit ausstehenden Änderungen. Ohne das optionale Playwright-Paket oder den UI-Build werden sie übersprungen; der Windows-Build installiert beides und führt sie mit den übrigen Backendtests aus. Für ein vorhandenes Chromium kann `NOVA_TEST_CHROMIUM` auf den ausführbaren Dateipfad gesetzt werden.
+
 ## Phase-0-Analyse erneut ausführen
 
 ```

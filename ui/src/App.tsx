@@ -5,6 +5,7 @@ import Categories from "./components/Categories";
 import SettingsPage from "./components/SettingsPage";
 import ProjectsPage from "./components/ProjectsPage";
 import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
+import { NavigationProvider, useNavigation } from "./Navigation";
 
 type Tab = "projects" | "library" | "categories" | "settings";
 
@@ -14,6 +15,11 @@ export interface Toast {
 }
 
 export default function App() {
+  return <NavigationProvider><AppContent /></NavigationProvider>;
+}
+
+function AppContent() {
+  const { navigate, pending } = useNavigation();
   const [tab, setTab] = useState<Tab>("projects");
   const [status, setStatus] = useState<Status | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -87,22 +93,22 @@ export default function App() {
   const noDatasets = status && status.datasets.length === 0;
 
   return (
-    <div className="app">
+    <div className="app" inert={pending}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark">NL</span> NOVA-Legenden
         </div>
         <nav className="tabs">
-          <button className={`tab ${tab === "projects" ? "active" : ""}`} onClick={() => setTab("projects")}>
+          <button className={`tab ${tab === "projects" ? "active" : ""}`} onClick={() => navigate(() => setTab("projects"))}>
             Projekte
           </button>
-          <button className={`tab ${tab === "library" ? "active" : ""}`} onClick={() => setTab("library")}>
+          <button className={`tab ${tab === "library" ? "active" : ""}`} onClick={() => navigate(() => setTab("library"))}>
             Bibliothek
           </button>
-          <button className={`tab ${tab === "categories" ? "active" : ""}`} onClick={() => setTab("categories")}>
+          <button className={`tab ${tab === "categories" ? "active" : ""}`} onClick={() => navigate(() => setTab("categories"))}>
             Kategorien
           </button>
-          <button className={`tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
+          <button className={`tab ${tab === "settings" ? "active" : ""}`} onClick={() => navigate(() => setTab("settings"))}>
             Einstellungen
           </button>
         </nav>
@@ -143,7 +149,7 @@ export default function App() {
       </header>
       <div className="main">
         {tab === "projects" && (
-          <ProjectsPage categories={categories} notify={notify} onOpenSettings={() => setTab("settings")} />
+          <ProjectsPage categories={categories} notify={notify} onOpenSettings={() => navigate(() => setTab("settings"))} />
         )}
         {tab === "library" && options && (
           <Library
@@ -153,7 +159,7 @@ export default function App() {
             datasets={status?.datasets ?? []}
             notify={notify}
             onCategoriesChanged={reloadCategories}
-            onOpenSettings={() => setTab("settings")}
+            onOpenSettings={() => navigate(() => setTab("settings"))}
           />
         )}
         {tab === "categories" && options && (

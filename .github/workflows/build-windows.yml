@@ -26,10 +26,14 @@ jobs:
         working-directory: ui
         run: |
           npm ci
+          npm test
           npm run build
 
       - name: Python-Pakete installieren
-        run: pip install -r backend/requirements.txt -r packaging/requirements-windows.txt
+        run: pip install -r backend/requirements.txt -r packaging/requirements-windows.txt -r backend/requirements-browser-tests.txt
+
+      - name: Chromium für Browser-Regressionstests installieren
+        run: python -m playwright install chromium
 
       - name: Tests
         run: python -m pytest backend/tests -q

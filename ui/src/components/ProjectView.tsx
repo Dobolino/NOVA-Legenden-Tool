@@ -7,6 +7,7 @@ import LegendEditor from "./LegendEditor";
 import ImportDialog from "./ImportDialog";
 import Menu from "./Menu";
 import { TrashIcon } from "./Icons";
+import { useNavigation } from "../Navigation";
 
 interface Props {
   projectId: string;
@@ -27,6 +28,8 @@ interface ImportStatus {
 const DETACH_TEXT = "Entfernt nur die gespeicherte Plandatei. Importierte Anzahlen und Versionen bleiben erhalten.";
 
 export default function ProjectView({ projectId, projects, categories, notify, onBack, onOpenProject }: Props) {
+  const { navigate } = useNavigation();
+  const loadGeneration = useRef(0);
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [tab, setTab] = useState<Tab>("list");
   const [busy, setBusy] = useState(false);
@@ -43,20 +46,23 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [allCategories, setAllCategories] = useState(false);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     try {
       const next = await api.project(projectId);
+      if (generation !== loadGeneration.current) return;
       setData(next);
       setNumber(next.meta.project_number || "");
       setTitle(next.meta.name || "");
       setOpen(plansOpen(projectId, next.plans.length));
     } catch (e) {
-      notify((e as Error).message, true);
+      if (generation === loadGeneration.current) notify((e as Error).message, true);
     }
   }, [projectId, notify]);
 
   useEffect(() => {
     setImportStatus(null);
     load();
+    return () => { loadGeneration.current += 1; };
   }, [load]);
 
   async function run<T>(action: () => Promise<T>, ok?: string): Promise<T | undefined> {
@@ -130,7 +136,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
     [data],
   );
 
-  if (!data) {
+  if (!data || data.id !== projectId) {
     return (
       <div className="page">
         <div className="page-inner">
@@ -165,14 +171,16 @@ export default function ProjectView({ projectId, projects, categories, notify, o
       notify("Bezeichnung fehlt", true);
       return;
     }
-    const r = await run(
-      () => api.updateProject(projectId, { name: title.trim(), project_number: number.trim() }),
-      "Projekt gespeichert",
-    );
-    if (r) {
-      if (r.id !== projectId) onOpenProject(r.id);
-      else setData(r);
-    }
+    await navigate(async () => {
+      const r = await run(
+        () => api.updateProject(projectId, { name: title.trim(), project_number: number.trim() }),
+        "Projekt gespeichert",
+      );
+      if (r) {
+        if (r.id !== projectId) onOpenProject(r.id);
+        else setData(r);
+      }
+    });
   }
 
   return (
@@ -180,7 +188,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
       <div className="page-inner full">
         <div className="card project-head">
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <button className="btn small" onClick={onBack}>
+            <button className="btn small" onClick={() => navigate(onBack)}>
               ← Alle Projekte
             </button>
             <label className="filter-label">
@@ -190,7 +198,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 style={{ maxWidth: 320 }}
                 value={projectId}
                 title="Öffnet ein anderes Projekt aus dem Projektordner"
-                onChange={(e) => onOpenProject(e.target.value)}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  navigate(() => onOpenProject(id));
+                }}
               >
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -251,8 +262,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               onClick={async () => {
                 const name = window.prompt("Name des duplizierten Projekts", `${data.meta.name} Kopie`);
                 if (!name) return;
-                const r = await run(() => api.copyProject(projectId, name), "Projekt dupliziert");
-                if (r) onOpenProject(r.id);
+                await navigate(async () => {
+                  const r = await run(() => api.copyProject(projectId, name), "Projekt dupliziert");
+                  if (r) onOpenProject(r.id);
+                });
               }}
             >
               Projekt duplizieren
@@ -261,6 +274,17 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               className="btn small"
               href={api.exportUrl(projectId)}
               download={data.export_name}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate(() => {
+                  const link = document.createElement("a");
+                  link.href = api.exportUrl(projectId);
+                  link.download = data.export_name;
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                });
+              }}
               title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
             >
               Projekt als ZIP exportieren
@@ -288,8 +312,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               title="Nach ‚Gelöscht‘ verschieben: der Projektordner kommt nach _Geloescht, nichts wird endgültig gelöscht."
               onClick={async () => {
                 if (!window.confirm(`Projekt «${data.meta.name}» in den Ordner _Geloescht verschieben? Nichts wird endgültig gelöscht.`)) return;
-                const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
-                if (r) onBack();
+                await navigate(async () => {
+                  const r = await run(() => api.deleteProject(projectId), "Projekt nach _Geloescht verschoben");
+                  if (r) onBack();
+                });
               }}
             >
               <TrashIcon />
@@ -528,48 +554,48 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             <div className="subtabs" role="tablist">
               <button
                 className={`tab ${tab === "list" ? "active" : ""}`}
-                onClick={() => setTab("list")}
+                onClick={() => navigate(() => setTab("list"))}
                 title={`${data.rows.length} Zeilen: eine Zeile pro Apparat (Symbolfamilie) über alle Geschosse`}
               >
                 Gesamtliste ({data.rows.length})
               </button>
               <button
                 className={`tab ${tab === "legend" ? "active" : ""}`}
-                onClick={() => setTab("legend")}
+                onClick={() => navigate(() => setTab("legend"))}
                 title="Legenden-Editor: Symbole anordnen, Texte bearbeiten, Abschnitte nach Kategorien"
               >
                 Legende
               </button>
               <button
                 className={`tab ${tab === "changes" ? "active" : ""}`}
-                onClick={() => setTab("changes")}
+                onClick={() => navigate(() => setTab("changes"))}
                 title="Vergleich von Importversionen. Die Zahl zählt geänderte Zeilen zum vorigen Import, über alle Geschosse."
               >
                 Änderungen{changeCount ? ` (${changeCount})` : ""}
               </button>
               <button
                 className={`tab ${tab === "unknown" ? "active" : ""}`}
-                onClick={() => setTab("unknown")}
+                onClick={() => navigate(() => setTab("unknown"))}
                 title={`${data.unknown.length} Elementarten ohne sichere Erkennung`}
               >
                 Unbekannt ({data.unknown.length})
               </button>
               <button
                 className={`tab ${tab === "layers" ? "active" : ""}`}
-                onClick={() => setTab("layers")}
+                onClick={() => navigate(() => setTab("layers"))}
                 title={`${toChoose} verwendete Kategorien ohne passende Ebene · ${data.layers.length} Ebenen aus den importierten Plänen`}
               >
                 Ebenen und Farben{toChoose ? ` · ${toChoose} Ebene wählen` : ""}
               </button>
               <button
                 className={`tab ${tab === "ignored" ? "active" : ""}`}
-                onClick={() => setTab("ignored")}
+                onClick={() => navigate(() => setTab("ignored"))}
                 title={`${data.ignored.length} Elementarten, die nicht als Apparat zählen (Leitungen, Masse, Beschriftungen, von Hand ignoriert)`}
               >
                 Nicht berücksichtigt ({data.ignored.length})
               </button>
               {tab !== "legend" && (
-                <button className="btn primary tabs-end" onClick={() => setTab("legend")} title="Legenden-Editor öffnen">
+                <button className="btn primary tabs-end" onClick={() => navigate(() => setTab("legend"))} title="Legenden-Editor öffnen">
                   Legende bearbeiten
                 </button>
               )}
@@ -675,7 +701,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "legend" && (
-              <LegendEditor projectId={projectId} data={data} categories={categories} notify={notify} />
+              <LegendEditor key={projectId} projectId={projectId} data={data} categories={categories} notify={notify} />
             )}
 
             {tab === "changes" && (

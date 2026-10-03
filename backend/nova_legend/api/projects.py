@@ -229,7 +229,12 @@ def register(app: FastAPI, st) -> None:
                 plan_id = p.add_plan(name.strip())
             elif plan_id not in {pl["id"] for pl in p.plans()}:
                 raise HTTPException(404, "Plan nicht gefunden")
-            p.store_import(plan_id, src, file.filename or f"plan{suffix}", result)
+            try:
+                p.store_import(plan_id, src, file.filename or f"plan{suffix}", result)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from None
+            except OSError as exc:
+                raise HTTPException(500, f"Plandatei konnte nicht gespeichert werden: {exc}") from None
             st.company.learn_layer_colors({l.name: l.color for l in result.layers})
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -252,7 +257,12 @@ def register(app: FastAPI, st) -> None:
 
     @app.post("/api/projects/{project_id}/plans/{plan_id}/detach")
     def detach_plan_file(project_id: str, plan_id: int) -> dict:
-        project(project_id).detach_file(plan_id)
+        try:
+            project(project_id).detach_file(plan_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(500, f"Plandatei konnte nicht entfernt werden: {exc}") from None
         return detail(project_id)
 
     @app.post("/api/projects/{project_id}/rows/delete")
