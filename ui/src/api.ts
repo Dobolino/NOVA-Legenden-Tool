@@ -209,6 +209,35 @@ export interface PlanChanges {
   summary: ChangeSummary;
 }
 
+export interface PreviewChange {
+  key: string;
+  title: string;
+  item: string;
+  svg: string;
+  kind: "neu" | "weg" | "geaendert";
+  before: number;
+  after: number;
+  delta: number;
+}
+
+export interface ImportPreview {
+  token: string;
+  file_name: string;
+  format: string;
+  plan: { id: number; name: string } | null;
+  floor: string;
+  existing: boolean;
+  changes: PreviewChange[];
+  unchanged: number;
+  summary: { neu: number; weg: number; geaendert: number };
+  total_before: number;
+  total_after: number;
+  kinds_after: number;
+  unknown_after: number;
+  new_unknown: { name: string; count: number }[];
+  warnings: { level: "warn" | "info"; text: string }[];
+}
+
 export interface StoredLegend {
   doc: LegendDoc;
   updated_at: string;
@@ -404,6 +433,11 @@ export const api = {
     request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/copy`, { name }),
   deleteProject: (id: string) => request<{ ok: boolean; moved_to: string }>("DELETE", `/api/projects/${encodeURIComponent(id)}`),
   exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
+  previewPlan: (id: string, name: string, file: File, planId?: number) =>
+    upload<ImportPreview>(`/api/projects/${encodeURIComponent(id)}/plans/preview`, { name, ...(planId ? { plan_id: String(planId) } : {}) }, file),
+  commitPlan: (id: string, token: string) => request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/commit`, { token }),
+  discardPreview: (id: string, token: string) =>
+    request<{ ok: boolean }>("DELETE", `/api/projects/${encodeURIComponent(id)}/plans/preview/${encodeURIComponent(token)}`),
   importPlan: (id: string, name: string, file: File, planId?: number) =>
     upload<ProjectDetail>(`/api/projects/${encodeURIComponent(id)}/plans`, { name, ...(planId ? { plan_id: String(planId) } : {}) }, file),
   renamePlan: (id: string, planId: number, name: string) =>

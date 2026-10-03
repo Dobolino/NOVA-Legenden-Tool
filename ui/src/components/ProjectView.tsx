@@ -33,7 +33,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [tab, setTab] = useState<Tab>("list");
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<File[] | null>(null);
+  const [pending, setPending] = useState<{ files: File[]; planId?: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const reimportRef = useRef<HTMLInputElement>(null);
   const [reimportPlan, setReimportPlan] = useState<number | null>(null);
@@ -80,44 +80,13 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   }
 
   /** New plan version of one floor (per-floor action). New floors go through the import dialog. */
-  async function importFile(file: File, planId: number) {
-    const name = "";
-    const before = new Set((data?.plans ?? []).map((p) => p.id));
-    const target = planId ? data?.plans.find((p) => p.id === planId)?.name : name;
-    setImportStatus({
-      kind: "busy",
-      text: planId ? `Importiere «${file.name}» als neue Planversion von ${target} …` : `Importiere «${file.name}» …`,
-    });
-    setBusy(true);
-    try {
-      const result = await api.importPlan(projectId, name, file, planId);
-      setData(result);
-      const plan = planId
-        ? result.plans.find((p) => p.id === planId)
-        : result.plans.find((p) => !before.has(p.id)) ?? result.plans[result.plans.length - 1];
-      const count = plan ? result.rows.reduce((n, r) => n + (r.counts[plan.id] ?? 0), 0) : 0;
-      const unknown = plan ? result.unknown.filter((u) => u.counts[plan.id]).length : 0;
-      const parts = [`${count} Apparate erkannt`];
-      if (unknown) parts.push(`${unknown} Elementarten unbekannt`);
-      if (plan && plan.versions > 1) parts.push(`Importversion ${plan.versions}`);
-      setImportStatus({ kind: "ok", text: `«${file.name}» importiert${plan ? ` als ${plan.name}` : ""}: ${parts.join(", ")}.` });
-      notify(`«${file.name}» importiert`);
-    } catch (e) {
-      const msg = (e as Error).message;
-      setImportStatus({ kind: "error", text: `Import von «${file.name}» fehlgeschlagen: ${msg}` });
-      notify(msg, true);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function openImport(list: File[]) {
     const files = planFiles(list);
     if (!files.length) {
       notify("Nur DXF-, DWG-, N4D- oder N4M-Dateien können importiert werden.", true);
       return;
     }
-    setPending(files);
+    setPending({ files });
   }
 
   function toggleOpen(next: boolean) {
@@ -490,7 +459,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             style={{ display: "none" }}
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f && reimportPlan) importFile(f, reimportPlan);
+              if (f && reimportPlan) setPending({ files: [f], planId: reimportPlan });
               e.target.value = "";
             }}
           />
@@ -533,7 +502,8 @@ export default function ProjectView({ projectId, projects, categories, notify, o
         {pending && (
           <ImportDialog
             projectId={projectId}
-            files={pending}
+            files={pending.files}
+            planId={pending.planId}
             plans={plans}
             onClose={() => setPending(null)}
             onDone={(result, summary) => {

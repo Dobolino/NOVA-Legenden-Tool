@@ -153,6 +153,39 @@ class ProjectEvaluator:
             "stats": dict(stats),
         }
 
+    # -- one floor, before importing (import preview) ------------------------------
+
+    def summarize(self, elements: list[dict]) -> dict:
+        """Counts of one floor per list row, like the overall list shows them.
+
+        ``elements`` are stored element rows (or merged rows of a new import).
+        Returns {"rows": {row_key: {title, item, svg, count}}, "unknown": {source_key:
+        {name, count}}, "ignored": total}.
+        """
+        rows: dict[str, dict] = {}
+        unknown: dict[str, dict] = {}
+        ignored = 0
+        for el in elements:
+            found = _found_from_row(el)
+            res = resolve(found, self.index, self.mappings)
+            if res.symbol_key:
+                sym = self.index.by_key[res.symbol_key]
+                fam = self.families.get(self.family_of.get(sym.key, sym.key))
+                key = fam.key if fam else sym.key
+                if key not in rows:
+                    rep = fam.representative if fam else sym
+                    show_fill = self.fills.get(fam.key, True) if fam else True
+                    rows[key] = {"title": fam.title if fam else sym.name, "item": rep.item,
+                                 "svg": rep.svg if show_fill or not rep.has_fill else rep.svg_nofill,
+                                 "count": 0}
+                rows[key]["count"] += found.count
+            elif res.status == "unbekannt":
+                u = unknown.setdefault(found.source_key, {"name": found.name or found.source_key, "count": 0})
+                u["count"] += found.count
+            else:
+                ignored += found.count
+        return {"rows": rows, "unknown": unknown, "ignored": ignored}
+
     # -- suggestions ---------------------------------------------------------------
 
     def suggestions(self, project: Project, source_key: str, limit: int = 8) -> list[dict]:

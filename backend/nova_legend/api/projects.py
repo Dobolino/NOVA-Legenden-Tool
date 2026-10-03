@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tempfile
+import time
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -17,10 +20,11 @@ from ..importer.dxf import read_dxf
 from ..importer.n4d import read_n4d
 from ..importer.recognize import IGNORE
 from ..projects.colors import category_state, category_usage, pick_category_layer
+from ..projects import preview
 from ..projects.diff import diff_counts, tally
 from ..projects.floors import resolve_plan_name
 from ..projects.service import ProjectEvaluator
-from ..projects.store import ProjectManager, export_filename
+from ..projects.store import ProjectManager, export_filename, merge_found
 
 FORMATS = {".dxf": "dxf", ".dwg": "dwg", ".n4d": "n4d", ".n4m": "n4m"}
 
@@ -58,6 +62,33 @@ class CategoryLayerIn(BaseModel):
 
 class SourcesIn(BaseModel):
     source_keys: list[str]
+
+
+class CommitIn(BaseModel):
+    token: str
+
+
+STAGE_SECONDS = 30 * 60     # a preview stays valid this long
+STAGE_LIMIT = 20            # at most this many previewed files are kept
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def same_content(p, stored: str, src: Path) -> bool:
+    """True if the upload is byte for byte the file of the current import."""
+    if not stored:
+        return False
+    try:
+        current = p._plan_file(stored)
+        return current.is_file() and current.stat().st_size == src.stat().st_size and _sha256(current) == _sha256(src)
+    except (ValueError, OSError):
+        return False
 
 
 class MappingIn(BaseModel):
@@ -199,46 +230,128 @@ def register(app: FastAPI, st) -> None:
 
     # -- plans -------------------------------------------------------------------------
 
-    @app.post("/api/projects/{project_id}/plans")
-    async def import_plan(project_id: str, file: UploadFile = File(...), name: str = Form(""),
-                          plan_id: int | None = Form(None)) -> dict:
-        p = project(project_id)
+    def read_plan(src: Path, suffix: str):
+        try:
+            if suffix == ".dxf":
+                return read_dxf(src)
+            if suffix in (".n4d", ".n4m"):
+                return read_n4d(src, FORMATS[suffix])
+            return read_dwg(src, st.settings.oda_path or config.find_oda_converter())
+        except ConverterMissing as exc:
+            raise HTTPException(400, str(exc)) from None
+        except Exception as exc:  # noqa: BLE001 - any unreadable file
+            raise HTTPException(400, f"Datei konnte nicht gelesen werden: {exc}") from None
+
+    def receive(file: UploadFile) -> tuple[Path, Path, str]:
+        """Copy the upload into a temp folder. Returns (folder, file, suffix)."""
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in FORMATS:
             raise HTTPException(400, "Nur DXF-, DWG-, N4D- oder N4M-Dateien können importiert werden.")
         tmp = Path(tempfile.mkdtemp(prefix="nl_import_"))
+        src = tmp / f"plan{suffix}"
+        with open(src, "wb") as fh:
+            shutil.copyfileobj(file.file, fh)
+        return tmp, src, suffix
+
+    def store(p, plan_id: int | None, name: str, filename: str, src: Path, suffix: str, result) -> None:
+        if plan_id is None:
+            name = resolve_plan_name(filename, name)
+            if not name.strip():
+                raise HTTPException(400, "Name des Plans fehlt (z. B. EG)")
+            plan_id = p.add_plan(name.strip())
+        elif plan_id not in {pl["id"] for pl in p.plans()}:
+            raise HTTPException(404, "Plan nicht gefunden")
         try:
-            src = tmp / f"plan{suffix}"
-            with open(src, "wb") as fh:
-                shutil.copyfileobj(file.file, fh)
-            try:
-                if suffix == ".dxf":
-                    result = read_dxf(src)
-                elif suffix in (".n4d", ".n4m"):
-                    result = read_n4d(src, FORMATS[suffix])
-                else:
-                    result = read_dwg(src, st.settings.oda_path or config.find_oda_converter())
-            except ConverterMissing as exc:
-                raise HTTPException(400, str(exc)) from None
-            except Exception as exc:  # noqa: BLE001 - any unreadable file
-                raise HTTPException(400, f"Datei konnte nicht gelesen werden: {exc}") from None
-            if plan_id is None:
-                name = resolve_plan_name(file.filename or "", name)
-                if not name.strip():
-                    raise HTTPException(400, "Name des Plans fehlt (z. B. EG)")
-                plan_id = p.add_plan(name.strip())
-            elif plan_id not in {pl["id"] for pl in p.plans()}:
-                raise HTTPException(404, "Plan nicht gefunden")
-            try:
-                p.store_import(plan_id, src, file.filename or f"plan{suffix}", result)
-            except ValueError as exc:
-                raise HTTPException(400, str(exc)) from None
-            except OSError as exc:
-                raise HTTPException(500, f"Plandatei konnte nicht gespeichert werden: {exc}") from None
-            st.company.learn_layer_colors({l.name: l.color for l in result.layers})
+            p.store_import(plan_id, src, filename or f"plan{suffix}", result)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        except OSError as exc:
+            raise HTTPException(500, f"Plandatei konnte nicht gespeichert werden: {exc}") from None
+        st.company.learn_layer_colors({l.name: l.color for l in result.layers})
+
+    @app.post("/api/projects/{project_id}/plans")
+    async def import_plan(project_id: str, file: UploadFile = File(...), name: str = Form(""),
+                          plan_id: int | None = Form(None)) -> dict:
+        p = project(project_id)
+        tmp, src, suffix = receive(file)
+        try:
+            store(p, plan_id, name, file.filename or "", src, suffix, read_plan(src, suffix))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         return detail(project_id)
+
+    # -- import preview: read once, show the changes, store on confirmation ------------
+
+    staged: dict[str, dict] = {}
+
+    def drop_staged(token: str) -> None:
+        entry = staged.pop(token, None)
+        if entry:
+            shutil.rmtree(entry["tmp"], ignore_errors=True)
+
+    def expire_staged() -> None:
+        now = time.monotonic()
+        for token in [t for t, e in staged.items() if now - e["created"] > STAGE_SECONDS]:
+            drop_staged(token)
+        while len(staged) > STAGE_LIMIT:
+            drop_staged(min(staged, key=lambda t: staged[t]["created"]))
+
+    @app.post("/api/projects/{project_id}/plans/preview")
+    async def preview_plan(project_id: str, file: UploadFile = File(...), name: str = Form(""),
+                           plan_id: int | None = Form(None)) -> dict:
+        """Read a plan file and show what it changes on its floor. Nothing is stored yet."""
+        p = project(project_id)
+        expire_staged()
+        tmp, src, suffix = receive(file)
+        try:
+            result = read_plan(src, suffix)
+            plans = {pl["id"]: pl for pl in p.plans()}
+            if plan_id is not None and plan_id not in plans:
+                raise HTTPException(404, "Plan nicht gefunden")
+            plan = plans.get(plan_id) if plan_id is not None else None
+            previous: list[dict] = []
+            old_format, same_file = "", False
+            if plan and plan.get("current_version"):
+                previous = p.elements(plan["current_version"])
+                current = next((v for v in p.versions(plan["id"]) if v["id"] == plan["current_version"]), {})
+                old_format = current.get("format") or ""
+                same_file = same_content(p, current.get("stored_file") or "", src)
+            ev = evaluator()
+            after_rows = merge_found(previous, result.found)
+            compared = preview.compare(ev.summarize(previous), ev.summarize(after_rows))
+            token = uuid.uuid4().hex
+            staged[token] = {"project": p.id, "plan_id": plan_id, "name": name, "filename": file.filename or "",
+                             "src": src, "suffix": suffix, "result": result, "tmp": tmp,
+                             "created": time.monotonic()}
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
+        return {"token": token, "file_name": file.filename or "", "format": result.format,
+                "plan": {"id": plan["id"], "name": plan["name"]} if plan else None,
+                "floor": plan["name"] if plan else resolve_plan_name(file.filename or "", name),
+                "existing": bool(previous), **compared,
+                "warnings": preview.warnings(compared, bool(previous), old_format, result.format, same_file)}
+
+    @app.post("/api/projects/{project_id}/plans/commit")
+    def commit_plan(project_id: str, body: CommitIn) -> dict:
+        """Store a previewed plan file. The token is valid for 30 minutes."""
+        p = project(project_id)
+        expire_staged()
+        entry = staged.get(body.token)
+        if not entry or entry["project"] != p.id:
+            raise HTTPException(410, "Die Vorschau ist abgelaufen. Bitte die Datei noch einmal prüfen.")
+        try:
+            store(p, entry["plan_id"], entry["name"], entry["filename"], entry["src"], entry["suffix"],
+                  entry["result"])
+        finally:
+            drop_staged(body.token)
+        return detail(project_id)
+
+    @app.delete("/api/projects/{project_id}/plans/preview/{token}")
+    def discard_preview(project_id: str, token: str) -> dict:
+        if staged.get(token, {}).get("project") == project(project_id).id:
+            drop_staged(token)
+        return {"ok": True}
 
     @app.put("/api/projects/{project_id}/plans/{plan_id}")
     def update_plan(project_id: str, plan_id: int, body: PlanUpdate) -> dict:

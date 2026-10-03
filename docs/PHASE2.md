@@ -90,3 +90,16 @@ Braucht den ODA File Converter (Einstellungen zeigen, ob er gefunden wurde). Ohn
 - DXF-Mehrfacheinfügungen (MINSERT, Zeilen × Spalten) zählen jeden Apparat.
 - Ist eine Datensatzdatei kurz nicht erreichbar oder halb kopiert, bleiben ihre Symbole im Zwischenspeicher. Entfernt werden sie nur, wenn du die Datei aus der Liste nimmst.
 - Projektnamen mit «_» oder «.» am Anfang: Der Ordner heisst ohne dieses Zeichen, sonst wäre das Projekt in der Liste unsichtbar. Der angezeigte Name bleibt.
+
+## Importvorschau
+
+Jeder Import läuft in zwei Schritten. Gespeichert wird erst nach dem zweiten.
+
+1. **Dateien:** Geschossname pro Datei prüfen. «Neue Version von …» oder «Neues Geschoss».
+2. **Änderungen prüfen:** links die Dateien mit Kurzfassung (+neu, −weg, ~geändert, Punkt bei Hinweisen), rechts die gewählte Datei:
+   - Kennzahlen: Apparate vorher → nachher, Arten, unverändert, unbekannt.
+   - Hinweise. Eine Bestätigung «Hinweise geprüft, trotzdem übernehmen» braucht es nur bei Verlusten: mindestens 5 Apparate und 10 % weniger, ganz wegfallende Arten, eine Art verliert mindestens die Hälfte (mindestens 3). Nur zur Information: neue unbekannte Elemente, anderes Dateiformat, gleiche Datei wie bisher.
+   - Liste der Änderungen, Verluste zuerst, mit Filter Alle · Weg · Geändert · Neu. Bei einem neuen Geschoss: der Inhalt, nach Anzahl sortiert.
+3. Häkchen pro Datei wählen, was übernommen wird. Dateien ohne Änderung sind abgewählt.
+
+Die Zahlen sind dieselben wie danach in der Gesamtliste (gleiche Erkennung, gleiches Zusammenführen der Zeilen). «Neue Planversion importieren» öffnet direkt Schritt 2. Eine Vorschau gilt 30 Minuten; die Datei wird dafür nicht zweimal hochgeladen.

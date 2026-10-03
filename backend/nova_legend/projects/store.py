@@ -416,7 +416,7 @@ class Project:
     def versions(self, plan_id: int) -> list[dict]:
         with self.tx() as con:
             return [dict(r) for r in con.execute(
-                "SELECT id, file_name, format, imported_at, imported_by FROM plan_versions "
+                "SELECT id, file_name, stored_file, format, imported_at, imported_by FROM plan_versions "
                 "WHERE plan_id=? ORDER BY id DESC", (plan_id,))]
 
     def elements(self, version_id: int) -> list[dict]:
