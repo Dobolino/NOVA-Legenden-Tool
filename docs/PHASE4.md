@@ -73,6 +73,24 @@ Rechts unter «Export» (nichts angewählt):
 - Dateiname: `edeco ag-<Bezeichnung>-<Kategorie>.dxf` bzw. `…-Legende.dxf`.
 - Kein N4D-Export.
 
+## Prüfung vor der Weitergabe
+
+Reiter «Prüfung» im Projekt. Oben der Stand: «Bereit zur Weitergabe» oder die Zahl der Punkte, die behoben werden müssen (auch als rote Zahl am Reiter). Jeder Punkt hat «Öffnen» und springt in den Reiter, wo er behoben wird.
+
+| Punkt | Stufe | Reiter |
+|---|---|---|
+| Unbekannte Elemente | muss behoben werden | Unbekannt |
+| Noch keine Legende | muss behoben werden | Legende |
+| Fehlt in der Legende (nicht im Allgemeinteil) | muss behoben werden | Legende |
+| Nur über den Namen erkannt (ohne Katalogcode) | prüfen | Gesamtliste |
+| Ebene wählen | prüfen | Ebenen und Farben |
+| Symbol ohne Zeichnung | prüfen | Legende |
+| Doppelt in der Legende | prüfen | Legende |
+| Nicht mehr in den Plänen | prüfen | Legende |
+| Legende älter als der letzte Import | prüfen | Legende |
+
+Die Prüfung liest nur, sie ändert nichts. Sie läuft nach jeder Projektänderung und beim Öffnen des Reiters neu.
+
 ## Speicherort
 
 Legende: `projekt.nlproj`, Tabelle `legend` (Version 2). Firmenwerte: `edeco ag-Legenden-firma.sqlite`, Tabelle `options` (Schlüssel `legend_*`), Firmentexte in `descriptions`.

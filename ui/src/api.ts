@@ -238,6 +238,23 @@ export interface ImportPreview {
   warnings: { level: "warn" | "info"; text: string }[];
 }
 
+export interface ReviewCheck {
+  id: string;
+  title: string;
+  target: "unknown" | "list" | "layers" | "legend" | "ignored" | "changes";
+  level: "block" | "warn" | "ok";
+  count: number;
+  detail: string;
+  items: { title: string; detail: string }[];
+}
+
+export interface Review {
+  ready: boolean;
+  blocks: number;
+  warns: number;
+  checks: ReviewCheck[];
+}
+
 export interface StoredLegend {
   doc: LegendDoc;
   updated_at: string;
@@ -433,6 +450,7 @@ export const api = {
     request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/copy`, { name }),
   deleteProject: (id: string) => request<{ ok: boolean; moved_to: string }>("DELETE", `/api/projects/${encodeURIComponent(id)}`),
   exportUrl: (id: string) => `/api/projects/${encodeURIComponent(id)}/export`,
+  review: (id: string) => request<Review>("GET", `/api/projects/${encodeURIComponent(id)}/review`),
   previewPlan: (id: string, name: string, file: File, planId?: number) =>
     upload<ImportPreview>(`/api/projects/${encodeURIComponent(id)}/plans/preview`, { name, ...(planId ? { plan_id: String(planId) } : {}) }, file),
   commitPlan: (id: string, token: string) => request<ProjectDetail>("POST", `/api/projects/${encodeURIComponent(id)}/plans/commit`, { token }),

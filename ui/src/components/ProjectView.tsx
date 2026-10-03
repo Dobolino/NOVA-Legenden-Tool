@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Suggestion, UnknownElement } from "../api";
+import { api, Category, DATASET_LABEL, FamilyItem, ProjectDetail, ProjectSummary, Review, Suggestion, UnknownElement } from "../api";
 import { planFiles } from "../floors";
 import { formatDateTime, layerStateText, plansOpen, rememberPlansOpen } from "../uiState";
 import ChangesTab, { changeHint } from "./ChangesTab";
 import LegendEditor from "./LegendEditor";
 import ImportDialog from "./ImportDialog";
+import ReviewPanel from "./ReviewPanel";
 import Menu from "./Menu";
 import { TrashIcon } from "./Icons";
 import { useNavigation } from "../Navigation";
@@ -18,7 +19,7 @@ interface Props {
   onOpenProject: (id: string) => void;
 }
 
-type Tab = "list" | "legend" | "unknown" | "layers" | "ignored" | "changes";
+type Tab = "list" | "legend" | "unknown" | "layers" | "ignored" | "changes" | "review";
 
 interface ImportStatus {
   kind: "busy" | "ok" | "error";
@@ -44,6 +45,30 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
   const [open, setOpen] = useState(true);
   const [allCategories, setAllCategories] = useState(false);
+  const [review, setReview] = useState<Review | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const reviewGeneration = useRef(0);
+
+  const loadReview = useCallback(async () => {
+    const generation = ++reviewGeneration.current;
+    setReviewLoading(true);
+    try {
+      const r = await api.review(projectId);
+      if (generation === reviewGeneration.current) setReview(r);
+    } catch {
+      /* the check is optional; the tab shows «Noch nicht geprüft» */
+    } finally {
+      if (generation === reviewGeneration.current) setReviewLoading(false);
+    }
+  }, [projectId]);
+
+  // check again after every change of the project and when the tab is opened
+  useEffect(() => {
+    if (data) loadReview();
+  }, [data, loadReview]);
+  useEffect(() => {
+    if (tab === "review") loadReview();
+  }, [tab, loadReview]);
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -564,6 +589,15 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               >
                 Nicht berücksichtigt ({data.ignored.length})
               </button>
+              <button
+                className={`tab ${tab === "review" ? "active" : ""}`}
+                onClick={() => navigate(() => setTab("review"))}
+                title="Was vor der Weitergabe der Legende offen ist"
+              >
+                Prüfung
+                {review && review.blocks > 0 && <span className="tab-dot">{review.blocks}</span>}
+                {review?.ready && <span className="ok-text"> ✓</span>}
+              </button>
               {tab !== "legend" && (
                 <button className="btn primary tabs-end" onClick={() => navigate(() => setTab("legend"))} title="Legenden-Editor öffnen">
                   Legende bearbeiten
@@ -795,6 +829,10 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                   </table>
                 </div>
               </>
+            )}
+
+            {tab === "review" && (
+              <ReviewPanel review={review} loading={reviewLoading} onRefresh={loadReview} onOpen={(target) => navigate(() => setTab(target))} />
             )}
 
             {tab === "ignored" && (

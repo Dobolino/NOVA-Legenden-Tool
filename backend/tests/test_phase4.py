@@ -607,3 +607,33 @@ def test_narrow_sheet_shrinks_the_general_part_in_the_dxf(env, monkeypatch, tmp_
     out = ezdxf.readfile(tmp_path / "n.dxf")
     ins = next(i for i in out.modelspace().query("INSERT") if i.dxf.name == "Allgemeinteil")
     assert abs(ins.dxf.xscale - 140 / 180) < 1e-3
+
+
+def test_release_check_lists_what_is_open(env, monkeypatch):  # noqa: F811
+    client, tmp = env
+    pid = _project(client, tmp)
+    first = client.get(f"/api/projects/{pid}/review").json()
+    ids = {c["id"]: c for c in first["checks"]}
+    assert first["ready"] is False and ids["legend"]["level"] == "block"
+    assert ids["unknown"]["level"] == "block" and ids["unknown"]["items"][0]["title"] == "Gateway"
+    assert ids["unknown"]["target"] == "unknown"
+    assert [c["level"] for c in first["checks"]] == sorted((c["level"] for c in first["checks"]),
+                                                           key=["block", "warn", "ok"].index)
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    removed = doc["blocks"][0]["items"].pop(0)
+    doc["blocks"][-1]["items"].append(dict(doc["blocks"][-1]["items"][0], id="twice"))
+    client.put(f"/api/projects/{pid}/legend", json={"doc": doc})
+    ids = {c["id"]: c for c in client.get(f"/api/projects/{pid}/review").json()["checks"]}
+    assert "legend" not in ids
+    assert ids["missing"]["level"] == "block" and ids["missing"]["count"] == 1
+    row_titles = {r["family_key"]: r["title"] for r in client.get(f"/api/projects/{pid}").json()["rows"]}
+    assert ids["missing"]["items"][0]["title"] == row_titles[removed["family_key"]]
+    assert ids["duplicates"]["count"] == 1 and ids["outdated"]["level"] == "ok"
+    # ignore the unknown element and complete the legend: ready
+    gateway = client.get(f"/api/projects/{pid}").json()["unknown"][0]["source_key"]
+    client.put("/api/mappings", json={"source_key": gateway, "symbol_key": "__ignore__", "name": "Gateway"})
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    client.put(f"/api/projects/{pid}/legend", json={"doc": doc})
+    done = client.get(f"/api/projects/{pid}/review").json()
+    blocking = [c["id"] for c in done["checks"] if c["level"] == "block"]
+    assert done["ready"] is True and blocking == []

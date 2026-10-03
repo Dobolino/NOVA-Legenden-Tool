@@ -19,6 +19,7 @@ from ..legend.export import build_dxf, dxf_to_dwg
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
 from ..legend.model import AP_NOTE, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
+from ..projects.review import build_review
 from ..projects.store import Project, safe_folder_name
 from ..render.engine import engine_geometry
 from ..render.svg import geometry_bounds, render_svg
@@ -324,6 +325,26 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         st.company.set_legend_settings({"legend_text_size": style["text_size"],
                                         "legend_symbol_scale": style["symbol_scale"]})
         return company_legend()
+
+    # -- release check -------------------------------------------------------------------
+
+    @app.get("/api/projects/{project_id}/review")
+    def review(project_id: str) -> dict:
+        """What is open before the legend is handed on (see projects/review.py)."""
+        p = project(project_id)
+        ev = evaluator()
+        result = ev.evaluate(p)
+        colors = category_colors(p, ev, result)
+        stored = p.legend()
+        if stored:
+            stored = {**stored, "doc": normalize(stored["doc"])}
+        covered = covered_families(load_general(), result["rows"], st.company.descriptions())
+
+        def has_drawing(key: str | None) -> bool:
+            sym = st.library.symbol(key) if key else None
+            return bool(sym and sym.svg)
+
+        return build_review(result, colors, stored, covered, has_drawing)
 
     # -- texts --------------------------------------------------------------------------
 
