@@ -4,6 +4,9 @@ Order of the rules:
 1. a remembered decision (mapping) for the element, company wide
 2. catalogue code (+ graphic id or graphic name) in the dataset of the element
 3. element name = name of a library symbol
+   When the element names its source dataset, rules 2 and 3 only look in that
+   dataset. A symbol from another catalogue is never taken as recognised; the
+   element stays unknown and the user decides (no guessing).
 4. otherwise unknown: the user picks a symbol (suggestions in matcher.suggest)
 
 Labels (number ranges Label_*) are not apparatus and are skipped.
@@ -94,9 +97,13 @@ def resolve(found: Found, index: LibraryIndex, mappings: dict[str, str]) -> Reso
     if mapped and mapped in index.by_key:
         return Resolution(mapped, "zugeordnet", "manuell")
 
+    named = bool((found.dataset or "").strip())     # the element says where it comes from
+    ds = index.dataset_id(found.dataset)
     if found.item:
-        ds = index.dataset_id(found.dataset)
-        cands = index.by_code_any(found.item, ds)
+        if named:
+            cands = list(index.by_code.get((ds, found.item), [])) if ds else []
+        else:
+            cands = index.by_code_any(found.item, None)
         if found.sheet:
             cands = [c for c in cands if c.sheet == found.sheet] or cands
         sym = _pick_graphic(cands, found.graphic_id, found.graphic_name)
@@ -109,6 +116,8 @@ def resolve(found: Found, index: LibraryIndex, mappings: dict[str, str]) -> Reso
 
     cands = index.by_name_any(found.name) or (
         index.by_name_any(found.graphic_name) if found.graphic_name else [])
+    if named:
+        cands = [c for c in cands if c.dataset == ds]
     if cands:
         if cands[0].sheet.startswith("Label_"):
             return Resolution(None, "ignoriert", "Beschriftung")

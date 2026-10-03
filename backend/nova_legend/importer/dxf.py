@@ -97,6 +97,8 @@ def read_dxf(path: str | Path) -> ImportResult:
     for ins in doc.modelspace().query("INSERT"):
         name = ins.dxf.name
         base = block_base_name(name)
+        # a multiple insert (MINSERT: rows x columns) places that many apparatus
+        n = max(1, int(ins.dxf.get("row_count", 1) or 1)) * max(1, int(ins.dxf.get("column_count", 1) or 1))
         attrs = {a.dxf.tag: a.dxf.text for a in ins.attribs}
         layer = ins.dxf.layer
         code = (attrs.get("TypID") or "").strip()
@@ -111,11 +113,11 @@ def read_dxf(path: str | Path) -> ImportResult:
             low = base.lower()
             if (low in NON_SYMBOLS or low.startswith(NON_SYMBOL_PREFIXES)
                     or not ID_SUFFIX.search(name) or not layer.upper().startswith("E_")):
-                result.ignored[base] = result.ignored.get(base, 0) + 1
+                result.ignored[base] = result.ignored.get(base, 0) + n
                 continue
             key = f"name:{display_name(base).lower()}"
             entry = found.setdefault(key, Found(key, display_name(base)))
-        entry.add(layer)
+        entry.add(layer, n)
         if key not in features_done:
             entry.features = block_features(doc, name)
             features_done.add(key)

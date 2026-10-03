@@ -95,15 +95,21 @@ class Library:
         """Bring the cache in line with the given dataset files.
 
         Returns a report: added, unchanged, removed, errors.
+
+        A configured file that is missing or unreadable for the moment (network
+        drive offline, file being copied) keeps its cached symbols. Only a file
+        that is no longer in the list is removed from the cache.
         """
         report = {"neu": [], "unveraendert": [], "entfernt": [], "fehler": [], "doppelt": []}
         wanted: dict[str, Path] = {}
+        configured: set[str] = set()
         for p in dataset_paths:
             path = Path(p)
+            configured.add(str(path.resolve()))
             if path.is_file():
                 wanted[str(path.resolve())] = path
             else:
-                report["fehler"].append(f"Datei nicht gefunden: {p}")
+                report["fehler"].append(f"Datei nicht gefunden: {p}. Die bisherigen Symbole bleiben erhalten.")
         with self._lock, self._connect() as con:
             existing = {r["file"]: dict(r) for r in con.execute("SELECT * FROM datasets")}
             seen_ids: set[str] = set()
@@ -117,7 +123,8 @@ class Library:
                 try:
                     ds = Dataset(path)
                 except Exception as exc:  # noqa: BLE001 - report any broken file
-                    report["fehler"].append(f"{path.name}: {exc}")
+                    report["fehler"].append(f"{path.name}: {exc}" + (
+                        ". Die bisherigen Symbole bleiben erhalten." if old else ""))
                     continue
                 if ds.info.id in seen_ids:
                     # Same dataset in a second file: keep the first, no error
@@ -127,7 +134,7 @@ class Library:
                 seen_ids.add(ds.info.id)
                 report["neu"].append(ds.info.id)
             for file, row in existing.items():
-                if row["id"] not in seen_ids:
+                if row["id"] not in seen_ids and file not in configured:
                     con.execute("DELETE FROM symbols WHERE dataset=?", (row["id"],))
                     con.execute("DELETE FROM datasets WHERE id=?", (row["id"],))
                     report["entfernt"].append(row["id"])

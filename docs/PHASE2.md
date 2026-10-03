@@ -38,7 +38,7 @@ Projektfunktionen: Projektnummer und Bezeichnung speichern, **Projekt dupliziere
 |---|---|
 | DXF, DWG | Attribut `TypID` = Katalogcode, `Bez` = Grafikname, `Herkunft` = Datensatz. Ohne Attribute: Blockname = Symbolname. Leitungen, Masse, Beschriftungen, Plankopf und Planrahmen zählen nicht. |
 | N4D | Datensatz, Katalogcode und Grafik direkt aus dem Objekt. Beschriftungen (Label_*) zählen nicht. |
-| N4M | Nova-Modellzeichnung. Gleicher OLE-Aufbau und gleiche Objekte wie N4D, derselbe Leser. Geprüft an `gro04p.n4m`: 466 Apparate in 40 Arten, keine unbekannten. In der Spalte Typ steht N4M. Ein Geschoss kann von N4D auf N4M wechseln und behält seine Zeilen. |
+| N4M | Nova-Modellzeichnung. Gleicher OLE-Aufbau und gleiche Objekte wie N4D, derselbe Leser. Geprüft an `gro04p.n4m`: 419 Apparate erkannt, 47 Objekte ohne Grafik nicht berücksichtigt, keine unbekannten. In der Spalte Typ steht N4M. Ein Geschoss kann von N4D auf N4M wechseln und behält seine Zeilen. |
 | Alle | Vorrang hat eine gespeicherte Entscheidung (Firmenordner, Tabelle `mappings`). |
 
 Ergebnis am Plan 1. OG: N4D 238 Apparate erkannt. DXF 236 erkannt, 5 Arten unbekannt (Gruppenzuleitung, Deckendurchbruch, LED-Langfeldleuchte 8W, Gateway, umbenannter Verteiler).
@@ -83,3 +83,10 @@ Braucht den ODA File Converter (Einstellungen zeigen, ob er gefunden wurde). Ohn
 - Die Farbe einer Kategorie sucht zuerst die Legendenebene (E_Licht), sonst eine Planeebene mit demselben Namensteil (E_232.5_Licht). E_233_Leuchten passt nicht zu E_Licht. Unter **Ebenen und Farben** und in der Gruppenzeile lässt sich die Ebene pro Projekt wählen. Gibt es keine passende Ebene, steht der Grund daneben.
 - SQLite-Projektdateien auf T: sind für gleichzeitiges Lesen gut, gleichzeitiges Schreiben am selben Projekt wartet kurz.
 - Änderungsvergleich zwischen zwei Importen: [Phase 3](PHASE3.md).
+
+## Nachträge Oktober 2026
+
+- Nennt ein Element seinen Datensatz (N4D/N4M immer, DXF über «Herkunft»), sucht die Erkennung nur in diesem Datensatz. Ein Symbol aus einem anderen Katalog gilt nie als erkannt. Fehlt der Datensatz in der Bibliothek, bleibt das Element unbekannt, und du ordnest es zu.
+- DXF-Mehrfacheinfügungen (MINSERT, Zeilen × Spalten) zählen jeden Apparat.
+- Ist eine Datensatzdatei kurz nicht erreichbar oder halb kopiert, bleiben ihre Symbole im Zwischenspeicher. Entfernt werden sie nur, wenn du die Datei aus der Liste nimmst.
+- Projektnamen mit «_» oder «.» am Anfang: Der Ordner heisst ohne dieses Zeichen, sonst wäre das Projekt in der Liste unsichtbar. Der angezeigte Name bleibt.

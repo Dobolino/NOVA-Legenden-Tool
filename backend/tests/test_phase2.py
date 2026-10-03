@@ -350,7 +350,7 @@ def test_reimport_keeps_rows_and_one_file_then_detach(env):
     ins = doc.modelspace().add_blockref(blk.name, (0, 0), dxfattribs={"layer": "E_Licht"})
     ins.add_attrib("TypID", "10-10")
     ins.add_attrib("Bez", "Schalter, Schema 0, UP")
-    ins.add_attrib("Herkunft", "andere Herkunft")
+    ins.add_attrib("Herkunft", f"{V2_LONG} edeco AG Basel")   # same dataset, other company text
     second = tmp / "eg-neu.dxf"
     doc.saveas(second)
     data = import_dxf(client, pid, second, plan_id=plan_id).json()

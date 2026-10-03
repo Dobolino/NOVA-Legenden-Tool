@@ -70,6 +70,13 @@ def safe_folder_name(name: str) -> str:
     return cleaned or "Projekt"
 
 
+def project_folder_name(name: str) -> str:
+    """Folder of a project. A leading «_» or «.» is dropped: such folders are hidden
+    from the project list (_Geloescht), so the project would vanish. The name shown
+    in the program keeps it."""
+    return safe_folder_name(name).lstrip("_. ") or "Projekt"
+
+
 def export_filename(meta: dict) -> str:
     """ZIP name: edeco ag-<Bezeichnung>-projekt.zip."""
     label = (meta.get("name") or "Projekt").strip() or "Projekt"
@@ -477,7 +484,7 @@ class ProjectManager:
         return Project(folder)
 
     def _unique_folder(self, name: str) -> Path:
-        base = safe_folder_name(name)
+        base = project_folder_name(name)
         folder = self.root / base
         n = 2
         while folder.exists():
@@ -531,7 +538,7 @@ class ProjectManager:
         if not new_name:
             raise ValueError("Projektname fehlt")
         project.set_meta(name=new_name)
-        target = self.root / safe_folder_name(new_name)
+        target = self.root / project_folder_name(new_name)
         if target != project.folder:
             if target.exists():
                 target = self._unique_folder(new_name)

@@ -25,9 +25,9 @@ class Found:
     layers: dict[str, int] = field(default_factory=dict)
     features: dict = field(default_factory=dict)   # geometry features for the matcher
 
-    def add(self, layer: str) -> None:
-        self.count += 1
-        self.layers[layer] = self.layers.get(layer, 0) + 1
+    def add(self, layer: str, n: int = 1) -> None:
+        self.count += n
+        self.layers[layer] = self.layers.get(layer, 0) + n
 
     def to_dict(self) -> dict:
         return asdict(self)
