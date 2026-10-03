@@ -150,6 +150,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const usedCats = data.category_colors.filter((c) => c.used > 0 || c.manual);
   const shownCats = allCategories ? data.category_colors : usedCats;
   const headDirty = number !== (data.meta.project_number || "") || title !== data.meta.name;
+  const exportName = data.export_name;
 
   // Group the overall list by the first category of each row
   const groups: { cat: Category | null; rows: typeof data.rows }[] = [];
@@ -175,6 +176,15 @@ export default function ProjectView({ projectId, projects, categories, notify, o
         else setData(r);
       }
     });
+  }
+
+  function downloadProject() {
+    const link = document.createElement("a");
+    link.href = api.exportUrl(projectId);
+    link.download = exportName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   return (
@@ -215,6 +225,22 @@ export default function ProjectView({ projectId, projects, categories, notify, o
               </h2>
               <div className="hint">{plans.length} {plans.length === 1 ? "Geschoss" : "Geschosse"} · {data.rows.length} Symbolarten</div>
             </div>
+            <div className="project-actions">
+              <a
+                className="btn small"
+                href={api.exportUrl(projectId)}
+                download={data.export_name}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(() => downloadProject());
+                }}
+                title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
+              >
+                Projekt exportieren
+              </a>
+              <button className="btn small" disabled={busy} onClick={() => navigate(() => setTab("review"))} title="Offene Punkte vor der Weitergabe">
+                Fehleranalyse
+              </button>
             <Menu label="Projektaktionen" disabled={busy}>
               <button
                 className="btn small"
@@ -236,14 +262,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 download={data.export_name}
                 onClick={(e) => {
                   e.preventDefault();
-                  navigate(() => {
-                    const link = document.createElement("a");
-                    link.href = api.exportUrl(projectId);
-                    link.download = data.export_name;
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                  });
+                  navigate(() => downloadProject());
                 }}
                 title={`Speichert ${data.export_name}: Projektdatei projekt.nlproj und eine Plandatei pro Geschoss.`}
               >
@@ -281,6 +300,7 @@ export default function ProjectView({ projectId, projects, categories, notify, o
                 <TrashIcon /> Projekt nach ‚Gelöscht‘ verschieben
               </button>
             </Menu>
+            </div>
           </div>
           <details className="project-details">
             <summary>Projektdetails bearbeiten{headDirty && <span className="dirty"> · Ungespeicherte Änderungen</span>}</summary>
@@ -841,7 +861,13 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "review" && (
-              <ReviewPanel review={review} loading={reviewLoading} onRefresh={loadReview} onOpen={(target) => navigate(() => setTab(target))} />
+              <ReviewPanel
+                review={review}
+                loading={reviewLoading}
+                fileName={`${data.export_name.replace(/\.zip$/i, "")}-pruefung.txt`}
+                onRefresh={loadReview}
+                onOpen={(target) => navigate(() => setTab(target))}
+              />
             )}
 
             {tab === "ignored" && (

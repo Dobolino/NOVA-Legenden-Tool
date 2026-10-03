@@ -5,14 +5,31 @@ type Target = ReviewCheck["target"];
 const ICON: Record<ReviewCheck["level"], string> = { block: "✕", warn: "!", ok: "✓" };
 
 /** Release check: everything open before the legend is handed on, with a jump to the fix. */
+function reportText(review: Review): string {
+  const lines = [
+    review.ready ? "Bereit zur Weitergabe" : `${review.blocks} Punkte müssen behoben werden`,
+    review.warns ? `${review.warns} Punkte zum Prüfen` : "",
+    "",
+  ];
+  for (const c of review.checks) {
+    lines.push(`[${c.level}] ${c.title}${c.count ? ` (${c.count})` : ""}`);
+    if (c.detail) lines.push(c.detail);
+    for (const it of c.items) lines.push(`- ${it.title}${it.detail ? `: ${it.detail}` : ""}`);
+    lines.push("");
+  }
+  return lines.filter((line, i) => line !== "" || lines[i - 1] !== "").join("\n");
+}
+
 export default function ReviewPanel({
   review,
   loading,
+  fileName,
   onRefresh,
   onOpen,
 }: {
   review: Review | null;
   loading: boolean;
+  fileName: string;
   onRefresh: () => void;
   onOpen: (target: Target) => void;
 }) {
@@ -34,9 +51,28 @@ export default function ReviewPanel({
             {done.length} erledigt
           </div>
         </div>
+        <div className="rv-actions">
         <button className="btn small" disabled={loading} onClick={onRefresh}>
           {loading ? "prüft …" : "Neu prüfen"}
         </button>
+        <button
+          className="btn small"
+          disabled={!review}
+          onClick={() => {
+            if (!review) return;
+            const blob = new Blob([reportText(review)], { type: "text/plain;charset=utf-8" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(link.href);
+          }}
+        >
+          Fehleranalyse exportieren
+        </button>
+        </div>
       </div>
 
       {open.length > 0 && (

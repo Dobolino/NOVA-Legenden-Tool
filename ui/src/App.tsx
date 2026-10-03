@@ -7,7 +7,7 @@ import ProjectsPage from "./components/ProjectsPage";
 import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
 import { NavigationProvider, useNavigation } from "./Navigation";
 import { Icon } from "./components/Icons";
-import edecoLogo from "./assets/edeco-logo.svg";
+import edecoLogo from "./assets/edeco-logo.svg?raw";
 
 type Tab = "projects" | "library" | "categories" | "settings";
 
@@ -106,7 +106,12 @@ function AppContent() {
     <div className="app" inert={pending}>
       <aside className="app-nav" aria-label="Programmnavigation">
         <div className="brand">
-          <div className="brand-logo"><img src={edecoLogo} alt="edeco" /></div>
+          <div
+            className="brand-logo"
+            role="img"
+            aria-label="edeco"
+            dangerouslySetInnerHTML={{ __html: edecoLogo.replace(/<\?xml[^?]*\?>/, "") }}
+          />
           <div className="brand-name">NOVA<span>Legenden</span></div>
         </div>
         <div className="nav-label">Arbeitsbereich</div>
@@ -126,11 +131,13 @@ function AppContent() {
         <div className="nav-footer">
           <span className="nav-footer-label">NOVA-Legenden</span>
           <span>Elektroplanung · edeco</span>
+          <span className="powered">Powered by Trimble Nova</span>
         </div>
       </aside>
       <div className="app-workspace">
         <header className="topbar">
           <div className="workspace-context"><span>{current.label}</span><span>{current.description}</span></div>
+          <span className="powered topbar-powered">Powered by Trimble Nova</span>
           {status && (
             <div className="top-chips">
               <span className={`chip ${noDatasets ? "warn" : ""}`} title="Geladene Nova-Symbol-Datensätze (z. B. V1 2022, V2 2025)">

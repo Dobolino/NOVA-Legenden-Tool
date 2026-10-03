@@ -32,7 +32,7 @@ export default function Library(props: Props) {
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [mounting, setMounting] = useState("");
   const [allVariants, setAllVariants] = useState(false);
-  const [tile, setTile] = useState(150);
+  const [icon, setIcon] = useState(120);
   const [items, setItems] = useState<FamilyItem[]>([]);
   const [total, setTotal] = useState(0);
   const [shown, setShown] = useState(PAGE);
@@ -178,7 +178,7 @@ export default function Library(props: Props) {
         </label>
         <label className="range-field">
           Symbolgrösse
-          <input type="range" min={110} max={260} value={tile} onChange={(e) => setTile(Number(e.target.value))} />
+          <input type="range" min={96} max={160} value={icon} aria-valuemin={96} aria-valuemax={160} aria-valuenow={icon} onChange={(e) => setIcon(Number(e.target.value))} />
         </label>
         <span className="result-count">{loading ? "lädt …" : `${total} Einträge`}</span>
       </div>
@@ -202,7 +202,7 @@ export default function Library(props: Props) {
         <section className="content">
           <div className="grid-wrap">
             {items.length === 0 && !loading && <div className="empty">Keine Symbole für diese Auswahl.</div>}
-            <div className="grid" style={{ ["--tile" as string]: `${tile}px` }}>
+            <div className="grid" style={{ ["--icon" as string]: `${icon}px` }}>
               {items.slice(0, shown).map((it) => (
                 <div
                   key={it.id}
@@ -218,8 +218,9 @@ export default function Library(props: Props) {
                     <SymbolPic sym={it.representative} />
                   </div>
                   <div className="name">{allVariants ? it.representative.name : it.title}</div>
+                  <div className="tile-cats">{!category && it.categories.length ? it.categories.map((c) => catTitle[c] ?? c).join(", ") : "\u00a0"}</div>
                   <div className="meta">
-                    <span style={{ fontWeight: 600, color: "var(--fg)" }}>{it.representative.item}</span>
+                    <span className="code" style={{ fontWeight: 600, color: "var(--fg)" }}>{it.representative.item}</span>
                     {allVariants ? (
                       <span className={`badge ${it.representative.mounting === "UP" ? "up" : ""}`}>
                         {it.representative.mounting ?? "–"}
@@ -239,9 +240,6 @@ export default function Library(props: Props) {
                     {it.category_source === "manuell" && <span className="badge manual">zugeordnet</span>}
                     {it.conflicts.length > 0 && <span className="badge warn">prüfen</span>}
                   </div>
-                  {!category && (
-                    <div className="meta">{it.categories.map((c) => catTitle[c] ?? c).join(", ")}</div>
-                  )}
                 </div>
               ))}
             </div>

@@ -3,6 +3,10 @@
 :root {
   --brand: #017c92;
   --brand-orange: #ff8c00;
+  --cta: #ff8c00;
+  --cta-hover: #e07b00;
+  --on-cta: #1a1206;
+  --logo-ink: #111111;
   --bg: #f4f7f8;
   --panel: #ffffff;
   --panel-2: #f8fafb;
@@ -54,6 +58,7 @@
     --accent-hover: #83d4df;
     --accent-soft: #193e48;
     --on-accent: #102a32;
+    --logo-ink: #ffffff;
     --danger: #ff8b9b;
     --warn: #efb967;
     --ok: #7dcda1;
@@ -78,6 +83,7 @@
   --accent-hover: #83d4df;
   --accent-soft: #193e48;
   --on-accent: #102a32;
+  --logo-ink: #ffffff;
   --danger: #ff8b9b;
   --warn: #efb967;
   --ok: #7dcda1;

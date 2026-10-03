@@ -536,17 +536,18 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     <div className="legend-editor">
       {generalBox}
       <div className="legend-toolbar">
+        <div className="tool-group" role="group" aria-label="Verlauf">
         <button className="btn small" disabled={busy} onClick={proposal} title="Legende aus den aktuellen Projektzahlen neu vorschlagen">
           Neuer Vorschlag
         </button>
-        <span className="sep" />
         <button className="btn small" disabled={!hist?.past.length} onClick={() => setHist((h) => (h ? undo(h) : h))} title="Rückgängig (Strg+Z)">
           ↶ Rückgängig
         </button>
         <button className="btn small" disabled={!hist?.future.length} onClick={() => setHist((h) => (h ? redo(h) : h))} title="Wiederholen (Strg+Y)">
           ↷ Wiederholen
         </button>
-        <span className="sep" />
+        </div>
+        <div className="tool-group" role="group" aria-label="Aufbau">
         <Menu label="Einfügen">
           <button className="btn small" onClick={() => addKind("text")} title={FREE_TEXT_HINT}>
             + Freier Text
@@ -568,7 +569,6 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
             + Abschnitt
           </button>
         </Menu>
-        <span className="sep" />
         <label className="filter-label">
           Raster
           <select
@@ -596,8 +596,10 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
             <option value={3}>3</option>
           </select>
         </label>
+        </div>
+        <div className="tool-group" role="group" aria-label="Ansicht">
         <button
-          className={`btn small ${showGrid ? "primary" : ""}`}
+          className={`btn small ${showGrid ? "is-on" : ""}`}
           aria-pressed={showGrid}
           onClick={() => {
             const next = !showGrid;
@@ -612,7 +614,6 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         >
           Raster anzeigen
         </button>
-        <span className="sep" />
         <button className="btn small" onClick={() => setZoom((z) => Math.max(0.5, round(z / 1.25)))} aria-label="Verkleinern">
           −
         </button>
@@ -629,14 +630,17 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
           const width = canvas.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
           setZoom(Math.max(0.5, Math.min(12, round(width / W))));
         }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
+        </div>
         <span style={{ flex: 1 }} />
         <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
           {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
         </span>
+        <div className="tool-group" role="group" aria-label="Export">
         <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
           title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
           <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
         </button>
+        </div>
       </div>
 
       <div className="legend-body">
