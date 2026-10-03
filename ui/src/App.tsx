@@ -132,8 +132,12 @@ function AppContent() {
         </nav>
         <div className="nav-footer">
           <span className="nav-footer-label">NOVA-Legenden</span>
-          <span>Elektroplanung · edeco ag</span>
-          <span>© 2026 edeco ag. Alle Rechte vorbehalten.</span>
+          <span>Elektroplanung</span>
+          <span>edeco ag</span>
+          <span className="nav-copy">
+            <span>© 2026 edeco ag</span>
+            <span>Alle Rechte vorbehalten.</span>
+          </span>
           <span className="powered">Powered by Trimble Nova</span>
         </div>
       </aside>

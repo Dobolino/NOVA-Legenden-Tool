@@ -92,6 +92,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const [exportGeneral, setExportGeneral] = useState(true);
   const [showGrid, setShowGrid] = useState(readGridPref);
   const [detached, setDetached] = useState(false);
+  const [windowed, setWindowed] = useState(false);
   const [dropAt, setDropAt] = useState<DropTarget | null>(null);
   const [exporting, setExporting] = useState(false);
   const dragPayload = useRef<DragPayload | null>(null);
@@ -495,7 +496,10 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
       } else if ((e.key === "ArrowUp" || e.key === "ArrowDown") && sel && sel.type !== "general") {
         e.preventDefault();
         moveSelected(e.key === "ArrowUp" ? -1 : 1);
-      } else if (e.key === "Escape") setSel(null);
+      } else if (e.key === "Escape") {
+        if (sel) setSel(null);
+        else if (windowed) setWindowed(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -543,7 +547,11 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const setStyle = (patch: Partial<LegendDoc["style"]>) => change({ ...doc, style: { ...style, ...patch } });
 
   return (
-    <div className="legend-editor">
+    <>
+    {windowed && (
+      <button type="button" className="legend-window-back" aria-label="Fenster schliessen" onClick={() => setWindowed(false)} />
+    )}
+    <div className={`legend-editor ${windowed ? "windowed" : ""}`}>
       {generalBox}
       <div className="legend-toolbar">
         <div className="tool-group" role="group" aria-label="Verlauf">
@@ -643,6 +651,10 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         <button className={`btn small ${detached ? "is-on" : ""}`} onClick={() => setDetached((v) => !v)}
           title="Die Einstellungen als schwebendes Fenster über der Legende öffnen. Das Blatt bleibt weiss.">
           {detached ? "Einstellungen andocken" : "Einstellungen lösen"}
+        </button>
+        <button className={`btn small ${windowed ? "is-on" : ""}`} onClick={() => setWindowed((v) => !v)}
+          title="Die Legende gross über dem Programm öffnen. Das Blatt bleibt weiss.">
+          {windowed ? "Fenster schliessen" : "Als Fenster"}
         </button>
         </div>
         <span style={{ flex: 1 }} />
@@ -869,6 +881,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
         </aside>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1443,10 +1456,11 @@ function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: str
   return (
     <>
       <h4>Allgemeinteil (gesperrt)</h4>
-      <p className="hint">
-        Dieser Teil steht in jeder Legende zuoberst und lässt sich hier nicht ändern. Anpassen heisst: die Datei auf dem Server ersetzen. Das Programm
-        liest sie beim Öffnen neu.
-      </p>
+      <p className="hint">Steht in jeder Legende zuoberst.</p>
+      <p className="hint">Verknüpft ist eine DXF- oder DWG-Datei auf dem Server.</p>
+      <p className="hint">Die Datei wird nur an die Blattbreite angepasst.</p>
+      <p className="hint">Kachelgrösse, Schrift und Abstand gelten für die erzeugten Einträge, nicht für diese Zeichnung.</p>
+      <p className="hint">Einträge darin lassen sich nicht ziehen. N4D wird für diese Verknüpfung nicht gelesen.</p>
       <dl className="kv">
         <dt>Quelle</dt>
         <dd style={{ wordBreak: "break-all" }}>{general?.source || "–"}</dd>

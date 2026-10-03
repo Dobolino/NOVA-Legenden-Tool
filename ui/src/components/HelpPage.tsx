@@ -54,16 +54,24 @@ export default function HelpPage({ notify }: { notify: (text: string, error?: bo
             <li><b>Firmenordner fehlt.</b> In den Einstellungen einen Ordner wählen, den das Programm beschreiben darf.</li>
             <li><b>DWG konnte nicht erzeugt werden.</b> ODA File Converter installieren und das Programm neu öffnen. Bis dahin DXF verwenden.</li>
             <li><b>Unbekannt.</b> Das Symbol steht in keinem geladenen Datensatz oder die Zuordnung fehlt. In der Bibliothek zuordnen.</li>
-            <li><b>Allgemeinteil.</b> Die Servervorlage ist gesperrt. Sie wird in den Firmeneinstellungen ausgetauscht, nicht in der Legende.</li>
+            <li>
+              <b>Allgemeinteil.</b>
+              <br />Eine DXF- oder DWG-Datei, verknüpft in den Firmeneinstellungen.
+              <br />Sie bleibt eine gesperrte Zeichnung.
+              <br />Kachelgrösse und Abstand gelten für die erzeugte Legende, nicht für diese Datei.
+            </li>
           </ul>
         </div>
 
         <div className="card">
           <h3>Prüfbericht</h3>
-          <p className="desc">
-            Der Bericht fasst Version, Datensätze, Converter, Firmendatei und auf Wunsch das gewählte Projekt zusammen
-            (Konfiguration, Legendenstil, Anzahl Geschosse, unbekannte Einträge). Er enthält keine Zeichnungsgeometrie.
-          </p>
+          <p className="desc">Zum Einfügen in ein Sprachmodell.</p>
+          <ul className="help-list">
+            <li>Version und geladene Datensätze</li>
+            <li>ODA-Converter und Firmendatei</li>
+            <li>Projekt, falls gewählt: Legendenstil, Geschosse, unbekannte Einträge</li>
+          </ul>
+          <p className="hint">Keine Zeichnungsgeometrie.</p>
           <label className="field">
             <span>Projekt</span>
             <select className="select" value={projectId} onChange={(e) => setProjectId(e.target.value)} aria-label="Projekt für den Prüfbericht">
