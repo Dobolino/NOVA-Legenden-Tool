@@ -1509,16 +1509,12 @@ function DocProps({
           <NumberInput label="Symbolmassstab" value={s.symbol_scale} step={0.1} onCommit={(v) => setStyle({ symbol_scale: Math.max(0.2, Math.min(5, v)) })} />
         </label>
         <label className="field">
-          <span>Massstab Leuchten 1:</span>
-          <NumberInput value={s.plan_scale} step={10} onCommit={(v) => setStyle({ plan_scale: Math.max(1, v) })} />
-        </label>
-        <label className="field">
           <span>Abstand zwischen Abschnitten (mm)</span>
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
-          <span>Abstand der Zeilen (mm)</span>
-          <NumberInput label="Abstand der Zeilen" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
+          <span>Abstand zwischen den Kacheln (mm)</span>
+          <NumberInput label="Abstand zwischen den Kacheln" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
         </label>
         <label className="field">
           <span>Textzeilen</span>
@@ -1538,7 +1534,11 @@ function DocProps({
         <input type="checkbox" checked={Boolean(s.strip_fill)} onChange={(e) => setStyle({ strip_fill: e.target.checked })} />
         Symbol-Hintergründe/Schraffuren entfernen
       </label>
-      <p className="hint">Bei 1, 2 oder 3 Zeilen haben alle Einträge eines Abschnitts dieselbe Zeilenhöhe. Längerer Text wird auf diese Zeilenzahl gekürzt. 0 lässt die Zeile mit dem Text wachsen. Langfeldleuchten behalten ihr Seitenverhältnis.</p>
+      <p className="hint">
+        Jede Symbolkachel ist {String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm gross.
+        Die Kante folgt der Schriftgrösse und dem Symbolmassstab. Langfeldleuchten behalten ihr Seitenverhältnis und füllen dieselbe Kachel.
+        Der Abstand gilt zwischen den Kacheln. Bei «Automatisch» bleibt der Text auf einer Zeile.
+      </p>
       <p className="hint">
         Blattbreite inkl. 5 mm Rand: Standard 200 mm, höchstens 210 mm. Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}
         {String(company.symbol_scale).replace(".", ",")}.

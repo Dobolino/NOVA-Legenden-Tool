@@ -79,18 +79,23 @@ def wrap(text: str, size: float, width: float, bold: bool = False) -> list[str]:
 
 SYMBOL_CLEARANCE = 0.5       # mm free above and below a symbol inside its grid rows
 TEXT_CLEARANCE = 0.4
+TILE_FACTOR = 3.6            # symbol tile side = text size × this × symbol scale
 
 
-def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool,
-                 max_w: float | None = None) -> float:
-    """Common scale for every symbol (engine symbols at the plan scale). No symbol is
-    shrunk to fit a row: a tall symbol takes more grid rows instead, so equal scale means
-    equal size. Only a symbol wider than ``max_w`` (half a column) is limited, so it
-    cannot reach into the next column."""
-    s = style["symbol_scale"] * (50.0 / style["plan_scale"] if engine else 1.0)
-    if not size or size[0] <= 0 or max_w is None or size[0] * s <= max_w:
-        return s
-    return round(max_w / size[0], 4)
+def symbol_tile(style: dict) -> float:
+    """Side of the shared symbol tile in mm. It grows with the text size."""
+    ts = max(float(style.get("text_size") or 2.5), 1.0)
+    sc = max(float(style.get("symbol_scale") or 1.0), 0.2)
+    return round(ts * TILE_FACTOR * sc, 3)
+
+
+def entry_slot(style: dict, tile: float) -> float:
+    """Row height. The tile sets it; a chosen line count can make every row taller."""
+    cap = _line_cap(style)
+    if not cap:
+        return tile
+    ts = float(style.get("text_size") or 2.5)
+    return max(tile, cap * ts * LINE_FACTOR + TEXT_CLEARANCE)
 
 
 def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
@@ -112,47 +117,32 @@ def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
     return x0, y0, x1, y1, ax, ay, bool(engine)
 
 
-def _turn(left, right, up, down, rotation: int):
-    """Extents around the anchor after turning counter-clockwise."""
-    if rotation == 90:
-        return up, down, right, left
-    if rotation == 180:
-        return right, left, down, up
-    if rotation == 270:
-        return down, up, left, right
-    return left, right, up, down
-
-
-def _symbol_box(item: dict, size, style: dict, max_w: float | None = None) -> dict:
-    """Symbol cell of an entry on the sheet: extents around the point that sits on the
-    symbol axis (left, right, up, down in mm), the scale and the anchor in the drawing."""
+def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
+    """Fit one drawing into the shared tile. The longer side fills the tile, the other
+    side keeps its proportion, and the drawing is centred in the tile."""
     kind = item["kind"]
 
     def box(left, right, up, down, scale=1.0, ax=0.0, ay=0.0):
         return {"left": left, "right": right, "up": up, "down": down, "scale": scale, "ax": ax, "ay": ay}
 
     if kind == "symbol":
-        rot = item.get("rotation", 0)
+        rot = int(item.get("rotation") or 0)
         factor = float(item.get("symbol_factor") or 1.0)
         if size:
-            x0, y0, x1, y1, ax, ay, engine = _anchor(size)
-            left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
-            # the factor of this symbol enlarges it; the row grows by whole grid rows
-            limit = max_w
-            span, tall = left + right, up + down
-            # long luminaires keep their proportion and may use more of the column
-            if limit and tall > 1e-6 and span / tall >= 2.5:
-                limit = limit * 1.45
-            scale = symbol_scale((span, 2 * max(up, down)), style, engine, limit) * factor
-            return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
-        half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
-        return box(half, half, half, half)
+            x0, y0, x1, y1, _ax, _ay, _engine = _anchor(size)
+            span, tall = x1 - x0, y1 - y0
+            if rot in (90, 270):
+                span, tall = tall, span
+            longest = max(span, tall, 1e-6)
+            scale = tile / longest * factor
+            return box(span * scale / 2, span * scale / 2, tall * scale / 2, tall * scale / 2,
+                       round(scale, 4), (x0 + x1) / 2, (y0 + y1) / 2)
+        half = tile / 2 * factor
+        return box(half, half, half, half, round(factor, 4))
     if kind == "line":
-        half = min(item["line_length"], style["text_offset"] * 2 - 2.4) / 2
-        return box(half, half, 0.5, 0.5)
+        return box(tile / 2, tile / 2, 0.35, 0.35)
     if kind == "note":
-        half = min(3.6, style["row"] - SYMBOL_CLEARANCE) / 2
-        return box(half, half, half, half)
+        return box(tile / 2, tile / 2, tile / 2, tile / 2)
     return box(0.0, 0.0, 0.0, 0.0)
 
 
@@ -224,21 +214,20 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
 def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     st = block["style"]
     pad = st["padding"]
-    off = style["text_offset"]
     hts = ts * float(block.get("title_scale") or 1.0)
     head_h = max(hts * LINE_FACTOR + 1.6, hts * 2.0)
     top = y
     body: list[dict] = []
     colw = (inner - 2 * pad) / cols
     items = [it for it in block["items"] if not it.get("hidden")]
-    boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, colw / 2) for it in items}
+    tile = min(symbol_tile(style), colw * 0.46)
+    boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, tile) for it in items}
     cap = _line_cap(style)
     gap_mm = max(0.0, float(style.get("entry_gap") or 0.0))
-    fixed = max((_slot_height(it, boxes[it["id"]], ts, row, cap) for it in items), default=None) if cap and items else None
-    # one symbol axis (insertion points) and one text line for the section,
-    # right of the symbol reaching furthest to the right of the axis
-    axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
-    text_x = max([off] + [axis + boxes[it["id"]]["right"] + 1.2 for it in items])
+    fixed = entry_slot(style, tile)
+    # one tile centre and one text start for the whole section
+    axis = tile / 2 + 0.4
+    text_x = axis + tile / 2 + 1.5
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     for c in range(cols):
@@ -254,7 +243,7 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
     prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
-                  "w": inner - 2 * pad, "h": body_h, "row": row, "cols": cols, "colw": colw,
+                  "w": inner - 2 * pad, "h": body_h, "row": fixed + gap_mm, "cols": cols, "colw": colw,
                   "axis": axis, "text": text_x})
     if st.get("background_on"):
         prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": total_h, "fill": st["background"],
@@ -284,14 +273,6 @@ def _line_cap(style: dict) -> int:
     return n if n in (1, 2, 3) else 0
 
 
-def _slot_height(item, box, ts, row, lines_n: int) -> float:
-    its = ts * float(item.get("text_scale") or 1.0)
-    text_h = lines_n * its * LINE_FACTOR
-    sym_h = 2 * max(box["up"], box["down"])
-    need = max(text_h + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
-    return row * max(1, math.ceil(need / row - 1e-3))
-
-
 def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
            fixed_h: float | None = None, lines_n: int = 0, strip_fill: bool = False) -> float:
     """Draw one entry at the top of its slot, return the slot height."""
@@ -300,16 +281,9 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     lh = its * LINE_FACTOR
     tx = cx0 + text_x
     lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
-    if lines_n:
-        lines = lines[:lines_n] or [""]
-        text_h = lines_n * lh
-    else:
-        text_h = len(lines) * lh
-    # the insertion point sits on the middle of the row: room for the larger extent both ways
-    sym_h = 2 * max(box["up"], box["down"])
-    need = max(text_h + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
-    natural = row * max(1, math.ceil(need / row - 1e-3))      # whole grid rows (the scale is rounded)
-    h = fixed_h if fixed_h is not None else natural
+    reserve = lines_n if lines_n else 1
+    lines = lines[:reserve] or [""]
+    h = fixed_h if fixed_h is not None else max(row, reserve * lh)
     mid = cy + h / 2
     sx = cx0 + axis
     w = box["left"] + box["right"]
@@ -327,9 +301,8 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
                     "layer": block.get("layer") or ""})
     elif kind == "note":
         out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"]})
-    # With a fixed line count the first baseline is shared. Otherwise the text block is centred.
-    shown = lines_n if lines_n else len(lines)
-    base = mid - (shown - 1) * lh / 2 + its * 0.32
+    # The first line of every entry shares one baseline. Further lines go downward.
+    base = mid - (reserve - 1) * lh / 2 + its * 0.32
     for i, line in enumerate(lines):
         out.append({"t": "text", "x": round(tx, 3), "y": round(base + i * lh, 3), "size": round(its, 3),
                     "text": line, "bold": False, "color": st["text"], "item": item["id"]})
