@@ -18,6 +18,23 @@ from test_phase2 import import_dxf, nova_like_dxf
 from test_phase3 import env  # noqa: F401 - isolated settings and catalogue
 
 
+def launch_chromium(pw):
+    """Chromium for the browser tests: NOVA_TEST_CHROMIUM, Playwright's own, or one found
+    on the machine. Without any browser the tests are skipped locally; in CI (GitHub
+    Actions sets CI=true) they must run, so a missing browser fails there."""
+    candidates = [os.environ.get("NOVA_TEST_CHROMIUM") or None]
+    candidates += sorted(str(p) for p in Path("/opt/pw-browsers").glob("chromium-*/chrome-linux/chrome"))
+    error = None
+    for path in candidates:
+        try:
+            return pw.chromium.launch(executable_path=path, headless=True)
+        except Exception as exc:  # noqa: BLE001 - try the next browser
+            error = exc
+    if os.environ.get("CI"):
+        raise RuntimeError(f"Kein Chromium für die Browser-Tests: {error}")
+    pytest.skip("Kein Chromium für die Browser-Tests gefunden (NOVA_TEST_CHROMIUM setzen)")
+
+
 @pytest.fixture()
 def editor(env):
     client, tmp = env
@@ -46,8 +63,7 @@ def editor(env):
         time.sleep(0.02)
     try:
         with playwright.sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                executable_path=os.environ.get("NOVA_TEST_CHROMIUM") or None, headless=True)
+            browser = launch_chromium(pw)
             page = browser.new_page()
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))

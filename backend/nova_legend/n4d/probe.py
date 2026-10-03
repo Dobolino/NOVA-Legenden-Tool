@@ -26,6 +26,7 @@ import olefile
 
 CSTRING = re.compile(rb"\xff\xfe\xff")
 DATASET_PREFIXES = ("Trimble.", "Plancal.")
+PICTURE_PATH = re.compile(r"^(elektro|novaleiste)[\\/]", re.I)   # picture path after an element name
 CODE_RE = re.compile(r"^[0-9A-Za-z_]+-[0-9A-Za-z_]+$")
 # Marker that follows the CString of a free text element
 TEXT_TAIL = b"\x33\x04\x00\x00\x00\x66\x3e\x00"
@@ -172,13 +173,18 @@ def analyse(path: str | Path) -> N4DReport:
     )
 
     # -- objects referencing a dataset -----------------------------------
+    # The element name is the string right before its picture path
+    # ("elektro\ico_taster", "novaleiste\...", also with "/": "elektro/ico_server").
     current: N4DObject | None = None
     last_name = ""
+    last_name_at = -1          # offset of the name string, so one name is never used twice
+    used_name_at = -2
+    current_name_at = -3
     for i, s in enumerate(strings):
         t = s.text
-        if i + 1 < len(strings) and (strings[i + 1].text.startswith("elektro\\")
-                                     or strings[i + 1].text.startswith("novaleiste\\")):
+        if i + 1 < len(strings) and PICTURE_PATH.match(strings[i + 1].text):
             last_name = _strip_guid(t)
+            last_name_at = s.offset
         if t.startswith(DATASET_PREFIXES) and i + 2 < len(strings):
             sheet, item = strings[i + 1].text, strings[i + 2].text
             nxt = strings[i + 3].text if i + 3 < len(strings) else ""
@@ -190,9 +196,12 @@ def analyse(path: str | Path) -> N4DReport:
             # Objects without a 2D graphic reference their dataset twice, close
             # together: the second reference belongs to the same object.
             if (current and current.graphic_id is None and current.item == item
-                    and current.name == last_name and s.offset - current.offset < 3000):
+                    and current_name_at == last_name_at and s.offset - current.offset < 3000):
                 continue
-            current = N4DObject(last_name, t, sheet, item, offset=s.offset)
+            # an object whose own name was not found must not inherit the previous name
+            name = last_name if last_name_at != used_name_at else ""
+            used_name_at = current_name_at = last_name_at
+            current = N4DObject(name, t, sheet, item, offset=s.offset)
             report.objects.append(current)
         elif current and current.layer is None and re.match(r"^(E_|X_)", t):
             current.layer = t

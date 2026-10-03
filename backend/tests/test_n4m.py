@@ -87,3 +87,15 @@ def test_empty_box_is_drawn_from_the_bundled_library():
     # the reader refuses symbols it cannot draw completely instead of guessing
     assert set(read_nsb(ds.lib_file("BT_EB"))) == {"10", "20"}
     assert read_nsb(b"not an ole file") == {}
+
+
+N4D_1371 = SAMPLES / "1371_E-G-1OG.n4d"
+
+
+@pytest.mark.skipif(not N4D_1371.is_file(), reason="sample 1371_E-G-1OG.n4d missing")
+def test_element_names_are_not_inherited_from_the_previous_object():
+    from nova_legend.n4d.probe import analyse
+
+    objs = [o for o in analyse(N4D_1371).objects if o.item]
+    assert len(objs) == 706                                          # same objects as before
+    assert {o.name for o in objs if o.item == "110-30"} == {"CO-Fühler, UP"}   # picture path with "/"
