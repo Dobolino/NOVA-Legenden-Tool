@@ -700,7 +700,37 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       <button type="button" className="legend-window-back" aria-label="Grossansicht beenden" title="Grossansicht beenden" onClick={() => setWindowed(false)} />
     )}
     <div className={`legend-editor ${windowed ? "windowed" : ""}`}>
-      {generalBox}
+      <div className="legend-head">
+        <div className="legend-head-info">{generalBox}</div>
+        <div className="tool-group" role="group" aria-label="Ansicht">
+        <button className={`btn small ${detached ? "is-on" : ""}`} aria-pressed={detached} onClick={() => setDetached((v) => !v)}
+          title={detached ? "Die Einstellungen wieder rechts neben der Legende zeigen" : "Die Einstellungen als schwebendes Feld über der Legende zeigen. Mehr Platz für das Blatt."}>
+          {detached ? "⇥ Einstellungen andocken" : "⧉ Einstellungen schwebend"}
+        </button>
+        {!windowed && (
+          <button className="btn small" onClick={() => setWindowed(true)}
+            title="Den Editor über das ganze Programmfenster öffnen. Esc oder «Grossansicht beenden» schliesst sie.">
+            ⤢ Grossansicht
+          </button>
+        )}
+        <button
+          className={`btn small ${showGrid ? "is-on" : ""}`}
+          aria-pressed={showGrid}
+          onClick={() => {
+            const next = !showGrid;
+            setShowGrid(next);
+            try {
+              window.localStorage.setItem(GRID_KEY, next ? "1" : "0");
+            } catch {
+              /* only a convenience */
+            }
+          }}
+          title="Rasterlinien im gewählten Mass einblenden. Sie erscheinen nicht im Export."
+        >
+          ▦ Raster anzeigen
+        </button>
+        </div>
+      </div>
       <div className="legend-toolbar">
         <div className="tool-group" role="group" aria-label="Verlauf">
         <button className="btn small" disabled={busy} onClick={proposal} title="Legende aus den aktuellen Projektzahlen neu vorschlagen">
@@ -783,40 +813,6 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
           {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
         </span>
-        <div className="tool-group" role="group" aria-label="Export">
-        <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
-          title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
-          <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
-        </button>
-        </div>
-        <div className="tool-group" role="group" aria-label="Ansicht">
-        <button className={`btn small ${detached ? "is-on" : ""}`} aria-pressed={detached} onClick={() => setDetached((v) => !v)}
-          title={detached ? "Die Einstellungen wieder rechts neben der Legende zeigen" : "Die Einstellungen als schwebendes Feld über der Legende zeigen. Mehr Platz für das Blatt."}>
-          {detached ? "⇥ Einstellungen andocken" : "⧉ Einstellungen schwebend"}
-        </button>
-        {!windowed && (
-          <button className="btn small" onClick={() => setWindowed(true)}
-            title="Den Editor über das ganze Programmfenster öffnen. Esc oder «Grossansicht beenden» schliesst sie.">
-            ⤢ Grossansicht
-          </button>
-        )}
-        <button
-          className={`btn small ${showGrid ? "is-on" : ""}`}
-          aria-pressed={showGrid}
-          onClick={() => {
-            const next = !showGrid;
-            setShowGrid(next);
-            try {
-              window.localStorage.setItem(GRID_KEY, next ? "1" : "0");
-            } catch {
-              /* only a convenience */
-            }
-          }}
-          title="Rasterlinien im gewählten Mass einblenden. Sie erscheinen nicht im Export."
-        >
-          ▦ Raster anzeigen
-        </button>
-        </div>
       </div>
       {windowed && (
         <div className="legend-window-bar">
@@ -1011,6 +1007,12 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         </div>
 
         <aside className={`legend-props ${detached ? "floating" : ""}`}>
+        <div className="props-export">
+        <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
+          title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
+          <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
+        </button>
+        </div>
           {sel?.type === "general" ? (
             <GeneralProps general={general} company={info.company} />
           ) : sel?.type === "title" ? (

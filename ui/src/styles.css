@@ -744,3 +744,13 @@ body.pane-resizing { cursor: col-resize; user-select: none; }
 .badge.company { color: var(--ok); border-color: var(--ok); padding: 0 5px; }
 .legend-toolbar .zoom-value { min-width: 44px; text-align: center; }
 .legend-window-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); font-size: 12px; }
+
+/* legend editor head: info left, view controls right; export on top of the settings */
+.legend-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.legend-head-info { flex: 1; min-width: 0; }
+.legend-head-info:empty { display: none; }
+.legend-head-info .info-line { margin: 0; }
+.legend-head > .tool-group { margin-left: auto; }
+.legend-toolbar > [role="status"] { margin-left: auto; }
+.props-export { position: sticky; top: -14px; z-index: 2; margin: -14px -14px 10px; padding: 12px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.props-export .btn { width: 100%; justify-content: center; }
