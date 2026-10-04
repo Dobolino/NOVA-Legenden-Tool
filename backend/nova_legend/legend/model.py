@@ -32,7 +32,7 @@ GRIDS = {
 DEFAULT_TEXT_SIZE = 2.5
 DEFAULT_SYMBOL_SCALE = 1.0
 
-ITEM_KINDS = ("symbol", "line", "note", "text")
+ITEM_KINDS = ("symbol", "line", "note", "text", "gap")   # gap: an empty cell kept free on purpose
 ROTATIONS = (0, 45, 90, 135, 180, 225, 270, 315)
 ITEM_EXTRA = {"text_scale": 1.0, "symbol_factor": 1.0, "rotation": 0, "hidden": False, "keep": False,
               "mirror": False}

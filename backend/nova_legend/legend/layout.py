@@ -293,16 +293,34 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
         text_x = axis + tile / 2 + 1.5
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
+    # every place of the grid is a cell (also the empty ones): the editor drops entries
+    # into cells; index = position in the list of shown entries (gaps included)
+    cells: list[dict] = []
+    empty_h = row if fixed is None else fixed
     for c in range(cols):
         cx0 = x0 + pad + c * colw
         cy = top + head_h + pad
         chunk = items[c * per_col:(c + 1) * per_col]
-        for i, item in enumerate(chunk):
-            cy += _entry(item, boxes[item["id"]], body, block, cx0, cy, colw, ts, row, axis, text_x, st,
-                         fixed, cap, (bool(style.get("hatch_off")), bool(style.get("fill_off"))))
-            if gap_mm and i < len(chunk) - 1:
-                cy += gap_mm
-        col_heights.append(cy - (top + head_h + pad))
+        for i in range(max(per_col, 1)):
+            index = c * per_col + i if per_col else c
+            item = chunk[i] if i < len(chunk) else None
+            if item is not None and item["kind"] != "gap":
+                h = _entry(item, boxes[item["id"]], body, block, cx0, cy, colw, ts, row, axis, text_x, st,
+                           fixed, cap, (bool(style.get("hatch_off")), bool(style.get("fill_off"))))
+            else:
+                h = empty_h
+            cells.append({"t": "cell", "block": block["id"], "index": index,
+                          "id": item["id"] if item is not None else None,
+                          "empty": item is None or item["kind"] == "gap",
+                          "x": round(cx0, 3), "y": round(cy, 3), "w": round(colw, 3), "h": round(h, 3)})
+            if item is not None:
+                cy += h
+                if gap_mm and i < len(chunk) - 1:
+                    cy += gap_mm
+            else:
+                cy += h + gap_mm
+        used = [cell for cell in cells[-max(per_col, 1):] if cell["index"] < len(items)]
+        col_heights.append((used[-1]["y"] + used[-1]["h"] - (top + head_h + pad)) if used else 0.0)
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
     prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
@@ -322,6 +340,7 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     prims.append({"t": "text", "x": x0 + pad + 0.5, "y": top + head_h / 2 + hts * 0.36, "size": hts,
                   "text": title_lines[0], "bold": True, "color": st["header_text"]})
     prims.extend(body)
+    prims.extend(cells)
     if st["border_on"]:
         prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": total_h, "fill": None,
                       "stroke": st["border"], "role": "border", "block": block["id"]})

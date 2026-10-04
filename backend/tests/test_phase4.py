@@ -907,3 +907,18 @@ def test_company_texts_list_export_and_import(env):  # noqa: F811
     assert client.get("/api/descriptions").json()["items"][0]["text"] == "Schalter, Schema 0 (Grösse I)"
     bad = client.post("/api/descriptions/import", files={"file": ("t.csv", b"a;b\n1;2\n")})
     assert bad.status_code == 400
+
+
+def test_empty_cells_keep_their_place_and_every_cell_is_a_drop_target():
+    items = [{"id": f"e{k}", "kind": "text", "text": f"E{k}"} for k in range(6)]
+    items[6:] = [{"id": "g1", "kind": "gap"}, {"id": "g2", "kind": "gap"}, {"id": "x", "kind": "text", "text": "X"}]
+    doc = normalize({"style": {"columns": 3}, "blocks": [{"id": "A", "title": "A", "items": items}]})
+    assert [it["kind"] for it in doc["blocks"][0]["items"]].count("gap") == 2
+    lay = layout(doc)
+    cells = [p for p in lay["prims"] if p["t"] == "cell"]
+    assert [c["index"] for c in cells] == list(range(9))
+    assert [c["empty"] for c in cells] == [False] * 6 + [True, True, False]
+    hits = {p["id"]: p for p in boxes(lay)}
+    assert "g1" not in hits and "g2" not in hits
+    # X sits at the bottom of the third column, level with the third row of the first
+    assert hits["x"]["y"] == pytest.approx(hits["e2"]["y"]) and hits["x"]["x"] > hits["e5"]["x"]

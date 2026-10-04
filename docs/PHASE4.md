@@ -17,6 +17,10 @@ Stand: 04.10.2026 (Version 4: gleiche Kacheln, Symbolfarbe nach Abschnitt, Spieg
 
 - Blattbreite einstellbar im Feld «Legende»: Standard 200 mm, höchstens 210 mm, inklusive 5 mm Rand. 2 oder 3 Spalten teilen die Breite. Bei einem schmaleren Blatt verkleinert sich der Allgemeinteil im gleichen Verhältnis, in Vorschau und Export.
 - Kein freies Millimeter-Schieben. Alles sitzt auf dem festen Raster. Einträge ziehst du mit der Maus an einen anderen Platz oder in einen anderen Abschnitt, auf dem Blatt und in der linken Liste. ↑ ↓ und die Pfeiltasten gehen auch.
+- Ziehen auf dem Blatt: Jede Rasterzelle ist ein Ablageplatz, auch die leeren. Die Zielzelle ist blau hinterlegt, und das Blatt zeigt schon beim Ziehen, wie die Legende danach aussieht.
+  - Auf eine belegte Zelle: Wie beim iPhone rücken die anderen Einträge um einen Platz weiter, bis zur nächsten leeren Zelle.
+  - Auf eine leere Zelle: Der Eintrag liegt genau dort, die anderen bleiben stehen. So setzt du z. B. in einer dreispaltigen Legende ein Symbol zuunterst in die dritte Spalte. Die Plätze darüber bleiben leer (im Dokument als «leere Zelle» gespeichert, im Export unsichtbar).
+  - Leere Zellen am Ende eines Abschnitts entfernt das Programm.
 - Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Platzhalter im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
 - Symbolgrösse im Feld «Legende», zwei Arten:
   - «Gleiche Kacheln (75 % gefüllt)», Voreinstellung: Jedes Symbol bekommt eine gleich grosse quadratische Kachel. Ihre Grösse richtet sich nach der Schriftgrösse (Schriftgrösse × 3,6 × Symbolmassstab, höchstens 46 % der Spaltenbreite). Das Symbol füllt 75 % der Kachel, so bleibt Luft rundherum. Alle Zeilen sind gleich hoch, ausser ein Text braucht mehr Zeilen.

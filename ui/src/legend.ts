@@ -2,7 +2,7 @@
 // No free coordinates: the backend places everything on a fixed grid.
 // Pure functions, so npm test checks them without a browser.
 
-export type ItemKind = "symbol" | "line" | "note" | "text";
+export type ItemKind = "symbol" | "line" | "note" | "text" | "gap"; // gap: an empty cell kept free
 export type LineStyle = "solid" | "dashed" | "dotted" | "dashdot";
 
 export interface LegendItem {
@@ -293,6 +293,78 @@ export function moveItemTo(doc: LegendDoc, fromId: string, itemId: string, toId:
   if (!item || !doc.blocks.some((b) => b.id === toId) || beforeId === itemId) return doc;
   const blocks = doc.blocks.map((b) => (b.id === fromId ? { ...b, items: b.items.filter((it) => it.id !== itemId) } : b));
   return { ...doc, blocks: blocks.map((b) => (b.id === toId ? { ...b, items: insertAt(b.items, item, beforeId) } : b)) };
+}
+
+// -- cells: drop into a place of the grid ---------------------------------------------------
+
+function gapItem(): LegendItem {
+  return makeItem({ kind: "gap" });
+}
+
+/** Empty cells at the end of a list hold nothing open: they go. */
+export function trimGaps(items: LegendItem[]): LegendItem[] {
+  let end = items.length;
+  while (end > 0 && (items[end - 1].kind === "gap")) end -= 1;
+  return end === items.length ? items : items.slice(0, end);
+}
+
+/** Put `item` into cell `index` of a list of shown entries. An occupied cell makes room
+ *  like app icons on a phone: the entries behind move on by one, up to the next empty
+ *  cell. An empty cell (or one behind the end) simply takes the entry. */
+function putInCell(shown: LegendItem[], item: LegendItem, index: number): LegendItem[] {
+  const out = [...shown];
+  if (index < out.length && out[index].kind !== "gap") {
+    out.splice(index, 0, item);
+    const free = out.findIndex((it, i) => i > index && it.kind === "gap");
+    if (free >= 0) out.splice(free, 1);
+  } else {
+    while (out.length <= index) out.push(gapItem());
+    out[index] = item;
+  }
+  return out;
+}
+
+/** Move an entry (or place a new one) into cell `index` of block `toId`. Cells count the
+ *  shown entries of the block, empty cells included, column by column. */
+export function placeInCell(
+  doc: LegendDoc,
+  toId: string,
+  index: number,
+  source: { block: string; item: string } | { item: LegendItem },
+): LegendDoc {
+  const target = doc.blocks.find((b) => b.id === toId);
+  if (!target || index < 0) return doc;
+  const hidden = target.items.filter((it) => it.hidden);
+  let shown = target.items.filter((it) => !it.hidden);
+  let blocks = doc.blocks;
+  let item: LegendItem | undefined;
+  if ("block" in source) {
+    item = doc.blocks.find((b) => b.id === source.block)?.items.find((it) => it.id === source.item);
+    if (!item) return doc;
+    if (source.block === toId) {
+      const old = shown.findIndex((it) => it.id === item!.id);
+      if (old < 0 || old === index) return doc;
+      if (index < shown.length && shown[index].kind !== "gap") {
+        // the hole it leaves closes, the others move up to make room
+        shown = [...shown.slice(0, old), ...shown.slice(old + 1)];
+        shown.splice(index, 0, item);
+      } else {
+        // into an empty cell: everything else stays where it is
+        shown = [...shown];
+        shown[old] = gapItem();
+        while (shown.length <= index) shown.push(gapItem());
+        shown[index] = item;
+      }
+    } else {
+      blocks = blocks.map((b) => (b.id === source.block ? { ...b, items: trimGaps(b.items.filter((it) => it.id !== item!.id)) } : b));
+      shown = putInCell(shown, item, index);
+    }
+  } else {
+    item = source.item;
+    shown = putInCell(shown, item, index);
+  }
+  const items = [...trimGaps(shown), ...hidden];
+  return { ...doc, blocks: blocks.map((b) => (b.id === toId ? { ...b, items } : b)) };
 }
 
 /** A new entry in front of `beforeId` in block `blockId` (null: at the end). */

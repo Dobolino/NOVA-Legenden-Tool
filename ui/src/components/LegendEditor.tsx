@@ -26,6 +26,8 @@ import {
   moveItemInOrder,
   moveItemTo,
   moveItemToBlock,
+  makeItem,
+  placeInCell,
   push,
   redo,
   removeBlock,
@@ -67,7 +69,9 @@ type DragPayload =
   | { type: "move"; block: string; item: string }
   | { type: "add"; family_key: string | null; symbol_key: string; text: string; categories: string[] };
 /** Where it lands: in front of `before` in `block` (null: at the end). */
-type DropTarget = { block: string; before: string | null };
+type DropTarget = { block: string; before: string | null; cell?: number };
+/** Id of the entry a drop preview shows for a new symbol from the lists. */
+const DROP_ID = "__drop__";
 
 function readGridPref(): boolean {
   try {
@@ -96,6 +100,9 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const [detached, setDetached] = useState(false);
   const [windowed, setWindowed] = useState(false);
   const [dropAt, setDropAt] = useState<DropTarget | null>(null);
+  // while dragging onto a cell: the legend as it would look after the drop (others make room)
+  const [preview, setPreview] = useState<{ layout: LegendLayout; id: string } | null>(null);
+  const paperRef = useRef<SVGSVGElement>(null);
   const [exporting, setExporting] = useState(false);
   const dragPayload = useRef<DragPayload | null>(null);
   const sheetDrag = useRef<{ block: string; item: string; x: number; y: number; active: boolean } | null>(null);
@@ -363,7 +370,19 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
 
   function drop(payload: DragPayload | null, target: DropTarget | null) {
     setDropAt(null);
+    setPreview(null);
     if (!doc || !payload || !target) return;
+    if (target.cell !== undefined) {
+      if (payload.type === "move") {
+        change(placeInCell(doc, target.block, target.cell, { block: payload.block, item: payload.item }));
+        setSel({ type: "item", block: target.block, item: payload.item });
+      } else {
+        const fresh = makeItem({ kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text });
+        change(placeInCell(doc, target.block, target.cell, { item: fresh }));
+        setSel({ type: "item", block: target.block, item: fresh.id });
+      }
+      return;
+    }
     if (payload.type === "move") {
       if (payload.item === target.before) return;
       change(moveItemTo(doc, payload.block, payload.item, target.block, target.before));
@@ -375,9 +394,21 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     }
   }
 
-  /** Drop place under the pointer on the sheet: an entry (upper or lower half) or a section. */
+  /** Cell of the grid under the pointer (from the layout before the drag started). */
+  function cellAt(x: number, y: number): DropTarget | null {
+    const svg = paperRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm || !placed) return null;
+    const pt = new DOMPoint(x, y).matrixTransform(ctm.inverse());
+    const c = placed.prims.find((p) => p.t === "cell" && pt.x >= p.x && pt.x < p.x + p.w && pt.y >= p.y && pt.y < p.y + p.h);
+    return c ? { block: c.block, before: null, cell: c.index } : null;
+  }
+
+  /** Drop place under the pointer on the sheet: a cell of the grid, else the end of a section. */
   function sheetTargetAt(x: number, y: number): DropTarget | null {
     if (!doc) return null;
+    const cell = cellAt(x, y);
+    if (cell) return cell;
     const el = document.elementFromPoint(x, y) as (Element & { dataset?: DOMStringMap }) | null;
     const hit = el?.closest?.("[data-hit]") as (SVGElement & { dataset: DOMStringMap }) | null;
     if (!hit) return null;
@@ -404,7 +435,8 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       if (!d) return;
       if (!d.active && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
       d.active = true;
-      setDropAt(sheetTargetAt(e.clientX, e.clientY));
+      const t = sheetTargetAt(e.clientX, e.clientY);
+      setDropAt((old) => (old?.block === t?.block && old?.before === t?.before && old?.cell === t?.cell ? old : t));
     };
     const up = (e: PointerEvent) => {
       const d = sheetDrag.current;
@@ -434,6 +466,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       onDragEnd: () => {
         dragPayload.current = null;
         setDropAt(null);
+        setPreview(null);
       },
     };
   }
@@ -455,6 +488,35 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       },
     };
   }
+
+  // live preview of a drop into a cell: the layout after the drop, others moved on
+  useEffect(() => {
+    if (!doc || dropAt?.cell === undefined) {
+      setPreview(null);
+      return;
+    }
+    const sheet = sheetDrag.current;
+    const payload: DragPayload | null = sheet?.active ? { type: "move", block: sheet.block, item: sheet.item } : dragPayload.current;
+    if (!payload) return;
+    const next =
+      payload.type === "move"
+        ? placeInCell(doc, dropAt.block, dropAt.cell, { block: payload.block, item: payload.item })
+        : placeInCell(doc, dropAt.block, dropAt.cell, {
+            item: makeItem({ id: DROP_ID, kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text }),
+          });
+    const id = payload.type === "move" ? payload.item : DROP_ID;
+    const ctrl = new AbortController();
+    const handle = window.setTimeout(() => {
+      api
+        .layoutLegend(projectId, next, ctrl.signal)
+        .then((layout) => setPreview({ layout, id }))
+        .catch(() => undefined);
+    }, 30);
+    return () => {
+      window.clearTimeout(handle);
+      ctrl.abort();
+    };
+  }, [dropAt, doc, projectId]);
 
   // -- save now and export ----------------------------------------------------------------
 
@@ -547,8 +609,10 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const dups = duplicateItems(doc);
   const selBlock = sel && "block" in sel ? doc.blocks.find((b) => b.id === sel.block) : undefined;
   const selItem = sel?.type === "item" ? selBlock?.items.find((i) => i.id === sel.item) : undefined;
-  const W = placed?.width ?? 200;
-  const H = placed?.height ?? 100;
+  // during a drag onto a cell the sheet shows the preview, so the others visibly make room
+  const shown = dropAt?.cell !== undefined && preview ? preview.layout : placed;
+  const W = shown?.width ?? 200;
+  const H = shown?.height ?? 100;
   const setStyle = (patch: Partial<LegendDoc["style"]>) => change({ ...doc, style: { ...style, ...patch } });
 
   return (
@@ -700,11 +764,11 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                 </button>
                 <span className="swatch" style={{ background: b.style.header, width: 12, height: 12 }} />
                 <button className="outline-title" onClick={() => setSel({ type: "block", block: b.id })} title={b.title}>
-                  {b.title || "(ohne Überschrift)"} <span className="hint">{b.items.filter((it) => !it.hidden).length}</span>
+                  {b.title || "(ohne Überschrift)"} <span className="hint">{b.items.filter((it) => !it.hidden && it.kind !== "gap").length}</span>
                 </button>
               </div>
               {!b.collapsed &&
-                b.items.map((it) => (
+                b.items.filter((it) => it.kind !== "gap").map((it) => (
                   <button
                     key={it.id}
                     className={`outline-item ${sel?.type === "item" && sel.item === it.id ? "active" : ""} ${it.hidden ? "hidden-entry" : ""} ${dropAt?.block === b.id && dropAt.before === it.id ? "drop-before" : ""}`}
@@ -713,7 +777,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                     {...dragProps({ type: "move", block: b.id, item: it.id })}
                     {...dropProps({ block: b.id, before: it.id })}
                   >
-                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} /> : null}
+                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
                     {it.text || "(ohne Text)"}
                     {it.hidden && <span className="badge">im Allgemeinteil</span>}
@@ -802,7 +866,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             if (!dragPayload.current) return;
             e.preventDefault();
             const t = sheetTargetAt(e.clientX, e.clientY);
-            if (t?.block !== dropAt?.block || t?.before !== dropAt?.before) setDropAt(t);
+            if (t?.block !== dropAt?.block || t?.before !== dropAt?.before || t?.cell !== dropAt?.cell) setDropAt(t);
           }}
           onDragLeave={(e) => {
             if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setDropAt(null);
@@ -814,6 +878,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           }}
         >
           <svg
+            ref={paperRef}
             className="legend-paper"
             viewBox={`0 0 ${W} ${H}`}
             width={W * zoom}
@@ -823,18 +888,19 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           >
             <rect width={W} height={H} fill="#fff" />
             {/* section backgrounds, then the grid above the paper, then everything else */}
-            {(placed?.prims ?? [])
+            {(shown?.prims ?? [])
               .filter((p) => p.t === "rect" && p.role === "background")
               .map((p, i) => (
                 <Prim key={`bg${i}`} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} />
               ))}
-            {showGrid && (placed?.prims ?? []).filter((p) => p.t === "grid").map((g) => <GridLines key={`g${g.block}`} g={g} />)}
-            {(placed?.prims ?? [])
+            {showGrid && (shown?.prims ?? []).filter((p) => p.t === "grid").map((g) => <GridLines key={`g${g.block}`} g={g} />)}
+            {(shown?.prims ?? [])
               .filter((p) => !(p.t === "rect" && p.role === "background") && p.t !== "grid")
               .map((p, i) => (
                 <Prim key={i} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
               ))}
-            {dropAt && placed && <DropMarker placed={placed} target={dropAt} doc={doc} />}
+            {dropAt && dropAt.cell !== undefined && preview && <DropCell layout={preview.layout} id={preview.id} />}
+            {dropAt && dropAt.cell === undefined && placed && <DropMarker placed={placed} target={dropAt} doc={doc} />}
           </svg>
         </div>
 
@@ -1095,6 +1161,16 @@ function GridLines({ g }: { g: LegendPrim }) {
   );
 }
 
+/** The cell a dragged entry will take, in the preview where the others already made room. */
+function DropCell({ layout, id }: { layout: LegendLayout; id: string }) {
+  const c = layout.prims.find((p) => p.t === "cell" && p.id === id);
+  if (!c) return null;
+  return (
+    <rect x={c.x + 0.3} y={c.y + 0.3} width={c.w - 0.6} height={c.h - 0.6} rx={0.8} fill="rgba(11,107,203,0.12)"
+      stroke="#0b6bcb" strokeWidth={0.5} pointerEvents="none" />
+  );
+}
+
 /** Blue line where a dragged entry will land. */
 function DropMarker({ placed, target, doc }: { placed: LegendLayout; target: DropTarget; doc: LegendDoc }) {
   const hits = placed.prims.filter((p) => p.t === "hit");
@@ -1116,9 +1192,14 @@ function DropMarker({ placed, target, doc }: { placed: LegendLayout; target: Dro
 }
 
 /** Small symbol icon for the lists on the left: the same drawing as on the sheet. */
-function SymIcon({ r }: { r?: SymbolRender }) {
+function SymIcon({ r, color = "#000000" }: { r?: SymbolRender; color?: string }) {
   if (!r?.svg || !r.box) return <span className="sym-icon empty" aria-hidden />;
-  return <svg className="sym-icon" viewBox={r.box.join(" ")} aria-hidden dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }} />;
+  // the icon sits on white: draw it in the section colour (black outside a section),
+  // never in the light text colour of the dark theme
+  return (
+    <svg className="sym-icon" viewBox={r.box.join(" ")} aria-hidden style={{ color, ["--sym-layer" as string]: tint(color, 0.45) }}
+      dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }} />
+  );
 }
 
 /** Mix a colour with white (share 0 = colour, 1 = white). */
@@ -1241,7 +1322,7 @@ function ItemProps({
   }, [item.id]);
 
   const listId = `lg-texts-${item.id}`;
-  const title = { symbol: "Symbol", line: "Linie", note: "Hinweis", text: "Freier Text" }[item.kind];
+  const title = { symbol: "Symbol", line: "Linie", note: "Hinweis", text: "Freier Text", gap: "Leere Zelle" }[item.kind];
   return (
     <>
       <h4>{title}</h4>

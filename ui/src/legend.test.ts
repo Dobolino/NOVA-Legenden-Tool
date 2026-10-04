@@ -22,6 +22,7 @@ import {
   moveItemTo,
   moveItemToBlock,
   normText,
+  placeInCell,
   push,
   redo,
   removeItem,
@@ -166,4 +167,24 @@ test("the general part: same text rule as the backend, hidden not deleted", () =
   ];
   assert.deepEqual(missingRows(d, rows, new Set(["neu"])).map((r) => r.family_key), ["melder"]);
   assert.deepEqual(coveredRows(rows, new Set(["neu"])).map((r) => r.family_key), ["neu"]);
+});
+
+
+test("cells: an occupied cell makes room, an empty cell keeps the others in place", () => {
+  const six = { ...doc(), blocks: [{ ...doc().blocks[0], items: ["a1", "a2", "a3", "b1", "b2", "b3", "c1"].map((id) => item(id, id)) }, doc().blocks[1]] };
+  const ids = (d: LegendDoc, b = 0) => d.blocks[b].items.map((it) => (it.kind === "gap" ? "_" : it.id));
+  // 3 columns of 3: c1 to the bottom of the third column (cell 8), cells 6 and 7 stay empty
+  const bottom = placeInCell(six, "a", 8, { block: "a", item: "c1" });
+  assert.deepEqual(ids(bottom), ["a1", "a2", "a3", "b1", "b2", "b3", "_", "_", "c1"]);
+  // phone-like: a1 onto b2 (cell 4), the entries in between move up by one
+  assert.deepEqual(ids(placeInCell(six, "a", 4, { block: "a", item: "a1" })), ["a2", "a3", "b1", "b2", "a1", "b3", "c1"]);
+  // a new entry onto an occupied cell pushes the others on, up to the next empty cell
+  const added = placeInCell(bottom, "a", 1, { item: item("n", "n") });
+  assert.deepEqual(ids(added), ["a1", "n", "a2", "a3", "b1", "b2", "b3", "_", "c1"]);
+  // from another section: the source closes up, the empty cells at its end go
+  const moved = placeInCell(bottom, "b", 0, { block: "a", item: "c1" });
+  assert.deepEqual(ids(moved), ["a1", "a2", "a3", "b1", "b2", "b3"]);
+  assert.deepEqual(ids(moved, 1), ["c1", "i3"]);
+  // onto its own cell: nothing changes
+  assert.equal(placeInCell(six, "a", 6, { block: "a", item: "c1" }), six);
 });

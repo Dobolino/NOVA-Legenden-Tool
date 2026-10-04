@@ -222,3 +222,32 @@ def test_several_legends_are_edited_and_saved_separately(editor):
     second = client.get(f"/api/projects/{a}/legend?legend={items[1]['id']}").json()["legend"]
     assert second["doc"]["title"]["text"] == "Brandmelder EG"
     assert title(client, a) == "Hauptlegende"
+
+
+def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
+    page, field, client, (a, b) = editor
+    doc = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]
+    entries = [{"id": f"e{k}", "kind": "text", "text": f"Eintrag {k}"} for k in range(4)]
+    doc["style"]["columns"] = 3
+    doc["blocks"] = [{"id": "blk", "title": "Test", "items": entries}]
+    assert client.put(f"/api/projects/{a}/legend", json={"doc": doc}).status_code == 200
+    page.get_by_role("tab", name="Legende", exact=True).click()       # reload the legend
+    page.get_by_role("button", name="Gesamtliste", exact=False).click()
+    page.get_by_role("button", name="Legende", exact=True).click()
+    first = page.locator('[data-hit="item"][data-id="e0"]')
+    last = page.locator('[data-hit="item"][data-id="e3"]')
+    playwright.expect(last).to_be_visible()
+    page.set_viewport_size({"width": 1600, "height": 1200})
+    first.scroll_into_view_if_needed()
+    src, ref = first.bounding_box(), last.bounding_box()
+    # 4 entries in 3 columns: 2, 2 and an empty third column; aim at its second row
+    tx, ty = ref["x"] + ref["width"] * 1.5, ref["y"] + ref["height"] / 2
+    page.mouse.move(src["x"] + 10, src["y"] + src["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(tx - 40, ty, steps=5)
+    page.mouse.move(tx, ty, steps=5)
+    page.wait_for_timeout(400)                 # live preview with the highlighted cell
+    page.mouse.up()
+    page.wait_for_timeout(1500)                # autosave
+    items = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]["blocks"][0]["items"]
+    assert [it["kind"] == "gap" and "_" or it["id"] for it in items] == ["_", "e1", "e2", "e3", "_", "e0"]

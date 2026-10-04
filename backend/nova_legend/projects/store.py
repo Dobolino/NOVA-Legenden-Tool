@@ -423,7 +423,8 @@ class Project:
         out = []
         for r in rows:
             doc = json.loads(r["doc"])
-            entries = sum(len(b.get("items") or []) for b in doc.get("blocks") or [])
+            entries = sum(1 for b in doc.get("blocks") or [] for it in b.get("items") or []
+                          if it.get("kind") != "gap")
             out.append({"id": r["id"], "name": r["name"], "updated_at": r["updated_at"],
                         "updated_by": r["updated_by"], "entries": entries})
         return out
