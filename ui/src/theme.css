@@ -1,0 +1,95 @@
+/* Brand colours come from the supplied edeco RGB logo. UI tokens do not change
+   category colours, symbol geometry or the exported legend. */
+:root {
+  --brand: #017c92;
+  --brand-orange: #ff8c00;
+  --cta: #ff8c00;
+  --cta-hover: #e07b00;
+  --on-cta: #1a1206;
+  --logo-ink: #111111;
+  --bg: #f4f7f8;
+  --panel: #ffffff;
+  --panel-2: #f8fafb;
+  --panel-sunken: #edf2f4;
+  --canvas: #e4ebee;
+  --fg: #203039;
+  --muted: #64757f;
+  --line: #e1e8ec;
+  --line-strong: #c6d3da;
+  --accent: var(--brand);
+  --accent-hover: #01667a;
+  --accent-soft: #e7f4f6;
+  --on-accent: #ffffff;
+  --danger: #bc3548;
+  --warn: #975b06;
+  --ok: #27734e;
+  --sym-layer: #b9c0c9;
+  --sym-bg: #ffffff;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --shadow: 0 2px 6px rgb(28 48 61 / 3%);
+  --shadow-pop: 0 12px 40px rgb(28 48 61 / 13%), 0 2px 8px rgb(28 48 61 / 5%);
+  --nav-width: 216px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --font-ui: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+  --duration: 140ms;
+  color-scheme: light;
+}
+
+/* System mode follows the operating system; explicit modes take precedence. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10191f;
+    --panel: #17232b;
+    --panel-2: #1c2b34;
+    --panel-sunken: #111d25;
+    --canvas: #24353f;
+    --fg: #e8f0f3;
+    --muted: #a3b5bf;
+    --line: #2d414d;
+    --line-strong: #48616f;
+    --accent: #64c3d1;
+    --accent-hover: #83d4df;
+    --accent-soft: #193e48;
+    --on-accent: #102a32;
+    --logo-ink: #ffffff;
+    --danger: #ff8b9b;
+    --warn: #efb967;
+    --ok: #7dcda1;
+    --sym-layer: #5b6570;
+    --sym-bg: #17232b;
+    --shadow: none;
+    --shadow-pop: 0 12px 40px rgb(0 0 0 / 32%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10191f;
+  --panel: #17232b;
+  --panel-2: #1c2b34;
+  --panel-sunken: #111d25;
+  --canvas: #24353f;
+  --fg: #e8f0f3;
+  --muted: #a3b5bf;
+  --line: #2d414d;
+  --line-strong: #48616f;
+  --accent: #64c3d1;
+  --accent-hover: #83d4df;
+  --accent-soft: #193e48;
+  --on-accent: #102a32;
+  --logo-ink: #ffffff;
+  --danger: #ff8b9b;
+  --warn: #efb967;
+  --ok: #7dcda1;
+  --sym-layer: #5b6570;
+  --sym-bg: #17232b;
+  --shadow: none;
+  --shadow-pop: 0 12px 40px rgb(0 0 0 / 32%);
+  color-scheme: dark;
+}

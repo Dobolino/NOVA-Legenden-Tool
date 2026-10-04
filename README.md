@@ -1,1 +1,88 @@
-# NOVA-Legenden-Tool
+# NOVA-Legenden
+
+Windows-Programm, das aus Trimble-Nova-Elektroplänen die Legende der Apparate erzeugt.
+
+Stand: **Phase 3 (Änderungen zwischen Importen)**. Das Programm zeigt alle Symbole aus den Nova-Datensätzen, ordnet sie Kategorien zu (für die ganze Firma) und liest Pläne (DXF, N4D, DWG) pro Geschoss in Projekte ein. Die Gesamtliste zeigt alle Apparate mit einer Spalte pro Geschoss. Ein erneuter Import desselben Geschosses zeigt, was neu ist, was fehlt und wo sich die Anzahl geändert hat.
+
+Berichte: [Phase 0](docs/PHASE0_BERICHT.md) · [Phase 1](docs/PHASE1.md) · [Phase 2](docs/PHASE2.md) · [Phase 3](docs/PHASE3.md)
+
+Oberfläche: [edeco-Design, Bedienung und anpassbare Designvariablen](docs/UI_REDESIGN.md). Die Programmoberfläche und ihre Hell-/Dunkelmodi verändern die Symbolfarben der Legende und den DXF-Export nicht.
+
+## Installation für die Firma
+
+1. `NOVA-Legenden-Setup-<Version>.exe` doppelklicken.
+2. Weiter, Fertig. Adminrechte sind nicht nötig. Das Programm landet im Benutzerprofil, auf dem Desktop erscheint ein Symbol.
+3. Beim ersten Start sucht das Programm die Nova-Datensätze selbst. Findet es sie nicht, trägst du den Pfad unter **Einstellungen** ein.
+4. Unter **Einstellungen → Firmenordner** tragen alle denselben Ordner ein, zum Beispiel `T:\_CAD\NOVA-Legenden`. Dort liegen die gemeinsamen Kategorien.
+
+Hinweis: Das Setup ist noch nicht digital signiert. Windows zeigt beim ersten Start «Der Computer wurde durch Windows geschützt». Klicke auf «Weitere Informationen» und «Trotzdem ausführen», oder lass die Datei von der IT freigeben.
+
+DWG-Dateien brauchen zusätzlich den kostenlosen ODA File Converter. DXF und N4D funktionieren ohne.
+
+### Woher kommt das Setup?
+
+GitHub baut es bei jeder Änderung automatisch und legt es unter **Releases** ab:
+https://github.com/Dobolino/NOVA-Legenden-Tool/releases/latest → unter «Assets» `NOVA-Legenden-Setup-<Version>.exe` anklicken.
+
+## Start aus dem Quellcode (Entwicklung)
+
+Voraussetzungen: Python 3.11 und Node.js 22.
+
+```
+start.bat
+```
+
+Der erste Start richtet alles ein und dauert einige Minuten. Danach öffnet sich das Programmfenster.
+
+Nur im Browser: `start.bat --browser`
+
+## Tests
+
+```
+.venv\Scripts\activate
+python -m pytest backend\tests -q
+```
+
+Tests mit echten Nova-Dateien laufen nur, wenn der Ordner `samples` die Beispieldateien enthält. Dieser Ordner und alle Ausgaben stehen in `.gitignore`. So landen keine Trimble- oder Firmendaten im Repository.
+
+Frontend- und Browser-Regressionstests:
+
+```
+cd ui
+npm ci
+npm test
+npm run build
+cd ..
+python -m pip install -r backend/requirements-browser-tests.txt
+python -m playwright install chromium
+python -m pytest backend/tests/test_editor_navigation.py -q
+```
+
+Die Browsertests verwenden temporäre Projekte und eine eigene lokale API. Sie prüfen sofortige Projekt- und Reiterwechsel, Speicherfehler mit erneutem Versuch, laufende Autosaves und das Duplizieren mit ausstehenden Änderungen. Ohne das optionale Playwright-Paket oder den UI-Build werden sie übersprungen; der Windows-Build installiert beides und führt sie mit den übrigen Backendtests aus. Für ein vorhandenes Chromium kann `NOVA_TEST_CHROMIUM` auf den ausführbaren Dateipfad gesetzt werden.
+
+## Phase-0-Analyse erneut ausführen
+
+```
+set PYTHONPATH=backend
+python -m nova_legend.analysis.phase0 --samples samples --out output\phase0
+```
+
+## Aufbau
+
+```
+backend/nova_legend/
+  __main__.py  Programmstart (Server + Fenster)
+  config.py    Einstellungen, Datenordner, Suche nach Datensätzen
+  api/         REST-Schnittstelle (FastAPI) für die Oberfläche
+  parser/      Nova-Datensatz (.nzp): Baumformat, Geometrie, Symbolkatalog
+  library/     Bibliotheks-Cache (SQLite) und Symbolfamilien
+  categories/  Kategorien und Zuordnungen der Firma (edeco ag-Legenden-firma.sqlite)
+  importer/    Plan-Import DXF, DWG (ODA), N4D und Erkennung
+  matcher/     Vorschläge für unbekannte Elemente
+  projects/    Projekte (Ordner pro Projekt, projekt.nlproj) und Gesamtliste
+  n4d/         N4D-Analyse (nur Lesen)
+  render/      SVG-Ausgabe der Symbole
+  analysis/    Phase-0-Skripte
+ui/            Oberfläche (React, TypeScript)
+packaging/     exe (PyInstaller) und Setup (Inno Setup)
+```

@@ -1,0 +1,105 @@
+name: Windows-Setup bauen
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to publish the setup as a release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Oberfläche bauen
+        working-directory: ui
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Python-Pakete installieren
+        run: pip install -r backend/requirements.txt -r packaging/requirements-windows.txt -r backend/requirements-browser-tests.txt
+
+      - name: Chromium für Browser-Regressionstests installieren
+        run: python -m playwright install chromium
+
+      - name: Tests
+        run: python -m pytest backend/tests -q
+
+      - name: Programmversion lesen
+        id: ver
+        shell: python
+        run: |
+          import os, re
+          text = open("backend/nova_legend/config.py", encoding="utf-8").read()
+          version = re.search(r'APP_VERSION = "([^"]+)"', text).group(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+
+      - name: exe bauen (PyInstaller)
+        run: |
+          Set-Content -Path backend/nova_legend/_build.py -Value "BUILD = ${{ github.run_number }}"
+          python packaging/make_icon.py
+          pyinstaller packaging/nova_legenden.spec --noconfirm
+
+      - name: exe kurz starten (Rauchtest)
+        shell: pwsh
+        run: |
+          $env:NOVA_LEGENDEN_HOME = "$env:RUNNER_TEMP\nl-home"
+          $p = Start-Process -FilePath "dist\NOVA-Legenden\NOVA-Legenden.exe" -ArgumentList "--server","--port","8799" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $r = Invoke-RestMethod "http://127.0.0.1:8799/api/status"; $ok = $true; break } catch { Start-Sleep 1 }
+          }
+          $page = Invoke-WebRequest "http://127.0.0.1:8799/" -UseBasicParsing
+          Stop-Process -Id $p.Id -Force
+          if (-not $ok) { Get-Content "$env:NOVA_LEGENDEN_HOME\nova-legenden.log" -ErrorAction SilentlyContinue; throw "Server startet nicht" }
+          if ($page.Content -notmatch "NOVA-Legenden") { throw "Oberfläche fehlt in der exe" }
+          if ($r.version_label -notmatch "Build ${{ github.run_number }}") { throw "Build-Nummer fehlt: $($r.version_label)" }
+          Write-Host "Rauchtest ok, Version $($r.version_label)"
+
+      - name: Setup bauen (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*\ISCC.exe" | Select-Object -First 1
+          }
+          & $iscc.FullName "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup fehlgeschlagen" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NOVA-Legenden-Setup-${{ steps.ver.outputs.version }}
+          path: dist-installer/*.exe
+          retention-days: 30
+
+      # Publish the setup as a GitHub release. Only builds of main become the
+      # "latest" release that installed programs update to by default; builds of
+      # other branches are pre-releases, offered only to programs set to
+      # "Auch Testversionen".
+      - name: Setup als Release veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}-build.${{ github.run_number }}
+          name: NOVA-Legenden ${{ steps.ver.outputs.version }} (Build ${{ github.run_number }})${{ github.ref_name != 'main' && ' Testversion' || '' }}
+          body: |
+            ${{ github.ref_name == 'main' && 'Freigegebene Version' || 'Testversion' }} aus dem Branch ${{ github.ref_name }}, Commit ${{ github.sha }}.
+            Herunterladen: unten unter «Assets» die Datei NOVA-Legenden-Setup-${{ steps.ver.outputs.version }}.exe.
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.ref_name != 'main' }}
+          make_latest: ${{ github.ref_name == 'main' && 'true' || 'false' }}
+          files: dist-installer/*.exe

@@ -1,0 +1,27 @@
+# Customer and vendor data (Trimble datasets, edeco templates, plans) stay local
+samples/
+output/
+data/
+*.nzp
+*.n4d
+*.n5q
+*.nsb
+*.dwg
+*.dxf
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Build output
+ui/dist/
+dist/
+build/
+dist-installer/
+packaging/app.ico
+ui/*.tsbuildinfo
