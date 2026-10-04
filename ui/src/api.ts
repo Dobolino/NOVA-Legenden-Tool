@@ -292,6 +292,17 @@ export interface CompanyLegend {
   bootstrap: boolean;
 }
 
+/** A company legend text of one symbol family. */
+export interface CompanyText {
+  family_key: string;
+  text: string;
+  updated_by: string | null;
+  updated_at: string | null;
+  title: string;
+  svg: string;
+  known: boolean;
+}
+
 export interface LegendInfo {
   legend: StoredLegend | null;
   template_texts: string[];
@@ -545,6 +556,9 @@ export const api = {
   /** The file name is part of the path, so the download keeps it even if the header is ignored. */
   legendExportUrl: (id: string, name: string, format: "dxf" | "dwg" | "pdf", block: string, general: boolean, legendId?: number | null) =>
     `/api/projects/${encodeURIComponent(id)}/legend/export/${encodeURIComponent(name)}?${qs({ format, block, general, ...(legendId ? { legend: legendId } : {}) })}`,
+  descriptions: () => request<{ items: CompanyText[]; file: string }>("GET", "/api/descriptions"),
+  descriptionsExportUrl: "/api/descriptions/export/edeco%20ag-Firmentexte.csv",
+  importDescriptions: (file: File) => upload<{ changed: number; removed: number; rows: number }>("/api/descriptions/import", {}, file),
   legendExportFile: async (url: string): Promise<Blob> => {
     const res = await fetch(url);
     if (!res.ok) {

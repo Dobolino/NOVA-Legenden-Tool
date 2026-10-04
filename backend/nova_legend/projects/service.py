@@ -6,6 +6,7 @@ from collections import defaultdict
 
 from ..categories.store import auto_categories
 from ..importer.model import Found
+from ..library.families import stencil_title
 from ..importer.recognize import LibraryIndex, resolve
 from ..matcher.suggest import suggest
 from .diff import diff_counts, tally, unchanged_count
@@ -81,7 +82,8 @@ class ProjectEvaluator:
                             "family_id": fam_id,
                             "family_key": row_key,
                             "symbol_key": rep.key,
-                            "title": fam.title if fam else sym.name,
+                            # the Bauteil name of the symbol in the plan, as in the Nova stencil
+                            "title": stencil_title(sym, self.options) if fam else sym.name,
                             "item": rep.item,
                             "dataset": rep.dataset,
                             "svg": rep.svg if show_fill or not rep.has_fill else rep.svg_nofill,

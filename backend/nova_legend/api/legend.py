@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 import shutil
 import tempfile
 from urllib.parse import quote
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from rapidfuzz import fuzz, process
@@ -75,6 +77,8 @@ class CompanyLegendIn(BaseModel):
     fill_off: bool | None = None
 
 
+CSV_HEADER = ["Symbol-Schlüssel", "Name aus der Schablone", "Firmentext", "Geändert von", "Geändert am"]
+
 _VIEWBOX = re.compile(r'viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"')
 ADMIN_ONLY = "Nur Admins aus den Firmeneinstellungen dürfen das ändern."
 
@@ -91,6 +95,10 @@ def export_name(meta: dict, part: str, ext: str) -> str:
     return f"{safe_folder_name('edeco ag-' + label + '-' + part)}.{ext}"
 
 
+# Nova catalogue codes of distribution boards (sheet 405 «Verteiler», in V1 also 390/400)
+DISTRIBUTION_ITEMS = {"UV", "UV_UP", "HV", "HV_UP", "ZV", "HSA_250", "HausAS"}
+
+
 def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set[str]:
     """Family keys of project rows the general part already shows.
 
@@ -99,10 +107,11 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
     row. Only an exact match of the normalised text counts; an unsure entry
     stays in the project sections.
     """
+    # distribution boards are explained in the general part, never in a section
+    out: set[str] = {r["family_key"] for r in rows if r.get("family_key") and r.get("item") in DISTRIBUTION_ITEMS}
     if not gen or not gen.kind:
-        return set()
+        return out
     fams, syms, texts = set(gen.family_keys), set(gen.symbol_keys), set(gen.texts)
-    out: set[str] = set()
     for row in rows:
         fk = row.get("family_key")
         if not fk:
@@ -531,12 +540,92 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             items.insert(0, {"text": company, "score": 100, "source": "Firmentext"})
         return {"items": items}
 
+    def family_titles() -> dict[str, tuple[str, str]]:
+        """Family key -> (stencil title, small drawing) of the first dataset that has it."""
+        out: dict[str, tuple[str, str]] = {}
+        for fam in st.library.families(st.family_options()).values():
+            out.setdefault(fam.key, (fam.title, fam.representative.svg or ""))
+        return out
+
+    @app.get("/api/descriptions")
+    def list_descriptions() -> dict:
+        """The company texts as a list: which symbol, which text, saved by whom."""
+        titles = family_titles()
+        items = []
+        for r in st.company.description_rows():
+            title, svg = titles.get(r["family_key"], ("", ""))
+            items.append({**r, "title": title, "svg": svg, "known": r["family_key"] in titles})
+        return {"items": items, "file": str(st.settings.company_db)}
+
+    @app.get("/api/descriptions/export/{file_name}")
+    def export_descriptions(file_name: str = "") -> Response:
+        titles = {k: v[0] for k, v in family_titles().items()}
+        name = "edeco ag-Firmentexte.csv"
+        return Response(descriptions_csv(st.company.description_rows(), titles), media_type="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+
+    @app.post("/api/descriptions/import")
+    async def import_descriptions(file: UploadFile = File(...)) -> dict:
+        """Texts from an edited export. An empty text removes the company text."""
+        try:
+            pairs = parse_descriptions_csv(await file.read())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        before = st.company.descriptions()
+        changed = removed = 0
+        for key, text in pairs:
+            if (before.get(key) or "") == text:
+                continue
+            st.company.set_description(key, text or None)
+            if text:
+                changed += 1
+            elif key in before:
+                removed += 1
+        return {"changed": changed, "removed": removed, "rows": len(pairs)}
+
     @app.put("/api/descriptions")
     def set_description(body: DescriptionIn) -> dict:
         if not body.family_key:
             raise HTTPException(400, "Familie fehlt")
         st.company.set_description(body.family_key, body.text)
         return {"ok": True, "text": st.company.descriptions().get(body.family_key)}
+
+
+def descriptions_csv(rows: list[dict], titles: dict[str, str]) -> bytes:
+    """Company texts for Excel: semicolons, UTF-8 with BOM, one family per line."""
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    w.writerow(CSV_HEADER)
+    for r in rows:
+        w.writerow([r["family_key"], titles.get(r["family_key"], ""), r["text"],
+                    r.get("updated_by") or "", r.get("updated_at") or ""])
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def parse_descriptions_csv(data: bytes) -> list[tuple[str, str]]:
+    """(family key, text) from a file written by descriptions_csv and edited in Excel."""
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("Die Datei ist keine Textdatei (CSV).")
+    lines = text.splitlines()
+    if not lines:
+        return []
+    delim = ";" if lines[0].count(";") >= lines[0].count(",") else ","
+    rows = list(csv.reader(lines, delimiter=delim))
+    head = [h.strip().lower() for h in rows[0]]
+    if "symbol-schlüssel" not in head or "firmentext" not in head:
+        raise ValueError("Spalten «Symbol-Schlüssel» und «Firmentext» fehlen. Exportiere die Liste und bearbeite diese Datei.")
+    ki, ti = head.index("symbol-schlüssel"), head.index("firmentext")
+    out = []
+    for row in rows[1:]:
+        if len(row) > max(ki, ti) and row[ki].strip():
+            out.append((row[ki].strip(), row[ti].strip()))
+    return out
 
 
 def _mm(value) -> float | None:

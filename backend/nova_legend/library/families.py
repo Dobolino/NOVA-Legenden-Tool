@@ -12,6 +12,10 @@ Rule (confirmed by the user on 30.09.2026):
    and reported when it disagrees with the name rule.
 3. The representative is the UP variant with the standard label. If no UP
    variant exists: NUP, then EB, then no mounting, then AP, then NAP.
+4. The family title is the Bauteil description, as Nova shows it in the
+   stencil (Schablone): "Stellantrieb", not the graphic name "1". A graphic
+   name that only names a drawing variant ("Kreuz", "Gefüllt", "1") is grouped
+   together with its Bauteil, so "UKV Rack" and "UV" never share a family.
 """
 
 from __future__ import annotations
@@ -36,6 +40,8 @@ ORIENTATION = re.compile(
     r"(?<![A-Za-zäöü])(liegend|stehend|rechts|links)(\s*-?\d+°)?(?![A-Za-zäöü])", re.I)
 MOUNT_TOKEN = re.compile(r"(?<![A-Za-z0-9])(NUP|NAP|UP|AP|EB)(?![A-Za-z0-9])")
 REP_ORDER = ["UP", "NUP", "EB", None, "AP", "NAP"]
+# graphic names that only name a drawing variant of a Bauteil
+VARIANT_NAME = re.compile(r"^(\d+|kreuz|diagonal|diagonal gefüllt|gefüllt|leer|var\.?\s*\d+)$", re.I)
 
 
 @dataclass(frozen=True)
@@ -77,6 +83,22 @@ def family_key(name: str, options: FamilyOptions = FamilyOptions()) -> str:
     return n.lower()
 
 
+def group_name(sym: Symbol) -> str:
+    """Name that decides the family: the graphic name, with its Bauteil in front when
+    the graphic name only names a variant."""
+    name = sym.name or ""
+    part = (getattr(sym, "part_name", "") or "").strip()
+    if part and VARIANT_NAME.match(_tidy(name)):
+        return f"{part} ({name})"
+    return name
+
+
+def stencil_title(sym: Symbol, options: FamilyOptions = FamilyOptions()) -> str:
+    """Title as in the Nova stencil: the Bauteil description without the mounting."""
+    part = (getattr(sym, "part_name", "") or "").strip()
+    return family_title(part, options) if part else family_title(sym.name, options)
+
+
 @dataclass
 class Family:
     key: str
@@ -113,13 +135,13 @@ def build_families(symbols: list[Symbol], options: FamilyOptions = FamilyOptions
     """Group symbols of ONE dataset into families."""
     groups: dict[str, list[Symbol]] = defaultdict(list)
     for s in symbols:
-        groups[family_key(s.name, options)].append(s)
+        groups[family_key(group_name(s), options)].append(s)
 
     families: list[Family] = []
     by_key: dict[str, Family] = {}
     for key, members in groups.items():
         rep = min(members, key=_rep_rank)
-        fam = Family(key, family_title(rep.name, options), rep, sorted(members, key=_rep_rank))
+        fam = Family(key, stencil_title(rep, options), rep, sorted(members, key=_rep_rank))
         families.append(fam)
         by_key[key] = fam
 
@@ -130,8 +152,8 @@ def build_families(symbols: list[Symbol], options: FamilyOptions = FamilyOptions
         if not ap_sheet or "-" not in s.item:
             continue
         twin = index.get((f"{ap_sheet}-{s.item.split('-', 1)[1]}", s.graphic_id))
-        if twin and family_key(twin.name, options) != family_key(s.name, options):
-            fam = by_key[family_key(s.name, options)]
+        if twin and family_key(group_name(twin), options) != family_key(group_name(s), options):
+            fam = by_key[family_key(group_name(s), options)]
             fam.conflicts.append(
                 f"Code-Paar {s.item} / {twin.item} hat abweichende Namen: "
                 f"«{s.name}» / «{twin.name}»")

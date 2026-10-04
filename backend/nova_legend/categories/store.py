@@ -307,6 +307,11 @@ class CompanyStore:
         with self._tx() as con:
             return {r["family_key"]: r["text"] for r in con.execute("SELECT * FROM descriptions")}
 
+    def description_rows(self) -> list[dict]:
+        """All company texts with who saved them last, by family key."""
+        with self._tx() as con:
+            return [dict(r) for r in con.execute("SELECT * FROM descriptions ORDER BY family_key")]
+
     def set_description(self, family_key: str, text: str | None) -> None:
         """Standard legend text of a family. Empty or None goes back to the library name."""
         with self._tx() as con:

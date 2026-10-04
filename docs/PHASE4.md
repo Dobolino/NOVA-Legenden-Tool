@@ -55,6 +55,16 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 - Ein neues Projekt startet mit dem Firmen-Standard (Einstellungen → Legende der Firma). Mit Vorlage kommen Werte und Legende aus der Vorlage.
 - Eine Änderung im Projekt gilt nur dort. «Für neue Projekte merken» schreibt die beiden Werte in den Firmen-Standard (nur Admins). Bestehende Projekte bleiben unverändert.
 
+## Texte der Einträge und Firmentexte
+
+- Der Vorschlag nimmt den Firmentext. Ohne Firmentext nimmt er die Bezeichnung aus der Nova-Schablone (Bauteil-Bezeichnung ohne UP/AP), z. B. «Stellantrieb» statt des Grafiknamens «1», «UKV Rack» statt «Kreuz».
+- Grafiknamen, die nur eine Variante bezeichnen («Kreuz», «Gefüllt», «1»), bilden zusammen mit ihrem Bauteil eine Familie. UKV Rack und Verteiler teilen sich so keine Familie mehr.
+- Firmentext speichern: im Editor einen Eintrag anklicken, Text ändern, «Als Firmentext speichern». Er gilt für die ganze Symbolfamilie in allen neuen Legenden, egal ob der Apparat über Katalogcode oder Namen erkannt wird.
+- Liste: Einstellungen → Firmentexte. Suchen, ändern, entfernen. «Für Excel exportieren (CSV)» schreibt `edeco ag-Firmentexte.csv` (Semikolon, UTF-8). In Excel die Spalte «Firmentext» ändern, als CSV speichern, mit «Aus CSV übernehmen» einlesen. Ein leerer Text entfernt den Firmentext.
+- Speicherort: Firmenordner (Einstellungen → Firmenordner), Datei `edeco ag-Legenden-firma.sqlite`, Tabelle `descriptions`.
+- Verteiler (UV, HV, ZV, HAK, Hausanschluss) gehören in den Allgemeinteil. Der Vorschlag lässt sie weg, die Prüfung meldet sie nicht als fehlend. Links lassen sie sich trotzdem einfügen.
+- NUP und andere Montagearten: ein Eintrag pro Funktion. Was NUP bedeutet, steht im Allgemeinteil.
+
 ## Freier Text
 
 Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster wie ein Eintrag, in einem Abschnitt, und nutzt die gemeinsame Schriftgrösse. Ohne gewählten Abschnitt entsteht ein Abschnitt «Zusatztext». Entfernen über das Mülleimer-Symbol («Text entfernen»). Alte freie Texte (Version 1) wandern beim Öffnen in einen Abschnitt «Zusatztext».

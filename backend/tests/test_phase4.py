@@ -887,3 +887,23 @@ def test_company_standard_for_fills_reaches_new_legends(env, monkeypatch, tmp_pa
     pid = _project(client, tmp)
     style = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]["style"]
     assert style["hatch_off"] is True and style["fill_off"] is False
+
+
+def test_company_texts_list_export_and_import(env):  # noqa: F811
+    client, tmp = env
+    fam = client.get("/api/library/families").json()["items"][0]
+    key = fam["key"]
+    assert client.put("/api/descriptions", json={"family_key": key, "text": "Schalter einfach"}).status_code == 200
+    items = client.get("/api/descriptions").json()
+    assert items["file"].endswith("edeco ag-Legenden-firma.sqlite")
+    row = items["items"][0]
+    assert row["family_key"] == key and row["text"] == "Schalter einfach" and row["known"] and row["title"]
+    csv_bytes = client.get("/api/descriptions/export/x.csv").content
+    assert csv_bytes.startswith("﻿".encode()) and b"Schalter einfach" in csv_bytes
+    # edited in Excel (saved as cp1252), one text changed
+    edited = csv_bytes.decode("utf-8-sig").replace("Schalter einfach", "Schalter, Schema 0 (Grösse I)").encode("cp1252")
+    res = client.post("/api/descriptions/import", files={"file": ("t.csv", edited)}).json()
+    assert res == {"changed": 1, "removed": 0, "rows": 1}
+    assert client.get("/api/descriptions").json()["items"][0]["text"] == "Schalter, Schema 0 (Grösse I)"
+    bad = client.post("/api/descriptions/import", files={"file": ("t.csv", b"a;b\n1;2\n")})
+    assert bad.status_code == 400

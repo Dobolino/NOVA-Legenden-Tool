@@ -717,3 +717,9 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .legend-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .legend-tabs-end { margin-left: auto; display: flex; gap: 6px; }
 .legend-cat-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 12px; margin: 4px 0 8px 26px; max-height: 220px; overflow-y: auto; }
+
+/* company texts list */
+.ct-icon { display: inline-flex; width: 26px; height: 26px; background: #fff; border-radius: 4px; padding: 2px; color: #000; vertical-align: middle; }
+.ct-icon svg { width: 100%; height: 100%; }
+.ct-table td { vertical-align: middle; }
+.ct-table input.input { width: 100%; min-width: 180px; }
