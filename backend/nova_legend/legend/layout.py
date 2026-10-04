@@ -299,7 +299,7 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
         chunk = items[c * per_col:(c + 1) * per_col]
         for i, item in enumerate(chunk):
             cy += _entry(item, boxes[item["id"]], body, block, cx0, cy, colw, ts, row, axis, text_x, st,
-                         fixed, cap, bool(style.get("strip_fill")))
+                         fixed, cap, (bool(style.get("hatch_off")), bool(style.get("fill_off"))))
             if gap_mm and i < len(chunk) - 1:
                 cy += gap_mm
         col_heights.append(cy - (top + head_h + pad))
@@ -340,7 +340,7 @@ def _line_cap(style: dict) -> int:
 
 
 def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
-           fixed_h: float | None = None, lines_n: int = 0, strip_fill: bool = False) -> float:
+           fixed_h: float | None = None, lines_n: int = 0, fills_off: tuple[bool, bool] = (False, False)) -> float:
     """Draw one entry at the top of its slot, return the slot height."""
     kind = item["kind"]
     its = ts * float(item.get("text_scale") or 1.0)
@@ -374,7 +374,7 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
                     "ax": round(box["ax"], 4), "ay": round(box["ay"], 4), "mirror": bool(item.get("mirror")),
                     "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
                     "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
-                    "strip_fill": strip_fill, "color": st.get("symbol") or "#000000"})
+                    "hatch_off": fills_off[0], "fill_off": fills_off[1], "color": st.get("symbol") or "#000000"})
     elif kind == "line":
         out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],

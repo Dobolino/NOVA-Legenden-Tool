@@ -56,7 +56,9 @@ class SymbolRequest(BaseModel):
 
 class SymbolsIn(BaseModel):
     items: list[SymbolRequest]
-    strip_fill: bool = False
+    strip_fill: bool = False        # older clients: both off
+    hatch_off: bool = False
+    fill_off: bool = False
 
 
 class DescriptionIn(BaseModel):
@@ -69,6 +71,8 @@ class CompanyLegendIn(BaseModel):
     admins: list[str] | None = None
     text_size: float | None = None
     symbol_scale: float | None = None
+    hatch_off: bool | None = None
+    fill_off: bool | None = None
 
 
 _VIEWBOX = re.compile(r'viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"')
@@ -123,6 +127,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         user = config.current_user()
         return {"general_path": s["legend_general_path"], "admins": admins,
                 "text_size": s["legend_text_size"], "symbol_scale": s["legend_symbol_scale"],
+                "hatch_off": bool(s["legend_hatch_off"]), "fill_off": bool(s["legend_fill_off"]),
                 "user": user, "is_admin": (not admins) or user.lower() in {a.lower() for a in admins},
                 "bootstrap": not admins}
 
@@ -202,6 +207,10 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             values["legend_text_size"] = max(1.0, min(10.0, body.text_size))
         if body.symbol_scale is not None:
             values["legend_symbol_scale"] = max(0.2, min(5.0, body.symbol_scale))
+        if body.hatch_off is not None:
+            values["legend_hatch_off"] = body.hatch_off
+        if body.fill_off is not None:
+            values["legend_fill_off"] = body.fill_off
         st.company.set_legend_settings(values)
         return get_company_legend()
 
@@ -273,9 +282,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             if geo is None:
                 out.append({**base, "svg": "", "missing": st.library.symbol(req.symbol_key) is None})
                 continue
-            show_fill = False if body.strip_fill else fills.get(req.family_key or "", True)
+            # a symbol whose fill is switched off in the library stays without any fill
+            own = fills.get(req.family_key or "", True)
+            show_fill = own and not (body.fill_off or body.strip_fill)
+            show_soft = own and not (body.hatch_off or body.strip_fill)
             svg = render_svg(geo, None, show_points=False, show_fill=show_fill,
-                             own_colors=True)
+                             own_colors=True, show_soft=show_soft)
             m = _VIEWBOX.search(svg)
             out.append({**base, "svg": svg, "box": [float(v) for v in m.groups()] if m else [0, 0, 5, 5]})
         return {"items": out}
@@ -287,7 +299,9 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         c = company_legend()
         return normalize_style({"text_size": s.get("text_size", c["text_size"]),
                                 "symbol_scale": s.get("symbol_scale", c["symbol_scale"]),
-                                "columns": s.get("columns", 2)})
+                                "columns": s.get("columns", 2),
+                                "hatch_off": s.get("hatch_off", c["hatch_off"]),
+                                "fill_off": s.get("fill_off", c["fill_off"])})
 
     def stored_legend(p, legend_id: int | None) -> dict | None:
         """One legend of the project (the first without an id); 404 for an unknown id."""

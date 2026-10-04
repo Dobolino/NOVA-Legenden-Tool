@@ -37,7 +37,7 @@ import type { LegendDoc } from "./legend.ts";
 const style = {
   font: "Arial", text_size: 2.5, symbol_scale: 1, grid: "standard", row: 4.55, text_offset: 9.75,
   columns: 2, width: 200, margin: 5, plan_scale: 50, section_gap: 0, entry_gap: 0, text_lines: 0,
-  strip_fill: false, frame_on: false, frame: "#000000",
+  hatch_off: false, fill_off: false, frame_on: false, frame: "#000000",
 };
 
 function item(id: string, family: string | null) {

@@ -194,7 +194,8 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
 
   // symbol drawings for the placed symbols (and those of a general part from a template project),
   // plus the small icons of the lists on the left (same drawing, without length)
-  const stripFill = Boolean(doc?.style.strip_fill);
+  // "10" = hatches off, "01" = solid fills off: a change reloads the drawings
+  const stripFill = `${doc?.style.hatch_off ? 1 : 0}${doc?.style.fill_off ? 1 : 0}`;
   const stripSeen = useRef(stripFill);
   const symbolGen = useRef(0);
   useEffect(() => {
@@ -219,7 +220,8 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     const list = [...need.entries()];
     const gen = ++symbolGen.current;
     api
-      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm })), stripFill)
+      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm })),
+        { hatch_off: stripFill[0] === "1", fill_off: stripFill[1] === "1" })
       .then((r) => {
         if (gen !== symbolGen.current || stripSeen.current !== stripFill) return;
         setSymbols((prev) => {
@@ -1609,9 +1611,14 @@ function DocProps({
         </label>
       </div>
       <label className="toggle" style={{ color: "var(--fg)" }}>
-        <input type="checkbox" checked={Boolean(s.strip_fill)} onChange={(e) => setStyle({ strip_fill: e.target.checked })} />
-        Symbol-Hintergründe/Schraffuren entfernen
+        <input type="checkbox" checked={Boolean(s.hatch_off)} onChange={(e) => setStyle({ hatch_off: e.target.checked })} />
+        Weiche Schraffur aus (alle Symbole)
       </label>
+      <label className="toggle" style={{ color: "var(--fg)" }}>
+        <input type="checkbox" checked={Boolean(s.fill_off)} onChange={(e) => setStyle({ fill_off: e.target.checked })} />
+        Volle Flächen aus (alle Symbole)
+      </label>
+      <p className="hint">Weiche Schraffur: Schraffuren und helle Flächen hinter Linien. Volle Flächen: ganz ausgefüllte Teile, z. B. der Anschlusspunkt oder die halbe Fläche bei AP. Die Umrisse bleiben. Gilt in Vorschau, DXF und PDF.</p>
       <p className="hint">
         {(s.symbol_size ?? "tile") === "real"
           ? "Echte Grösse: Jedes Symbol hat den gemeinsamen Massstab und sitzt mit seinem Einfügepunkt auf der Achse. Ein grosses Symbol belegt mehr Rasterzeilen."

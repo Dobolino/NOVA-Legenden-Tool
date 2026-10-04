@@ -285,6 +285,8 @@ export interface CompanyLegend {
   admins: string[];
   text_size: number;
   symbol_scale: number;
+  hatch_off: boolean;
+  fill_off: boolean;
   user: string;
   is_admin: boolean;
   bootstrap: boolean;
@@ -560,10 +562,10 @@ export const api = {
   rememberLegend: (id: string, doc: LegendDoc) =>
     request<CompanyLegend>("POST", `/api/projects/${encodeURIComponent(id)}/legend/remember`, { doc }),
   companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),
-  saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number }) =>
+  saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number; hatch_off?: boolean; fill_off?: boolean }) =>
     request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
-  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[], stripFill = false) =>
-    request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items, strip_fill: stripFill }),
+  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[], fills: { hatch_off: boolean; fill_off: boolean } = { hatch_off: false, fill_off: false }) =>
+    request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items, ...fills }),
   diagnostics: (projectId = "") =>
     request<Record<string, unknown>>("GET", `/api/diagnostics${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`),
   legendTexts: (q: string, familyKey = "") =>

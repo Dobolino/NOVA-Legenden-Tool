@@ -60,7 +60,8 @@ export interface LegendStyle {
   section_gap: number;
   entry_gap: number; // millimetres between rows; 0 means the rows touch
   text_lines: number; // 0 automatic, 1–3 fixed line count and one row height
-  strip_fill: boolean; // legend-wide: drop symbol fills and hatches, keep the strokes
+  hatch_off?: boolean; // legend-wide: no hatches and light areas in symbols
+  fill_off?: boolean; // legend-wide: no solid fills in symbols, the outlines stay
   symbol_size?: "real" | "tile"; // real size on the insertion point (default) or equal tiles
   frame_on: boolean; // border round the whole legend
   frame: string;

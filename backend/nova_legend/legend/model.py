@@ -113,7 +113,8 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
     return {"font": "Arial", "text_size": text_size, "symbol_scale": symbol_scale,
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
-            "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0, "strip_fill": False,
+            "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0,
+            "hatch_off": False, "fill_off": False,
             "symbol_size": "tile",
             "frame_on": False, "frame": "#000000"}
 
@@ -157,7 +158,11 @@ def normalize_style(value) -> dict:
     except (TypeError, ValueError):
         lines = 0
     style["text_lines"] = lines if lines in (1, 2, 3) else 0
-    style["strip_fill"] = bool(v.get("strip_fill"))
+    # symbol fills, for all symbols: soft (hatches, light areas) and solid separately;
+    # "strip_fill" of older legends removed both
+    old = bool(v.get("strip_fill"))
+    style["hatch_off"] = bool(v.get("hatch_off", old))
+    style["fill_off"] = bool(v.get("fill_off", old))
     # "tile" (default): every drawing fills 75 % of one tile sized from the text;
     # "real": every symbol at the common scale, on its insertion point, in grid rows
     style["symbol_size"] = "real" if v.get("symbol_size") == "real" else "tile"

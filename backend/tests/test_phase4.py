@@ -842,3 +842,48 @@ def test_export_pdf_draws_the_legend_on_one_page(env, monkeypatch, tmp_path):  #
         header = doc["blocks"][0]["style"]["header"].lstrip("#")
         r, g, b = (int(header[i:i + 2], 16) / 255 for i in (0, 2, 4))
         assert f"{r:.3f} {g:.3f} {b:.3f} rg" in ops
+
+
+def test_soft_hatch_and_solid_fill_are_switched_off_separately():
+    from nova_legend.legend.export import build_dxf
+    from nova_legend.parser.geometry import Primitive, SymbolGeometry
+    from nova_legend.render.svg import render_svg
+
+    def flex(pts):
+        return {"points": pts, "closed": True, "segments": []}
+
+    geo = SymbolGeometry(primitives=[
+        Primitive("hatch", "X", True, flex([[0, 0], [0.004, 0], [0.004, 0.004], [0, 0.004]])),   # soft
+        Primitive("polygon", "X", True, flex([[0.005, 0], [0.008, 0], [0.008, 0.003]])),         # solid
+        Primitive("line", "X", False, {"start": [0, 0], "end": [0.008, 0.004]}),
+    ])
+    both = render_svg(geo, None, show_points=False, own_colors=True)
+    assert 'fill-opacity="0.35"' in both and both.count('fill="currentColor"') == 2
+    no_soft = render_svg(geo, None, show_points=False, own_colors=True, show_soft=False)
+    assert "fill-opacity" not in no_soft and 'fill="currentColor"' in no_soft
+    no_solid = render_svg(geo, None, show_points=False, own_colors=True, show_fill=False, show_soft=True)
+    assert 'fill-opacity="0.35"' in no_solid and no_solid.count('fill="currentColor"') == 1
+
+    def hatches(**style):
+        doc = normalize({"style": style, "blocks": [{"id": "A", "title": "A", "items": [
+            {"id": "i", "kind": "symbol", "symbol_key": "k", "text": "Symbol"}]}]})
+        dxf = build_dxf(layout(doc), None, lambda p: geo)
+        return [h for b in dxf.blocks if b.name.startswith("k_") for h in b.query("HATCH")]
+
+    assert len(hatches()) == 2
+    assert len(hatches(hatch_off=True)) == 1          # the solid polygon keeps its fill
+    assert len(hatches(fill_off=True)) == 1           # the soft hatch stays
+    assert len(hatches(hatch_off=True, fill_off=True)) == 0
+    # older legends: «Symbol-Hintergründe entfernen» switched both off
+    old = normalize({"version": 3, "style": {"strip_fill": True}, "blocks": []})["style"]
+    assert old["hatch_off"] and old["fill_off"]
+
+
+def test_company_standard_for_fills_reaches_new_legends(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    info = client.put("/api/company/legend", json={"hatch_off": True}).json()
+    assert info["hatch_off"] is True and info["fill_off"] is False
+    pid = _project(client, tmp)
+    style = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]["style"]
+    assert style["hatch_off"] is True and style["fill_off"] is False

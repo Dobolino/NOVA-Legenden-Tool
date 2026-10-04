@@ -135,6 +135,16 @@ export default function CompanyLegendCard({
           Speichern
         </button>
       </div>
+      <label className="toggle" style={{ marginTop: 8 }}>
+        <input type="checkbox" checked={info.hatch_off} disabled={locked || busy}
+          onChange={(e) => save({ hatch_off: e.target.checked }, "Firmen-Standard gespeichert. Bestehende Projekte bleiben unverändert.")} />
+        Weiche Schraffur in Symbolen aus (neue Projekte)
+      </label>
+      <label className="toggle">
+        <input type="checkbox" checked={info.fill_off} disabled={locked || busy}
+          onChange={(e) => save({ fill_off: e.target.checked }, "Firmen-Standard gespeichert. Bestehende Projekte bleiben unverändert.")} />
+        Volle Flächen in Symbolen aus (neue Projekte)
+      </label>
       <p className="hint">Jedes neue Projekt startet mit diesen Werten, ausser es wird aus einer Vorlage erstellt. Dann gelten die Werte der Vorlage.</p>
     </div>
   );

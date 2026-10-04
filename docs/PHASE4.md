@@ -38,6 +38,7 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 
 - Voreinstellung: Kopfleiste in der Planfarbe der Legendenebene (Reiter «Ebenen und Farben»), helle Schrift auf dunkler Leiste, dunkle auf heller. Hintergrund aus, Umrandung aus, Text schwarz, das Papier bleibt weiss.
 - Symbole zeichnet das Programm in der Farbe des Abschnitts, also der Planfarbe der Legendenebene. Hat die Kategorie keine Planfarbe, sind sie schwarz. Eine eigene Farbe im Nova-Symbol bleibt. Eine Fläche ohne eigene Farbe in einem Symbol mit farbigen Teilen wird ein heller Ton der Abschnittsfarbe (45 %), damit die Linien sichtbar bleiben. Gilt in Vorschau, DXF und PDF.
+- Im Feld «Legende» zwei Schalter für alle Symbole: «Weiche Schraffur aus» entfernt Schraffuren und helle Flächen hinter Linien. «Volle Flächen aus» entfernt ganz ausgefüllte Teile, z. B. den Anschlusspunkt. Die Umrisse bleiben. Beide gelten in Vorschau, DXF und PDF. Der Firmen-Standard für neue Projekte steht in Einstellungen → Legende der Firma. Das alte «Symbol-Hintergründe/Schraffuren entfernen» wird zu beiden Schaltern.
 - Legenden aus Version 3 übernehmen beim Öffnen die Abschnittsfarbe für die Symbole.
 - Legenden aus Version 2 verlieren beim Öffnen Fläche, Umrandung und die Symbolfärbung. Die Kopfleiste bleibt.
 

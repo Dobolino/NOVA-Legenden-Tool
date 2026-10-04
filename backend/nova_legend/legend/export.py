@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 from ..parser.geometry import flex_points, sample_arc, sample_ellipse, sample_spline
-from ..render.svg import geometry_bounds, is_mixed, own_paint
+from ..render.svg import geometry_bounds, is_mixed, is_soft, own_paint
 from .general import GeneralPart
 from .model import tint
 
@@ -173,7 +173,7 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, f
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
     layer_color = prim.get("color") or "#000000"
     key = (f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|"
-           f"{int(bool(prim.get('strip_fill')))}|{layer_color}")
+           f"{int(bool(prim.get('hatch_off')))}{int(bool(prim.get('fill_off')))}|{layer_color}")
     if key in cache:
         return cache[key]
     base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
@@ -193,14 +193,15 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         fill = own_paint(p.color, mixed, True, layer_color)
         if p.kind == "hatch":
             fill = tint(fill, 0.65)       # the preview shows hatches at 35 % opacity
-        if prim.get("strip_fill") and (p.kind == "hatch" or p.filled):
-            if p.kind == "hatch":
-                continue
+        # a hidden fill: hatches vanish, filled outlines keep their line
+        drop_fill = bool(p.filled) and bool(prim.get("hatch_off") if is_soft(p, mixed) else prim.get("fill_off"))
+        if drop_fill and p.kind == "hatch":
+            continue
         if p.kind == "line":
             colored(blk.add_line(_mm(d["start"]), _mm(d["end"])), line)
             continue
         if p.kind == "arc" and d.get("full"):
-            if p.filled and not prim.get("strip_fill"):
+            if p.filled and not drop_fill:
                 h = colored(blk.add_hatch(), fill)
                 h.paths.add_polyline_path([_mm(q) for q in sample_arc(d, 48)], is_closed=True)
             colored(blk.add_circle(_mm(d["center"]), d["radius"] * 1000), line)
@@ -225,7 +226,7 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         if len(pts) < 2:
             continue
         mm = [_mm(q) for q in pts]
-        if p.filled and len(mm) >= 3 and not prim.get("strip_fill"):
+        if p.filled and len(mm) >= 3 and not drop_fill:
             h = colored(blk.add_hatch(), fill)
             h.paths.add_polyline_path(mm, is_closed=True)
         colored(blk.add_lwpolyline(mm, close=closed), line)

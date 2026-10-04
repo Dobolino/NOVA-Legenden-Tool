@@ -72,6 +72,12 @@ LAYER_FILL = "var(--sym-layer, #b9c0c9)"   # layer colour next to explicit black
 BACKGROUND = "var(--sym-bg, #ffffff)"      # white masking areas
 
 
+def is_soft(p, mixed: bool) -> bool:
+    """A soft fill: a hatch, or an area without own colour next to coloured lines
+    (drawn as a light tone). Everything else that is filled is a solid fill."""
+    return p.kind == "hatch" or (bool(p.filled) and mixed and not p.color)
+
+
 def has_fill(geo: SymbolGeometry) -> bool:
     """True if the symbol has filled areas or hatches (the fill can be hidden)."""
     return any(p.filled for p in geo.primitives)
@@ -125,7 +131,10 @@ def is_mixed(geo: SymbolGeometry) -> bool:
 
 def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
                stroke_mm: float = 0.18, title: str | None = None, show_fill: bool = True,
-               own_colors: bool = False) -> str:
+               own_colors: bool = False, show_soft: bool | None = None) -> str:
+    """``show_fill`` False hides the fills; with ``show_soft`` given, it decides on its
+    own for hatches and light areas and ``show_fill`` only for solid fills."""
+    soft_shown = show_fill if show_soft is None else show_soft
     x0, y0, x1, y1 = geometry_bounds(geo)   # full symbol, also when the fill is hidden
     pad = max(x1 - x0, y1 - y0, 0.002) * 0.12
     x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
@@ -135,7 +144,7 @@ def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool 
     mixed = is_mixed(geo)
     parts: list[str] = []
     for p in geo.primitives:
-        if p.filled and not show_fill:
+        if p.filled and not (soft_shown if is_soft(p, mixed) else show_fill):
             continue
         d = p.data
         if own_colors:
