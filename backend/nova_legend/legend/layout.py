@@ -281,9 +281,15 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     lh = its * LINE_FACTOR
     tx = cx0 + text_x
     lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
-    reserve = lines_n if lines_n else 1
-    lines = lines[:reserve] or [""]
-    h = fixed_h if fixed_h is not None else max(row, reserve * lh)
+    if lines_n:
+        # a chosen line count: every row has the same height, extra lines are dropped
+        reserve = lines_n
+        lines = lines[:reserve] or [""]
+        h = fixed_h if fixed_h is not None else max(row, reserve * lh)
+    else:
+        # automatic: a long text wraps and its row grows, nothing is cut off
+        reserve = len(lines) or 1
+        h = max(fixed_h or row, reserve * lh + TEXT_CLEARANCE)
     mid = cy + h / 2
     sx = cx0 + axis
     w = box["left"] + box["right"]

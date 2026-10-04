@@ -667,3 +667,19 @@ def test_diagnostics_report_has_no_geometry(env):
     body = res.json()
     assert body["programm"] == "edeco ag - NOVA Legenden"
     assert "svg" not in body
+
+
+def test_automatic_text_lines_never_cut_a_long_text():
+    long = ("Steckdose T13, 3-fach, geschaltet, mit Kinderschutz und Deckel für Feuchtraum IP55 in "
+            "Aufputz-Ausführung, Farbe weiss, Montage auf Brüstungskanal neben dem Arbeitsplatz")
+    doc = normalize({"version": 3, "blocks": [{"id": "A", "title": "A", "items": [
+        {"id": "s", "kind": "symbol", "symbol_key": "k", "text": long},
+        {"id": "t", "kind": "symbol", "symbol_key": "k2", "text": "Taster"}]}]})
+    assert doc["style"]["text_lines"] == 0
+    lay = layout(doc, {"s": (-2.5, 0, 2.5, 5, False), "t": (-2.5, 0, 2.5, 5, False)})
+    shown = " ".join(p["text"] for p in lay["prims"] if p["t"] == "text" and p.get("item") == "s")
+    assert shown.split() == long.split()                                    # every word is on the sheet
+    rows = {h["id"]: h for h in boxes(lay)}
+    assert rows["s"]["h"] > rows["t"]["h"]                                  # the long text's row grows
+    for t in [p for p in lay["prims"] if p["t"] == "text" and p.get("item") == "s"]:
+        assert rows["s"]["y"] <= t["y"] - t["size"] and t["y"] <= rows["s"]["y"] + rows["s"]["h"]
