@@ -17,7 +17,8 @@ export interface LegendItem {
   line_length: number;
   text_scale: number; // factor on the common text size, 1 = common size
   symbol_factor: number; // factor on the common symbol scale for this symbol only
-  rotation: number; // 0, 90, 180, 270 (counter-clockwise, like the DXF)
+  rotation: number; // steps of 45 degrees, counter-clockwise like the DXF
+  mirror?: boolean; // mirrored left-right before turning
   hidden: boolean; // the general part already shows it: hidden, not deleted
   keep: boolean; // shown again on purpose, not hidden a second time
 }
@@ -252,7 +253,8 @@ export function sectionStyle(color?: string | null): SectionStyle {
   const lum = 0.299 * r + 0.587 * g + 0.114 * b;
   const mix = (c: number) => Math.round(c + (255 - c) * 0.9);
   const bg = `#${[r, g, b].map((c) => mix(c).toString(16).padStart(2, "0")).join("")}`;
-  return { header: color, header_text: lum > 160 ? "#000000" : "#ffffff", background_on: false, background: bg, border_on: false, border: color, symbol: "#000000", text: "#000000", padding: 1.5 };
+  // symbols and lines take the plan colour of the section's layer
+  return { header: color, header_text: lum > 160 ? "#000000" : "#ffffff", background_on: false, background: bg, border_on: false, border: color, symbol: color, text: "#000000", padding: 1.5 };
 }
 
 export function addBlock(doc: LegendDoc, title: string, categoryId: string | null = null, color?: string | null, layer = ""): { doc: LegendDoc; id: string } {
@@ -305,9 +307,9 @@ function insertAt(items: LegendItem[], item: LegendItem, beforeId: string | null
 }
 
 /** Turn a symbol by 90 degrees around its centre. */
-export function rotateItem(doc: LegendDoc, blockId: string, itemId: string): LegendDoc {
+export function rotateItem(doc: LegendDoc, blockId: string, itemId: string, step = 90): LegendDoc {
   const it = doc.blocks.find((b) => b.id === blockId)?.items.find((x) => x.id === itemId);
-  return it ? updateItem(doc, blockId, itemId, { rotation: ((it.rotation || 0) + 90) % 360 }) : doc;
+  return it ? updateItem(doc, blockId, itemId, { rotation: ((it.rotation || 0) + step) % 360 }) : doc;
 }
 
 // -- duplicates and the general part --------------------------------------------------------

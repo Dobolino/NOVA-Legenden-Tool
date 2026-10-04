@@ -846,7 +846,8 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
               render={selItem.kind === "symbol" ? symbols[symbolRequestKey(selItem)] : undefined}
               stale={stale.has(selItem.id)}
               duplicate={dups.has(selItem.id)}
-              onRotate={() => change(rotateItem(doc, selBlock.id, selItem.id))}
+              onRotate={(step) => change(rotateItem(doc, selBlock.id, selItem.id, step))}
+              onMirror={() => change(updateItem(doc, selBlock.id, selItem.id, { mirror: !selItem.mirror }))}
               templateTexts={info.template_texts}
               field={field}
               change={change}
@@ -950,12 +951,16 @@ function Prim({
         );
       // The drawing keeps its own colours. Its insertion point (ax, ay; Nova y up) sits on the
       // symbol axis; turned around that point, counter-clockwise like the DXF.
+      // Parts without own colour take the section colour (currentColor), areas next to
+      // coloured lines its lighter tone; own colours stay. Mirrored left-right, then turned.
       const ax = p.ax ?? r.box[0] + r.box[2] / 2;
       const ay = p.ay ?? -(r.box[1] + r.box[3] / 2);
+      const color: string = p.color || "#000000";
       return (
         <g
-          transform={`translate(${p.cx} ${p.cy}) rotate(${-(p.rot || 0)}) scale(${p.scale}) translate(${-ax} ${ay})`}
+          transform={`translate(${p.cx} ${p.cy}) rotate(${-(p.rot || 0)}) scale(${(p.mirror ? -1 : 1) * p.scale} ${p.scale}) translate(${-ax} ${ay})`}
           pointerEvents="none"
+          style={{ color, ["--sym-layer" as string]: tint(color, 0.45) }}
           dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }}
         />
       );
@@ -1036,23 +1041,51 @@ function Prim({
  *  column edges, symbol axis and text line of every column). From the layout, so the
  *  lines match the entries exactly. */
 function GridLines({ g }: { g: LegendPrim }) {
-  const rows: number[] = [];
-  for (let y = g.y; y <= g.y + g.h + 1e-6; y += g.row) rows.push(y);
+  // one slot per entry (tile or grid row), then the gap between entries
+  const slot: number = g.slot ?? g.row;
+  const gap: number = g.gap ?? 0;
+  const step = slot + gap;
+  const tops: number[] = [];
+  for (let y = g.y; y < g.y + g.h - 1e-6; y += step) tops.push(y);
   const cols = Array.from({ length: g.cols }, (_, c) => g.x + c * g.colw);
+  const tile: number | null = g.tile ?? null;
   return (
-    <g className="lg-grid" stroke="#5b87b5" strokeOpacity={0.45} strokeWidth={0.07} pointerEvents="none" data-step={g.row}>
-      {rows.map((y) => (
-        <line key={`y${y}`} x1={g.x} y1={y} x2={g.x + g.w} y2={y} />
-      ))}
-      {[...cols, g.x + g.w].map((x) => (
-        <line key={`c${x}`} x1={x} y1={g.y} x2={x} y2={g.y + g.h} />
-      ))}
-      {cols.map((x) => (
-        <g key={`a${x}`} strokeDasharray="0.6 0.6">
-          <line x1={x + g.axis} y1={g.y} x2={x + g.axis} y2={g.y + g.h} />
-          <line x1={x + g.text} y1={g.y} x2={x + g.text} y2={g.y + g.h} />
+    <g className="lg-grid" strokeWidth={0.07} pointerEvents="none" data-step={g.row}>
+      <g stroke="#5b87b5" strokeOpacity={0.45}>
+        {tops.map((y) => (
+          <g key={`y${y}`}>
+            <line x1={g.x} y1={y} x2={g.x + g.w} y2={y} />
+            <line x1={g.x} y1={y + slot} x2={g.x + g.w} y2={y + slot} />
+          </g>
+        ))}
+        {[...cols, g.x + g.w].map((x) => (
+          <line key={`c${x}`} x1={x} y1={g.y} x2={x} y2={g.y + g.h} />
+        ))}
+      </g>
+      {gap > 0 && (
+        <g fill="#e8590c" fillOpacity={0.08} stroke="#e8590c" strokeOpacity={0.55} strokeDasharray="0.5 0.4">
+          {tops.slice(0, -1).map((y) => (
+            <rect key={`gap${y}`} x={g.x} y={y + slot} width={g.w} height={gap}>
+              <title>Abstand zwischen Einträgen</title>
+            </rect>
+          ))}
         </g>
-      ))}
+      )}
+      {tile && (
+        <g stroke="#2b8a3e" strokeOpacity={0.5} fill="none">
+          {cols.flatMap((x) =>
+            tops.map((y) => <rect key={`t${x}-${y}`} x={x + g.axis - tile / 2} y={y + (slot - tile) / 2} width={tile} height={tile} />),
+          )}
+        </g>
+      )}
+      <g stroke="#5b87b5" strokeOpacity={0.45} strokeDasharray="0.6 0.6">
+        {cols.map((x) => (
+          <g key={`a${x}`}>
+            <line x1={x + g.axis} y1={g.y} x2={x + g.axis} y2={g.y + g.h} />
+            <line x1={x + g.text} y1={g.y} x2={x + g.text} y2={g.y + g.h} />
+          </g>
+        ))}
+      </g>
     </g>
   );
 }
@@ -1081,6 +1114,15 @@ function DropMarker({ placed, target, doc }: { placed: LegendLayout; target: Dro
 function SymIcon({ r }: { r?: SymbolRender }) {
   if (!r?.svg || !r.box) return <span className="sym-icon empty" aria-hidden />;
   return <svg className="sym-icon" viewBox={r.box.join(" ")} aria-hidden dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }} />;
+}
+
+/** Mix a colour with white (share 0 = colour, 1 = white). */
+function tint(color: string, share: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return color;
+  return `#${[1, 3, 5]
+    .map((i) => parseInt(color.slice(i, i + 2), 16))
+    .map((c) => Math.round(c + (255 - c) * share).toString(16).padStart(2, "0"))
+    .join("")}`;
 }
 
 function innerSvg(svg: string): string {
@@ -1150,6 +1192,7 @@ function ItemProps({
   stale,
   duplicate,
   onRotate,
+  onMirror,
   templateTexts,
   field,
   change,
@@ -1165,7 +1208,8 @@ function ItemProps({
   render?: SymbolRender;
   stale: boolean;
   duplicate: boolean;
-  onRotate: () => void;
+  onRotate: (step: number) => void;
+  onMirror: () => void;
   templateTexts: string[];
   field: FieldFn;
   change: (d: LegendDoc) => void;
@@ -1255,10 +1299,20 @@ function ItemProps({
         )}
         {item.kind === "symbol" && (
           <div className="field">
-            <span>Drehung {item.rotation || 0}°</span>
-            <button className="btn small" onClick={onRotate} title="Symbol um 90 Grad um seinen Mittelpunkt drehen. Der Text bleibt waagrecht.">
-              ↻ 90° drehen
-            </button>
+            <span>
+              Drehung {item.rotation || 0}°{item.mirror ? " · gespiegelt" : ""}
+            </span>
+            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+              <button className="btn small" onClick={() => onRotate(45)} title="Um 45 Grad drehen. Der Text bleibt waagrecht.">
+                ↻ 45°
+              </button>
+              <button className="btn small" onClick={() => onRotate(90)} title="Um 90 Grad drehen. Der Text bleibt waagrecht.">
+                ↻ 90°
+              </button>
+              <button className={`btn small ${item.mirror ? "primary" : ""}`} aria-pressed={Boolean(item.mirror)} onClick={onMirror} title="Links-rechts spiegeln">
+                ⇋ Spiegeln
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1528,9 +1582,9 @@ function DocProps({
         </label>
         <label className="field">
           <span>Symbolgrösse</span>
-          <select className="select" aria-label="Symbolgrösse" value={s.symbol_size ?? "real"} onChange={(e) => setStyle({ symbol_size: e.target.value as "real" | "tile" })}>
+          <select className="select" aria-label="Symbolgrösse" value={s.symbol_size ?? "tile"} onChange={(e) => setStyle({ symbol_size: e.target.value as "real" | "tile" })}>
+            <option value="tile">Gleiche Kacheln (75 % gefüllt)</option>
             <option value="real">Echte Grösse (Massstab)</option>
-            <option value="tile">Gleiche Kacheln</option>
           </select>
         </label>
         <label className="field">
@@ -1556,9 +1610,9 @@ function DocProps({
         Symbol-Hintergründe/Schraffuren entfernen
       </label>
       <p className="hint">
-        {(s.symbol_size ?? "real") === "real"
+        {(s.symbol_size ?? "tile") === "real"
           ? "Echte Grösse: Jedes Symbol hat den gemeinsamen Massstab und sitzt mit seinem Einfügepunkt auf der Achse. Ein grosses Symbol belegt mehr Rasterzeilen."
-          : `Gleiche Kacheln: Jedes Symbol füllt eine Kachel von ${String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm, unabhängig von seiner echten Grösse.`}{" "}
+          : `Gleiche Kacheln: Die Kachel ist ${String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm gross (aus der Schriftgrösse). Jedes Symbol füllt 75 % davon, unabhängig von seiner echten Grösse.`}{" "}
         Bei Textzeilen «Automatisch» bricht ein langer Text um und die Zeile wird höher.
       </p>
       <p className="hint">

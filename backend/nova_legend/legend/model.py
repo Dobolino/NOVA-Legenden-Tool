@@ -15,7 +15,7 @@ import re
 import uuid
 from pathlib import Path
 
-DOC_VERSION = 3
+DOC_VERSION = 4
 AP_NOTE = "Unterscheidung UP / AP (halbausgefüllt)"
 SHEET_WIDTH = 200.0          # mm, including the margin (standard)
 MAX_SHEET_WIDTH = 210.0      # widest sheet the user may choose
@@ -33,8 +33,9 @@ DEFAULT_TEXT_SIZE = 2.5
 DEFAULT_SYMBOL_SCALE = 1.0
 
 ITEM_KINDS = ("symbol", "line", "note", "text")
-ROTATIONS = (0, 90, 180, 270)
-ITEM_EXTRA = {"text_scale": 1.0, "symbol_factor": 1.0, "rotation": 0, "hidden": False, "keep": False}
+ROTATIONS = (0, 45, 90, 135, 180, 225, 270, 315)
+ITEM_EXTRA = {"text_scale": 1.0, "symbol_factor": 1.0, "rotation": 0, "hidden": False, "keep": False,
+              "mirror": False}
 LINE_STYLES = ("solid", "dashed", "dotted", "dashdot")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -81,11 +82,14 @@ def section_style(color: str | None) -> dict:
     keep the colours of their Nova drawing; ``symbol`` only colours lines and
     notes of the section.
     """
-    c = _hex(color, "#6b7280")
+    own = _hex(color, "")
+    c = own or "#6b7280"
     if c.lower() in ("#ffffff", "#000000"):
         c = "#6b7280" if c.lower() == "#ffffff" else c
+    # symbols and lines take the plan colour; without a plan colour they stay black
+    symbol = c if own and own.lower() != "#ffffff" else "#000000"
     return {"header": c, "header_text": readable_on(c), "background_on": False, "background": tint(c, 0.9),
-            "border_on": False, "border": c, "symbol": "#000000", "text": "#000000", "padding": 1.5}
+            "border_on": False, "border": c, "symbol": symbol, "text": "#000000", "padding": 1.5}
 
 
 def _section_style(value, fallback: dict) -> dict:
@@ -110,7 +114,7 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
             "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0, "strip_fill": False,
-            "symbol_size": "real",
+            "symbol_size": "tile",
             "frame_on": False, "frame": "#000000"}
 
 
@@ -154,9 +158,9 @@ def normalize_style(value) -> dict:
         lines = 0
     style["text_lines"] = lines if lines in (1, 2, 3) else 0
     style["strip_fill"] = bool(v.get("strip_fill"))
-    # "real": every symbol at the common scale, on its insertion point, in grid rows;
-    # "tile": every drawing fills one tile of the same size
-    style["symbol_size"] = "tile" if v.get("symbol_size") == "tile" else "real"
+    # "tile" (default): every drawing fills 75 % of one tile sized from the text;
+    # "real": every symbol at the common scale, on its insertion point, in grid rows
+    style["symbol_size"] = "real" if v.get("symbol_size") == "real" else "tile"
     style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
     style["frame"] = _hex(v.get("frame"), "#000000")
@@ -200,8 +204,12 @@ def normalize(doc: dict | None) -> dict:
                  "collapsed": bool(b.get("collapsed")), "title_scale": _scale(b.get("title_scale")),
                  "style": _section_style(b.get("style"), section_style(None)), "items": []}
         if old < 3:
-            # v2 filled the area and drew the border by default and coloured symbols
-            block["style"].update(background_on=False, border_on=False, symbol="#000000")
+            # v2 filled the area and drew the border by default
+            block["style"].update(background_on=False, border_on=False)
+        if old < 4:
+            # v3 drew symbols black; now parts without own colour take the section colour
+            head = block["style"]["header"]
+            block["style"]["symbol"] = head if head.lower() != "#6b7280" else "#000000"
         for it in b.get("items") or []:
             item = _item(it, uid)
             if item:
@@ -237,7 +245,8 @@ def _item(it, uid) -> dict | None:
             "symbol_factor": round(_num(it.get("symbol_factor"), 1.0, 0.3, 4.0), 3),
             "rotation": _rotation(it.get("rotation")),
             # hidden: the general part already shows it (hidden, not deleted); keep: shown on purpose
-            "hidden": bool(it.get("hidden")), "keep": bool(it.get("keep"))}
+            "hidden": bool(it.get("hidden")), "keep": bool(it.get("keep")),
+            "mirror": bool(it.get("mirror"))}       # mirrored left-right before turning
     if kind == "symbol" and not item["symbol_key"]:
         return None
     return item

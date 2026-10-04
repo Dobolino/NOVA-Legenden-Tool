@@ -37,6 +37,9 @@ _EMPTY_NAME = b"\xff\xfe\xff\x00"
 _NAME = re.compile(rb"\xff\xfe\xff([\x01-\x40])")
 FRAME, LINE, ELLIPSE, POINT = 0x82, 0x93, 0x08, 0x68
 CUT = 0x69             # cut contour (layer X_CUT): masks the wall, not drawn
+# helper layers of a symbol that Nova does not draw in the plan
+HIDDEN_LAYERS = {"X_SymbolRahmen", "X_KombiSymbolBox", "X_CUT", "X_ANSCHLUSS", "X_Text"}
+_LAYER_NAME = re.compile(r"^(0|[A-Z]_[\w\-]+)$")
 MAX_MM = 60.0          # every element of a symbol lies within this distance of WP
 
 
@@ -59,12 +62,45 @@ def _utf16_after(data: bytes, start: int, limit: int = 400) -> tuple[str, int] |
     return None
 
 
+def _layer_index(elements: bytes, record_end: int) -> int | None:
+    """Layer number of a record: ff ff ff ff, a float, then 0x33 and the number."""
+    at = record_end + 8
+    return elements[at + 1] if at + 1 < len(elements) and elements[at] == 0x33 else None
+
+
+def _layer_names(elements: bytes, before: int) -> list[str]:
+    """Layer table of the library in file order (strings before the first symbol)."""
+    from ..n4d.probe import read_cstrings
+
+    names: list[str] = []
+    for s in read_cstrings(elements[:before]):
+        if _LAYER_NAME.match(s.text) and s.text not in names:
+            names.append(s.text)
+    return names
+
+
 def _symbols_raw(elements: bytes) -> dict[str, dict]:
     symbols: dict[str, dict] = {}
     current: dict | None = None
-    for m in _RECORD.finditer(elements):
+    records = list(_RECORD.finditer(elements))
+    # the frame of a symbol lies on X_SymbolRahmen: that fixes the numbering of the layers
+    first_frame = next((m for m in records if struct.unpack("<H", m.group(1))[0] == FRAME), None)
+    names = _layer_names(elements, first_frame.start()) if first_frame else []
+    frame_layer = _layer_index(elements, first_frame.end()) if first_frame else None
+    base = (frame_layer - names.index("X_SymbolRahmen")) if (frame_layer is not None
+                                                            and "X_SymbolRahmen" in names) else None
+
+    def hidden(m) -> bool:
+        idx = _layer_index(elements, m.end())
+        if base is None or idx is None or not 0 <= idx - base < len(names):
+            return False
+        return names[idx - base] in HIDDEN_LAYERS
+
+    for m in records:
         cls = struct.unpack("<H", m.group(1))[0]
         name_end = elements.find(_EMPTY_NAME, m.end(), m.end() + 80)
+        if cls in (LINE, ELLIPSE) and current is not None and hidden(m):
+            continue          # e.g. the diagonal of the empty box on X_KombiSymbolBox
         if cls == FRAME:
             named = _utf16_after(elements, m.end() + 40)
             frame = _doubles(elements, name_end + 5, 4) if name_end > 0 else None

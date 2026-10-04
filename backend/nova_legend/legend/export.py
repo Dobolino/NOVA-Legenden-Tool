@@ -26,6 +26,7 @@ from .model import tint
 LINETYPES = {"solid": "CONTINUOUS", "dashed": "DASHED", "dotted": "DOT", "dashdot": "DASHDOT"}
 FONT_FILES = {"Arial": "arial.ttf", "Arial Bold": "arialbd.ttf", "Calibri": "calibri.ttf", "Verdana": "verdana.ttf"}
 TEXT_LAYER = "X_Text"
+CAP_HEIGHT = 0.716           # Arial: capital letter height / font size
 FRAME_LAYER = "X_Geometrie"
 
 
@@ -87,7 +88,10 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
             elif t == "text":
                 if not p["text"]:
                     continue
-                txt = msp.add_text(p["text"], height=p["size"], dxfattribs={
+                # CAD programs read a text height as the height of capital letters; the
+                # layout (and the editor) uses the full font size. Convert, so the DXF text
+                # has the same size as in the editor and stays inside its column.
+                txt = msp.add_text(p["text"], height=round(p["size"] * CAP_HEIGHT, 4), dxfattribs={
                     "layer": _layer(doc, TEXT_LAYER),
                     "style": _text_style(doc, p.get("font") or font, bool(p.get("bold")))})
                 txt.set_placement((p["x"] + dx, Y(p["y"] + dy)))
@@ -118,12 +122,13 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                     bcx, bcy = (x0 + x1) / 2 * 1000, (y0 + y1) / 2 * 1000
                 s = p["scale"]
                 rot = int(p.get("rot") or 0)
-                # turn around the symbol centre: the centre stays on the axis of the column
+                mx = -1.0 if p.get("mirror") else 1.0       # mirrored: negative x scale
+                # turn around the anchor: it stays on the axis of the column
                 a = math.radians(rot)
-                ox = (bcx * math.cos(a) - bcy * math.sin(a)) * s
-                oy = (bcx * math.sin(a) + bcy * math.cos(a)) * s
+                ox = (mx * bcx * math.cos(a) - bcy * math.sin(a)) * s
+                oy = (mx * bcx * math.sin(a) + bcy * math.cos(a)) * s
                 msp.add_blockref(name, (p["cx"] + dx - ox, Y(p["cy"] + dy) - oy), dxfattribs={
-                    "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, p.get("layer") or "0")})
+                    "xscale": mx * s, "yscale": s, "rotation": rot, "layer": _layer(doc, p.get("layer") or "0")})
 
     if general and general.kind == "project":
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
@@ -166,7 +171,9 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, f
 
 
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
-    key = f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|{int(bool(prim.get('strip_fill')))}"
+    layer_color = prim.get("color") or "#000000"
+    key = (f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|"
+           f"{int(bool(prim.get('strip_fill')))}|{layer_color}")
     if key in cache:
         return cache[key]
     base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
@@ -182,8 +189,8 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         d = p.data
         pts: list = []
         closed = False
-        line = own_paint(p.color, mixed, False)
-        fill = own_paint(p.color, mixed, True)
+        line = own_paint(p.color, mixed, False, layer_color)
+        fill = own_paint(p.color, mixed, True, layer_color)
         if p.kind == "hatch":
             fill = tint(fill, 0.65)       # the preview shows hatches at 35 % opacity
         if prim.get("strip_fill") and (p.kind == "hatch" or p.filled):

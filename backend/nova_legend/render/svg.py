@@ -94,21 +94,29 @@ def _paint(color: str | None, mixed: bool) -> str:
     return color
 
 
-# Legend: the colours of the Nova drawing, never the section colour.
+# Legend colours. As in Nova, a part without its own colour is drawn in the colour of
+# its layer: in the legend the colour of the section (plan colour of the category's
+# layer). An explicit colour of the symbol stays, black included.
 OWN_BLACK = "#000000"
-OWN_LAYER_FILL = "#b9c0c9"   # area without own colour next to explicitly coloured parts
+LAYER_TINT = 0.45            # an area without own colour next to coloured lines: lighter layer colour
 
 
-def own_paint(color: str | None, mixed: bool, filled: bool) -> str:
-    """Hex colour of a primitive in the legend (preview and DXF export).
+def _tint(color: str, share: float) -> str:
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02x%02x%02x" % tuple(round(c + (255 - c) * share) for c in (r, g, b))
 
-    An explicit colour stays. A part without own colour is black; only an area
-    without own colour in a symbol that also has coloured parts (black lines on
-    a coloured area) gets a light grey, so the black lines on it stay visible.
+
+def own_paint(color: str | None, mixed: bool, filled: bool, layer: str = OWN_BLACK) -> str:
+    """Hex colour of a primitive in the legend (DXF export).
+
+    An explicit colour stays. A part without own colour takes ``layer``; an area
+    without own colour in a symbol that also has explicitly coloured parts (black
+    lines on a layer coloured area) takes a lighter tone of it, so the lines on it
+    stay visible.
     """
     if color:
         return color
-    return OWN_LAYER_FILL if (mixed and filled) else OWN_BLACK
+    return _tint(layer, LAYER_TINT) if (mixed and filled) else layer
 
 
 def is_mixed(geo: SymbolGeometry) -> bool:
@@ -131,8 +139,13 @@ def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool 
             continue
         d = p.data
         if own_colors:
-            paint = own_paint(p.color, mixed, p.filled)
-            line = own_paint(p.color, mixed, False)
+            # explicit colours as hex; parts without own colour follow the page:
+            # currentColor = section colour, --sym-layer = its lighter tone
+            if p.color:
+                paint = line = p.color
+            else:
+                line = "currentColor"
+                paint = "var(--sym-layer, #b9c0c9)" if (mixed and p.filled) else "currentColor"
             stroke = f' stroke="{line}"'
         else:
             paint = _paint(p.color, mixed)

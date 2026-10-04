@@ -107,7 +107,7 @@ test("new entries and sections, company text wins over the library name", () => 
   const s = nb.doc.blocks[2].style;
   assert.equal(s.header, "#e03131");
   assert.equal(s.header_text, "#ffffff");
-  assert.equal(s.symbol, "#000000", "symbols keep their own colours");
+  assert.equal(s.symbol, "#e03131", "parts without own colour take the layer colour");
   assert.equal(s.background_on, false);
   assert.equal(s.border_on, false);
   assert.equal(describe("lampe", "Lampe", { lampe: "Decken- / Wandlampenstelle" }), "Decken- / Wandlampenstelle");
@@ -137,6 +137,7 @@ test("drag and drop: move in front of an entry, into another section, insert new
   const r = insertItem(doc(), "b", { kind: "symbol", family_key: "neu", symbol_key: "s:neu", text: "Neu" }, "i3");
   assert.deepEqual(r.doc.blocks[1].items.map((i) => i.id), [r.id, "i3"]);
   assert.equal(rotateItem(rotateItem(doc(), "a", "i1"), "a", "i1").blocks[0].items[0].rotation, 180);
+  assert.equal(rotateItem(doc(), "a", "i1", 45).blocks[0].items[0].rotation, 45);
 });
 
 test("duplicates in one section are marked, the first one and other sections are not", () => {

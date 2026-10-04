@@ -48,7 +48,7 @@ def test_proposal_groups_by_first_visible_category_with_section_colours():
     assert [b["title"] for b in doc["blocks"]] == ["Allgemein", "Schalter und Taster", "Ohne Kategorie"]
     assert [i["text"] for i in doc["blocks"][0]["items"]] == ["UP-Abzweigdose Decke / Wand"]
     sch = doc["blocks"][1]
-    assert sch["style"]["header"] == "#0000ff" and sch["style"]["symbol"] == "#000000"
+    assert sch["style"]["header"] == "#0000ff" and sch["style"]["symbol"] == "#0000ff"   # layer colour
     assert sch["style"]["background_on"] is False and sch["style"]["border_on"] is False
     assert sch["style"]["header_text"] == "#ffffff" and sch["layer"] == "E_Licht"
     assert doc["style"]["columns"] == 3 and doc["style"]["text_size"] == 3
@@ -70,7 +70,7 @@ def test_v1_document_is_migrated_free_texts_become_entries():
                {"id": "i", "kind": "symbol", "symbol_key": "k", "x": 1, "y": 2, "scale": 3, "text_size": 7}]}],
            "texts": [{"id": "t", "text": "Hinweis Baustelle", "x": 1, "y": 1, "size": 9}]}
     doc = normalize(old)
-    assert doc["version"] == 3 and doc["style"]["text_size"] == 3.0 and doc["style"]["columns"] == 2
+    assert doc["version"] == 4 and doc["style"]["text_size"] == 3.0 and doc["style"]["columns"] == 2
     assert "x" not in doc["blocks"][0]["items"][0] and "scale" not in doc["blocks"][0]["items"][0]
     assert doc["blocks"][-1]["title"] == "Zusatztext"
     assert doc["blocks"][-1]["items"][0] == {**doc["blocks"][-1]["items"][0], "kind": "text", "text": "Hinweis Baustelle"}
@@ -125,12 +125,15 @@ def test_sections_by_default_have_only_a_header_bar_on_white_paper():
     assert light["header_text"] == "#000000"
 
 
-def test_v2_documents_lose_the_filled_area_and_the_coloured_symbols():
+def test_older_documents_lose_the_filled_area_and_symbols_take_the_section_colour():
     old = {"version": 2, "blocks": [{"id": "a", "title": "Leitungen", "style": {
         "header": "#707888", "background": "#f0f1f3", "border_on": True, "symbol": "#707888"}, "items": []}]}
     st = normalize(old)["blocks"][0]["style"]
-    assert st["background_on"] is False and st["border_on"] is False and st["symbol"] == "#000000"
+    assert st["background_on"] is False and st["border_on"] is False and st["symbol"] == "#707888"
     assert st["header"] == "#707888"
+    neutral = normalize({"version": 3, "blocks": [{"id": "a", "title": "Ohne", "style": section_style(None),
+                                                   "items": []}]})["blocks"][0]["style"]
+    assert neutral["symbol"] == "#000000"                       # no plan colour: black, not grey
 
 
 def _sym_block(sizes_list, rotation=None):
@@ -192,6 +195,7 @@ def test_turning_a_symbol_keeps_centre_and_text_line_and_grows_the_row():
 
 def test_text_factor_changes_only_that_text_and_the_row_grows():
     doc = normalize({"version": 3, "blocks": [block("A", 3)]})
+    doc["style"]["symbol_size"] = "real"                             # real size on the insertion point
     base = layout(doc)
     doc["blocks"][0]["items"][1]["text_scale"] = 1.2
     big = layout(doc)
@@ -413,14 +417,14 @@ def _coloured_symbol():
     ])
 
 
-def test_symbols_keep_their_own_colours_in_preview_and_dxf():
+def test_symbols_keep_own_colours_and_take_the_section_colour_elsewhere():
     from nova_legend.legend.export import build_dxf
     from nova_legend.render.svg import render_svg
 
     geo = _coloured_symbol()
     svg = render_svg(geo, None, show_points=False, own_colors=True)
-    assert 'stroke="#000000"' in svg and 'fill="#ff0000"' in svg
-    assert "currentColor\"" not in svg.split("<g", 1)[1].split(">", 1)[1] and "var(--sym" not in svg
+    # no own colour: the page colour (= section colour); own colour: stays
+    assert 'stroke="currentColor"' in svg and 'fill="#ff0000"' in svg
     doc = normalize({"version": 3, "blocks": [{"id": "b", "title": "Licht", "style": section_style("#0000ff"),
                                                "items": [{"id": "i", "kind": "symbol", "symbol_key": "k",
                                                           "text": "Leuchte", "rotation": 90}]}]})
@@ -429,7 +433,7 @@ def test_symbols_keep_their_own_colours_in_preview_and_dxf():
     ins = next(e for e in dxf.modelspace().query("INSERT"))
     assert not ins.dxf.hasattr("true_color") and ins.dxf.rotation == 90
     colours = {e.rgb for e in dxf.blocks[ins.dxf.name] if e.dxf.hasattr("true_color")}
-    assert (0, 0, 0) in colours and (255, 0, 0) in colours and (0, 0, 255) not in colours
+    assert (0, 0, 255) in colours and (255, 0, 0) in colours            # section blue, own red
     sym = next(p for p in lay["prims"] if p["t"] == "symbol")
     # the turned block keeps its centre on the axis of the column
     x0, y0, x1, y1 = geometry_bounds(geo)
@@ -518,7 +522,7 @@ def test_entries_share_one_tile_sized_from_the_text():
     assert len({round(h["h"], 3) for h in hits}) == 1
     syms = [p for p in lay["prims"] if p["t"] == "symbol"]
     tile = round(2.5 * 3.6, 3)                                         # text 2.5 mm → one tile
-    assert {round(max(s["w"], s["h"]), 3) for s in syms} == {tile}
+    assert {round(max(s["w"], s["h"]), 3) for s in syms} == {round(tile * 0.75, 3)}   # 75 % of the tile
     long = next(s for s in syms if s["id"] == "s2")                    # 40 × 4 mm light
     assert long["w"] / long["h"] == pytest.approx(10, rel=0.05)
     grid = next(p for p in lay["prims"] if p["t"] == "grid")
@@ -541,11 +545,12 @@ def test_every_symbol_is_centred_in_the_same_tile_and_texts_share_one_line():
     assert texts["s0"]["x"] == texts["s1"]["x"]
     assert texts["s0"]["y"] == texts["s2"]["y"]
     tile = round(2.5 * 3.6, 3)
-    assert {round(max(s["w"], s["h"]), 3) for s in syms.values()} == {tile}
+    assert {round(max(s["w"], s["h"]), 3) for s in syms.values()} == {round(tile * 0.75, 3)}      # 75 % of the tile
 
 
 def test_symbol_factor_enlarges_only_that_symbol_and_the_row_grows():
     doc, sizes = _sym_block([(4.0, 4.0, False), (4.0, 4.0, False), (4.0, 4.0, False), (4.0, 4.0, False)])
+    doc["style"]["symbol_size"] = "real"                             # real size on the insertion point
     base = {p["id"]: p for p in layout(doc, sizes)["prims"] if p["t"] == "symbol"}
     doc["blocks"][0]["items"][0]["symbol_factor"] = 1.5
     lay = layout(doc, sizes)
@@ -692,6 +697,7 @@ def test_entries_fill_whole_grid_rows_of_their_section():
                             rotation=(3, 90))
     doc["blocks"][0]["items"][2]["text"] = "Sehr langer Text, der in seiner Spalte umbrechen muss " * 2
     doc["blocks"][0]["items"][0]["text_scale"] = 1.2
+    doc["style"]["symbol_size"] = "real"                             # real size on the insertion point
     lay = layout(doc, sizes)
     grid = next(p for p in lay["prims"] if p["t"] == "grid")
     row = grid["row"]
@@ -718,6 +724,7 @@ def test_insertion_points_sit_on_the_axis_and_texts_start_right_of_the_widest_pa
              "s1": (-2.0, -2.0, 2.0, 2.0, False),      # centred
              "s2": (-1.0, -1.5, 1.0, 1.5, False),
              "s3": (3.0, 1.0, 7.0, 3.0, False)}        # insertion point outside: the middle is used
+    doc["style"]["symbol_size"] = "real"                             # real size on the insertion point
     lay = layout(doc, sizes)
     syms = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
     texts = {p["item"]: p for p in lay["prims"] if p["t"] == "text" and p.get("item")}
@@ -726,3 +733,30 @@ def test_insertion_points_sit_on_the_axis_and_texts_start_right_of_the_widest_pa
     assert texts["s0"]["x"] == texts["s1"]["x"]
     assert texts["s0"]["x"] >= syms["s0"]["x0"] + syms["s0"]["w"] + 1.0          # right of the "3"
     assert syms["s0"]["x0"] < syms["s0"]["cx"] - 1.9                              # drawing not re-centred
+
+
+def test_mirror_and_45_degree_steps_keep_the_symbol_in_its_tile_and_dxf():
+    from nova_legend.legend.export import build_dxf
+
+    doc, sizes = _sym_block([(6.0, 2.0, False), (4.0, 4.0, False), (4.0, 4.0, False), (4.0, 4.0, False)])
+    doc["blocks"][0]["items"][0].update(rotation=45, mirror=True)
+    doc = normalize(doc)
+    assert doc["blocks"][0]["items"][0]["rotation"] == 45 and doc["blocks"][0]["items"][0]["mirror"] is True
+    lay = layout(doc, sizes)
+    sym = next(p for p in lay["prims"] if p["t"] == "symbol" and p["id"] == "s0")
+    assert sym["rot"] == 45 and sym["mirror"] is True
+    tile = round(2.5 * 3.6, 3)
+    assert max(sym["w"], sym["h"]) <= tile * 0.75 + 1e-6               # turned drawing still fits
+    dxf = build_dxf(lay, None, lambda prim: _coloured_symbol())
+    ins = next(e for e in dxf.modelspace().query("INSERT") if e.dxf.rotation == 45)
+    assert ins.dxf.xscale < 0 < ins.dxf.yscale                           # mirrored in the DXF too
+
+
+def test_dxf_text_height_is_the_capital_height_of_the_editor_font():
+    from nova_legend.legend.export import CAP_HEIGHT, build_dxf
+
+    doc = normalize({"version": 4, "blocks": [block("A", 1, "Taster")]})
+    lay = layout(doc)
+    dxf = build_dxf(lay, None, lambda prim: None)
+    taster = next(t for t in dxf.modelspace().query("TEXT") if t.dxf.text == "Taster")
+    assert abs(taster.dxf.height - 2.5 * CAP_HEIGHT) < 1e-3

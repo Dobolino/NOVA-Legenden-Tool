@@ -78,7 +78,7 @@ def test_empty_box_is_drawn_from_the_bundled_library():
     box = next(s for s in ds.symbols if s.item == "10-220")
     assert box.lib_ref == "BT_EB:10" and box.geometry is not None
     kinds = sorted(p.kind for p in box.geometry.primitives)
-    assert kinds == ["arc", "line"]
+    assert kinds == ["arc"]          # the diagonal lies on the helper layer X_KombiSymbolBox: not drawn
     circle = next(p for p in box.geometry.primitives if p.kind == "arc")
     # same layout as the switch 10-10: radius 2.5 mm, centre 2.5 mm above WP
     assert circle.data["full"] and abs(circle.data["radius"] - 0.0025) < 1e-9

@@ -80,6 +80,7 @@ def wrap(text: str, size: float, width: float, bold: bool = False) -> list[str]:
 SYMBOL_CLEARANCE = 0.5       # mm free above and below a symbol inside its grid rows
 TEXT_CLEARANCE = 0.4
 TILE_FACTOR = 3.6            # symbol tile side = text size × this × symbol scale
+TILE_FILL = 0.75             # a drawing fills this share of its tile, so it never looks squeezed
 
 
 def symbol_tile(style: dict) -> float:
@@ -128,15 +129,19 @@ def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool,
     return round(max_w / size[0], 4)
 
 
-def _turn(left, right, up, down, rotation: int):
-    """Extents around the anchor after turning counter-clockwise."""
-    if rotation == 90:
-        return up, down, right, left
-    if rotation == 180:
-        return right, left, down, up
-    if rotation == 270:
-        return down, up, left, right
-    return left, right, up, down
+def _turn(left, right, up, down, rotation: int, mirror: bool = False):
+    """Extents (left, right, up, down) around the anchor after mirroring (left-right)
+    and turning counter-clockwise by any angle (steps of 45 degrees)."""
+    if mirror:
+        left, right = right, left
+    a = math.radians(rotation % 360)
+    c, s = math.cos(a), math.sin(a)
+    xs, ys = [], []
+    for x, y in ((-left, -down), (right, -down), (right, up), (-left, up)):
+        xs.append(x * c - y * s)
+        ys.append(x * s + y * c)
+    r = lambda v: round(v, 9)  # noqa: E731 - keep exact values for 90 degree steps
+    return r(-min(xs)), r(max(xs)), r(max(ys)), r(-min(ys))
 
 
 def _symbol_box_real(item: dict, size, style: dict, max_w: float) -> dict:
@@ -151,7 +156,7 @@ def _symbol_box_real(item: dict, size, style: dict, max_w: float) -> dict:
         factor = float(item.get("symbol_factor") or 1.0)
         if size:
             x0, y0, x1, y1, ax, ay, engine = _anchor(size)
-            left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
+            left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot, bool(item.get("mirror")))
             scale = symbol_scale((left + right, 2 * max(up, down)), style, engine, max_w) * factor
             return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
         half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
@@ -178,14 +183,14 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
         factor = float(item.get("symbol_factor") or 1.0)
         if size:
             x0, y0, x1, y1, _ax, _ay, _engine = _anchor(size)
-            span, tall = x1 - x0, y1 - y0
-            if rot in (90, 270):
-                span, tall = tall, span
+            hw, hh = (x1 - x0) / 2, (y1 - y0) / 2
+            left, right, up, down = _turn(hw, hw, hh, hh, rot, bool(item.get("mirror")))
+            span, tall = left + right, up + down
             longest = max(span, tall, 1e-6)
-            scale = tile / longest * factor
+            scale = tile * TILE_FILL / longest * factor
             return box(span * scale / 2, span * scale / 2, tall * scale / 2, tall * scale / 2,
                        round(scale, 4), (x0 + x1) / 2, (y0 + y1) / 2)
-        half = tile / 2 * factor
+        half = tile * TILE_FILL / 2 * factor
         return box(half, half, half, half, round(factor, 4))
     if kind == "line":
         return box(tile / 2, tile / 2, 0.35, 0.35)
@@ -301,6 +306,8 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
     prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
+                  "slot": row if fixed is None else fixed, "gap": gap_mm,
+                  "tile": None if real else tile,
                   "w": inner - 2 * pad, "h": body_h, "row": (row if fixed is None else fixed) + gap_mm,
                   "cols": cols, "colw": colw,
                   "axis": axis, "text": text_x})
@@ -364,10 +371,10 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
         out.append({"t": "symbol", "id": item["id"], "key": item["symbol_key"], "family_key": item["family_key"],
                     "length_mm": item["length_mm"], "width_mm": item["width_mm"],
                     "cx": round(sx, 3), "cy": round(mid, 3), "scale": box["scale"], "rot": item.get("rotation", 0),
-                    "ax": round(box["ax"], 4), "ay": round(box["ay"], 4),
+                    "ax": round(box["ax"], 4), "ay": round(box["ay"], 4), "mirror": bool(item.get("mirror")),
                     "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
                     "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
-                    "strip_fill": strip_fill})
+                    "strip_fill": strip_fill, "color": st.get("symbol") or "#000000"})
     elif kind == "line":
         out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
