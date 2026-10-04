@@ -1611,6 +1611,12 @@ function DocProps({
         />
         Allgemeinteil einschliessen
       </label>
+      <p className="hint">
+        Verknüpft ist eine DXF- oder DWG-Datei.
+        <br />Schriftgrösse, Kachel und Abstand ändern nur die erzeugte Legende darunter.
+        <br />Die Zeichnung bleibt gesperrt. Einträge darin lassen sich nicht ziehen.
+        <br />N4D wird für diese Verknüpfung nicht gelesen.
+      </p>
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn small" disabled={exporting} onClick={() => onExport("dxf", exportBlock, exportGeneral && hasGeneral)}>
           DXF exportieren

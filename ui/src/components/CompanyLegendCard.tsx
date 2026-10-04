@@ -88,12 +88,20 @@ export default function CompanyLegendCard({
       </label>
       {info.general.kind ? (
         <p className="hint">
-          ✓ Gelesen: {info.general.kind === "dxf" ? "DXF/DWG" : "Vorlagen-Projekt"}, {info.general.w} × {info.general.h} mm. Steht in jeder Legende zuoberst und ist gesperrt.
+          Gelesen: {info.general.kind === "dxf" ? "DXF/DWG" : "Vorlagen-Projekt"}, {info.general.w} × {info.general.h} mm.
+          <br />Steht in jeder Legende zuoberst.
+          <br />Nur die Blattbreite skaliert die Datei. Kachelgrösse, Schrift und Abstand gelten für die erzeugte Legende.
+          <br />Einträge darin lassen sich nicht ziehen.
         </p>
       ) : info.general.error ? (
         <p className="warn-text">{info.general.error}</p>
       ) : (
-        <p className="hint">Kein Allgemeinteil eingetragen. N4D wird nicht unterstützt: die Servervorlage muss DXF, DWG oder eine Legenden-Vorlage sein.</p>
+        <p className="hint">
+          Kein Allgemeinteil eingetragen.
+          <br />Pfad einfügen oder im Programmfenster die Datei wählen.
+          <br />Erlaubt sind DXF, DWG und der Ordner eines Vorlagen-Projekts.
+          <br />N4D wird nicht gelesen.
+        </p>
       )}
 
       <label className="field" style={{ marginTop: 10 }}>
