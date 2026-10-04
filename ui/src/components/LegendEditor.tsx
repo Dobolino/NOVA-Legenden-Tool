@@ -456,7 +456,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
 
   // -- save now and export ----------------------------------------------------------------
 
-  async function exportFile(format: "dxf" | "dwg", block: string, withGeneral: boolean) {
+  async function exportFile(format: "dxf" | "dwg" | "pdf", block: string, withGeneral: boolean) {
     if (format === "dwg" && !info?.oda) {
       notify("Für DWG-Dateien wird der ODA File Converter gebraucht. Er ist nicht installiert. Alternative: DXF exportieren.", true);
       return;
@@ -1558,7 +1558,7 @@ function DocProps({
   setExportGeneral: (v: boolean) => void;
   hasGeneral: boolean;
   exporting: boolean;
-  onExport: (format: "dxf" | "dwg", block: string, withGeneral: boolean) => void;
+  onExport: (format: "dxf" | "dwg" | "pdf", block: string, withGeneral: boolean) => void;
 }) {
   const s = doc.style;
   const company = info.company;
@@ -1689,8 +1689,12 @@ function DocProps({
         <button className="btn small" disabled={exporting} onClick={() => onExport("dwg", exportBlock, exportGeneral && hasGeneral)}>
           DWG exportieren
         </button>
+        <button className="btn small" disabled={exporting} onClick={() => onExport("pdf", exportBlock, exportGeneral && hasGeneral)}>
+          PDF exportieren
+        </button>
       </div>
-      <p className="hint">Der Export speichert zuerst die Legende. Dateiname: edeco ag-{"<Bezeichnung>"}-{"<Abschnitt>"}.dxf bzw. …-Legende.dxf.</p>
+      <p className="hint">Der Export speichert zuerst die Legende. Dateiname: edeco ag-{"<Bezeichnung>"}-{"<Abschnitt>"}.dxf bzw. …-Legende.dxf. Bei mehreren Legenden steht der Name der Legende statt «Legende».</p>
+      <p className="hint">Das PDF zeigt dieselbe Zeichnung wie die DXF-Datei, als Vektorgrafik in Originalgrösse (1:1 in mm) mit 10 mm Rand. Zum Drucken oder Weitergeben ohne CAD.</p>
       <p className="hint">Die Datei entspricht der Vorschau: DXF R2013, Farben als Truecolor, jedes Symbol als Block. N4D wird nicht geschrieben. Das Blatt bleibt weiss, unabhängig vom Hell- oder Dunkelmodus.</p>
       {!info.oda && (
         <p className="hint">

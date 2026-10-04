@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+from urllib.parse import quote
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from rapidfuzz import fuzz, process
 from starlette.background import BackgroundTask
@@ -16,6 +17,7 @@ from starlette.background import BackgroundTask
 from .. import config
 from ..legend import general as general_part
 from ..legend.export import build_dxf, dxf_to_dwg
+from ..legend.pdf import build_pdf
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
 from ..legend.model import AP_NOTE, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
@@ -71,6 +73,11 @@ class CompanyLegendIn(BaseModel):
 
 _VIEWBOX = re.compile(r'viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)"')
 ADMIN_ONLY = "Nur Admins aus den Firmeneinstellungen dürfen das ändern."
+
+
+def export_ext(format: str) -> str:  # noqa: A002 - query parameter name
+    f = (format or "").lower()
+    return f if f in ("dwg", "pdf") else "dxf"
 
 
 def export_name(meta: dict, part: str, ext: str) -> str:
@@ -413,7 +420,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         doc = normalize(stored["doc"]) if stored else {"blocks": []}
         target = next((b for b in doc["blocks"] if b["id"] == block), None) if block else None
         return {"name": export_name(p.meta(), target["title"] if target else legend_part_name(p, stored),
-                                    "dwg" if format.lower() == "dwg" else "dxf")}
+                                    export_ext(format))}
 
     # The file name is part of the path, so a browser that ignores the header still saves it right.
     @app.get("/api/projects/{project_id}/legend/export/{file_name}")
@@ -434,8 +441,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         dxf = build_dxf(lay, gen if gen.kind else None,
                         lambda prim: geometry(prim["key"], prim.get("length_mm"), prim.get("width_mm"))[0],
                         doc["style"]["font"])
-        ext = "dwg" if format.lower() == "dwg" else "dxf"
+        ext = export_ext(format)
         name = export_name(p.meta(), target_block["title"] if target_block else legend_part_name(p, stored), ext)
+        if ext == "pdf":
+            data = build_pdf(dxf, lay["width"], lay["height"], Path(name).stem)
+            return Response(data, media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
         tmp = Path(tempfile.mkdtemp(prefix="nl_legend_"))
         dxf_path = tmp / (Path(name).stem + ".dxf")
         dxf.saveas(dxf_path)

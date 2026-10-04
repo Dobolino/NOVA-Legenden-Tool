@@ -813,3 +813,32 @@ def test_template_hands_over_all_its_legends(env):  # noqa: F811
     client.post(f"/api/projects/{tpl}/legends", json={"name": "Brandmelder", "source": "empty"})
     new = client.post("/api/projects", json={"name": "Neu", "template": tpl}).json()["id"]
     assert [l["name"] for l in client.get(f"/api/projects/{new}/legends").json()["items"]] == ["Legende", "Brandmelder"]
+
+
+def test_export_pdf_draws_the_legend_on_one_page(env, monkeypatch, tmp_path):  # noqa: F811
+    import re
+    import zlib
+
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    client.put("/api/company/legend", json={"general_path": str(_template_dxf(tmp_path / "a.dxf"))})
+    pid = _project(client, tmp)
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    doc = client.put(f"/api/projects/{pid}/legend", json={"doc": doc}).json()["legend"]["doc"]
+    name = client.get(f"/api/projects/{pid}/legend/export-name", params={"format": "pdf"}).json()["name"]
+    assert name == "edeco ag-Test-Legende.pdf"
+    for general in ("true", "false"):
+        res = client.get(f"/api/projects/{pid}/legend/export/{name}", params={"format": "pdf", "general": general})
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "application/pdf"
+        data = res.content
+        assert data.startswith(b"%PDF-1.4") and data.rstrip().endswith(b"%%EOF")
+        assert data.count(b"/Type /Page ") == 1
+        stream = re.search(rb"stream\n(.*)\nendstream", data, re.S).group(1)
+        ops = zlib.decompress(stream).decode()
+        # texts as outlines, frames and symbol lines: the page is not empty
+        assert ops.count("f*") >= 10 and " S" in ops or "\nS" in ops
+        # the section colour of the header bar is on the page
+        header = doc["blocks"][0]["style"]["header"].lstrip("#")
+        r, g, b = (int(header[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        assert f"{r:.3f} {g:.3f} {b:.3f} rg" in ops

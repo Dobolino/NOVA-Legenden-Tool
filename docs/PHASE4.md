@@ -1,6 +1,6 @@
 # Phase 4: Legenden-Editor
 
-Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Ziehen, Drehen, Textfaktor)
+Stand: 04.10.2026 (Version 4: gleiche Kacheln, Symbolfarbe nach Abschnitt, Spiegeln und 45 Grad, mehrere Legenden, PDF)
 
 ## Aufbau der Legende
 
@@ -18,21 +18,27 @@ Stand: 30.09.2026 (Version 3: Symbolachse und Textlinie, eigene Symbolfarben, Zi
 - Blattbreite einstellbar im Feld «Legende»: Standard 200 mm, höchstens 210 mm, inklusive 5 mm Rand. 2 oder 3 Spalten teilen die Breite. Bei einem schmaleren Blatt verkleinert sich der Allgemeinteil im gleichen Verhältnis, in Vorschau und Export.
 - Kein freies Millimeter-Schieben. Alles sitzt auf dem festen Raster. Einträge ziehst du mit der Maus an einen anderen Platz oder in einen anderen Abschnitt, auf dem Blatt und in der linken Liste. ↑ ↓ und die Pfeiltasten gehen auch.
 - Raster «★ Standard»: Zeile 4,55 mm, Text 9,75 mm rechts der Symbolmitte (edeco-Legende). Wählbar: Kompakt, Weit, Gross. «Raster anzeigen» blendet die Platzhalter im gewählten Mass ein. Aus ist der Normalzustand. Die Linien erscheinen nicht im Export.
+- Symbolgrösse im Feld «Legende», zwei Arten:
+  - «Gleiche Kacheln (75 % gefüllt)», Voreinstellung: Jedes Symbol bekommt eine gleich grosse quadratische Kachel. Ihre Grösse richtet sich nach der Schriftgrösse (Schriftgrösse × 3,6 × Symbolmassstab, höchstens 46 % der Spaltenbreite). Das Symbol füllt 75 % der Kachel, so bleibt Luft rundherum. Alle Zeilen sind gleich hoch, ausser ein Text braucht mehr Zeilen.
+  - «Echte Grösse (Massstab)»: Alle Symbole im gemeinsamen Massstab, ausgerichtet am Einfügepunkt (siehe unten).
+- «Raster anzeigen» zeichnet im Kachelmodus die Kachel jedes Symbols grün und den Abstand zwischen den Einträgen orange.
 - In jeder Spalte eines Abschnitts liegen alle Symbole mit ihrem Einfügepunkt auf einer senkrechten Achse. Liegt der Einfügepunkt nicht in der mittleren Hälfte des Symbols (Leitungen, Bus-Taster), gilt die Mitte des Symbols. Beschriftungen wie «2» oder «3» neben der Steckdose zählen nicht zur Mitte. Alle Texte beginnen auf einer zweiten senkrechten Linie rechts vom Symbol, das am weitesten nach rechts reicht. Symbol und Text teilen sich die waagrechte Mitte der Zeile.
 - Jeder Eintrag belegt ganze Rasterzeilen. «Raster anzeigen» zeichnet pro Abschnitt genau diese Platzhalter: Zeilen, Spaltenränder, Symbolachse und Textlinie (gestrichelt). Alle Symbole haben denselben Massstab, das Programm verkleinert keines einzeln. Ein hohes Symbol belegt mehr Rasterzeilen. Nur ein Symbol, das breiter als eine halbe Spalte wäre, wird auf diese Breite begrenzt.
 - Jedes Symbol hat einen eigenen Faktor «Symbolgrösse» (Voreinstellung 1) auf den gemeinsamen Symbolmassstab. Ein grösseres Symbol belegt mehr Rasterzeilen.
-- Ein Symbol dreht sich in Schritten von 90 Grad um seinen Mittelpunkt. Der Text bleibt waagrecht. Die Zeile wird so hoch wie das gedrehte Symbol.
-- Texte umbrechen in ihrer Spalte. Die Zeile wird höher, nie liegt ein Text auf dem nächsten Symbol oder in der nächsten Spalte.
+- Ein Symbol dreht sich mit «↻ 45°» oder «↻ 90°» um seinen Mittelpunkt. «⇋ Spiegeln» spiegelt es an der senkrechten Achse. Beides gilt in Vorschau, DXF und PDF. Der Text bleibt waagrecht. Die Zeile wird so hoch wie das gedrehte Symbol.
+- Texte umbrechen in ihrer Spalte. Die Zeile wird höher, nie liegt ein Text auf dem nächsten Symbol oder in der nächsten Spalte. «Textzeilen» 0 (automatisch) schneidet nie Text ab.
+- Im DXF steht die Texthöhe als Höhe der Grossbuchstaben (Schriftgrösse × 0,716). So ist der Text in CAD gleich gross wie im Editor und bleibt in seiner Spalte.
 - «Abstand zwischen Abschnitten (mm)»: 0 (Voreinstellung) heisst, die Abschnitte stossen aneinander. Der Abstand gilt in Vorschau und Export.
 - Die Höhe wächst mit der Anzahl Einträge. Nichts wird abgeschnitten.
-- Die Anordnung rechnet das Programm (Backend `legend/layout.py`). Vorschau und DXF-Export nutzen dieselbe Rechnung.
+- Die Anordnung rechnet das Programm (Backend `legend/layout.py`). Vorschau, DXF- und PDF-Export nutzen dieselbe Rechnung.
 
 ## Abschnitte
 
 Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Text, Linien und Hinweise, Hintergrundfarbe (an/aus), Umrandung (an/aus), Innenabstand, Textgrösse der Überschrift.
 
 - Voreinstellung: Kopfleiste in der Planfarbe der Legendenebene (Reiter «Ebenen und Farben»), helle Schrift auf dunkler Leiste, dunkle auf heller. Hintergrund aus, Umrandung aus, Text schwarz, das Papier bleibt weiss.
-- Symbole behalten die Farben aus der Nova-Zeichnung, in Vorschau und DXF. Eine eigene Farbe im Symbol bleibt. Was keine eigene Farbe hat, wird schwarz. Einzige Ausnahme: Eine Fläche ohne eigene Farbe in einem Symbol mit farbigen Teilen (schwarze Linien auf Fläche) wird hellgrau, damit die schwarzen Linien sichtbar bleiben. Die Abschnittsfarbe färbt Symbole nie um.
+- Symbole zeichnet das Programm in der Farbe des Abschnitts, also der Planfarbe der Legendenebene. Hat die Kategorie keine Planfarbe, sind sie schwarz. Eine eigene Farbe im Nova-Symbol bleibt. Eine Fläche ohne eigene Farbe in einem Symbol mit farbigen Teilen wird ein heller Ton der Abschnittsfarbe (45 %), damit die Linien sichtbar bleiben. Gilt in Vorschau, DXF und PDF.
+- Legenden aus Version 3 übernehmen beim Öffnen die Abschnittsfarbe für die Symbole.
 - Legenden aus Version 2 verlieren beim Öffnen Fläche, Umrandung und die Symbolfärbung. Die Kopfleiste bleibt.
 
 ## Titel und Umrandung
@@ -60,6 +66,17 @@ Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster 
 - Apparate, die der Allgemeinteil schon zeigt, kommen nicht in den Vorschlag. Links stehen sie unter «Im Allgemeinteil». Erkennung: Vorlagen-Projekt über das Symbol, DXF/DWG über den Text neben dem Symbol (Firmentext oder Bibliotheksname, ohne Gross-/Kleinschreibung und Satzzeichen, sonst genau gleich). Ähnliche Texte zählen nicht, der Eintrag bleibt sichtbar. Steht ein solcher Eintrag schon in einer Legende, blendet das Programm ihn beim Öffnen aus (nicht gelöscht, Strg+Z holt ihn zurück, «Wieder zeigen» im rechten Feld).
 - Admins: Liste von Windows-Benutzernamen. Nur sie ändern Pfad, Admin-Liste und Firmen-Standard. Ist die Liste leer, darf der erste Benutzer sich eintragen. Wer speichert, muss selbst in der Liste stehen.
 
+## Mehrere Legenden
+
+Ein Projekt hat eine oder mehrere benannte Legenden, z. B. «Legende» und «Brandmelder». Die Auswahl steht oben im Reiter «Legende».
+
+- «+ Neue Legende»: Name, dann «Vorschlag aus gewählten Kategorien» (z. B. nur Brandmeldeanlage), «Vorschlag aus allen Kategorien», «Kopie» der gewählten Legende oder «Leer».
+- «Umbenennen» und «Löschen» wirken auf die gewählte Legende. Die letzte Legende bleibt bestehen.
+- Jede Legende speichert sich selbst. Wechselst du die Legende, speichert das Programm zuerst die offene.
+- Der Export nimmt die gewählte Legende. Bei mehreren Legenden steht ihr Name im Dateinamen statt «Legende».
+- Die Prüfung schaut alle Legenden zusammen an. Ein Apparat fehlt nur, wenn ihn keine Legende zeigt.
+- Ein neues Projekt mit Vorlage übernimmt alle Legenden der Vorlage mit ihren Namen.
+
 ## Export
 
 Rechts unter «Export» (nichts angewählt):
@@ -71,6 +88,8 @@ Rechts unter «Export» (nichts angewählt):
 - Farben als Truecolor: Kopfleiste und Hintergrund (Schraffur), Umrandung, Linien, Texte. Symbole als Block mit den Farben der Nova-Zeichnung, gedreht über den Drehwinkel des Einfügens.
 - Ebenen: Symbole und Linien auf der Legendenebene der Kategorie, Texte auf X_Text, Kopfleisten und Rahmen auf X_Geometrie. Der Allgemeinteil wird als Block «Allgemeinteil» übernommen.
 - Dateiname: `edeco ag-<Bezeichnung>-<Kategorie>.dxf` bzw. `…-Legende.dxf`.
+- PDF: dieselbe Zeichnung wie die DXF-Datei, als Vektorgrafik auf einer Seite in Originalgrösse (mm 1:1) mit 10 mm Rand. Texte als Umrisse, Farben wie im DXF, mit oder ohne Allgemeinteil. Kein Zusatzprogramm nötig.
+- Dateiname PDF: `edeco ag-<Bezeichnung>-<Kategorie>.pdf` bzw. `…-Legende.pdf`.
 - Kein N4D-Export.
 
 ## Prüfung vor der Weitergabe
@@ -85,7 +104,7 @@ Reiter «Prüfung» im Projekt. Oben der Stand: «Bereit zur Weitergabe» oder d
 | Nur über den Namen erkannt (ohne Katalogcode) | prüfen | Gesamtliste |
 | Ebene wählen | prüfen | Ebenen und Farben |
 | Symbol ohne Zeichnung | prüfen | Legende |
-| Doppelt in der Legende | prüfen | Legende |
+| Doppelt im selben Abschnitt | prüfen | Legende |
 | Nicht mehr in den Plänen | prüfen | Legende |
 | Legende älter als der letzte Import | prüfen | Legende |
 
@@ -93,7 +112,7 @@ Die Prüfung liest nur, sie ändert nichts. Sie läuft nach jeder Projektänderu
 
 ## Speicherort
 
-Legende: `projekt.nlproj`, Tabelle `legend` (Version 2). Firmenwerte: `edeco ag-Legenden-firma.sqlite`, Tabelle `options` (Schlüssel `legend_*`), Firmentexte in `descriptions`.
+Legenden: `projekt.nlproj`, Tabelle `legends` (id, Name, Reihenfolge, Dokument Version 4). Die erste Legende steht zusätzlich in der alten Tabelle `legend`, damit ältere Programmversionen sie lesen. Firmenwerte: `edeco ag-Legenden-firma.sqlite`, Tabelle `options` (Schlüssel `legend_*`), Firmentexte in `descriptions`.
 
 ## Links im Editor
 
@@ -107,11 +126,12 @@ Legende: `projekt.nlproj`, Tabelle `legend` (Version 2). Firmenwerte: `edeco ag-
 3. Allgemeinteil oben, darunter farbige Abschnitte. Raster «★ Standard», Spalten 2 und 3 ausprobieren.
 4. Schriftgrösse auf 3 setzen, Strg+Z: ein Schritt zurück.
 5. Eine Kopfleiste anklicken, Farben ändern, Umrandung aus.
-6. Export «Nur Brandmeldeanlage» mit und ohne Allgemeinteil, die DXF in Nova oder einem DXF-Viewer öffnen.
-7. «Für neue Projekte merken», neues Projekt anlegen: hat die Werte. Ein anderes bestehendes Projekt: unverändert.
+6. Export «Nur Brandmeldeanlage» mit und ohne Allgemeinteil, die DXF in Nova oder einem DXF-Viewer öffnen. Dasselbe als PDF.
+7. «+ Neue Legende» → «Brandmelder», nur die Kategorie Brandmeldeanlage wählen. Etwas ändern, zur ersten Legende wechseln und zurück: Die Änderung ist noch da.
+8. «Für neue Projekte merken», neues Projekt anlegen: hat die Werte. Ein anderes bestehendes Projekt: unverändert.
 
 ## Bekannte Grenzen
 
 - Textbreiten rechnet das Programm mit einer Arial-Näherung. In Nova kann ein Text minimal breiter oder schmaler sein.
-- Symbole aus .nsb-Bibliotheken erscheinen als Rahmen «keine Vorschau» und fehlen im Export.
 - DWG-Export und DWG-Allgemeinteil sind ohne Windows mit ODA nicht getestet.
+- Das PDF-Layout entspricht der DXF-Datei. Schriften kommen aus den Windows-Schriften (arial.ttf), fehlt eine, nimmt ezdxf eine Ersatzschrift.
