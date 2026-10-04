@@ -158,19 +158,46 @@ def download(info: UpdateInfo, target_dir: Path | None = None, opener=urllib.req
     return target
 
 
-def install(setup: Path, shutdown) -> None:
-    """Start the setup silently and close this program shortly after."""
-    args = [str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]
+_pending: list[str] | None = None
+_pending_lock = threading.Lock()
+
+
+def launch_pending() -> bool:
+    """Start the setup that ``install`` prepared. Called once the window is closed,
+    so the setup never closes a running window (that crashed .NET)."""
+    global _pending
+    with _pending_lock:
+        args, _pending = _pending, None
+    if not args:
+        return False
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
     log.info("Starte Update: %s", " ".join(args))
     subprocess.Popen(args, creationflags=flags, close_fds=True)  # noqa: S603 - our own verified setup
+    return True
+
+
+def install(setup: Path, shutdown, fallback_after: float = 15.0) -> None:
+    """Close this program, then start the setup silently.
+
+    The window closes first (``shutdown``); the main thread then calls
+    ``launch_pending`` when the window loop has ended. If the window does not
+    close within ``fallback_after`` seconds the setup starts anyway and the
+    process ends.
+    """
+    global _pending
+    with _pending_lock:
+        _pending = [str(setup), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS"]
 
     def later() -> None:
-        time.sleep(1.5)
-        shutdown()
-        time.sleep(1.0)
-        os._exit(0)
+        time.sleep(0.8)                 # the HTTP answer reaches the page first
+        try:
+            shutdown()
+        except Exception:  # noqa: BLE001 - the fallback below still installs
+            log.warning("Fenster liess sich nicht schliessen", exc_info=True)
+        time.sleep(fallback_after)
+        if launch_pending():
+            os._exit(0)
 
     threading.Thread(target=later, daemon=True).start()

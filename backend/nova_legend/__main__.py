@@ -103,6 +103,9 @@ def main(argv: list[str] | None = None) -> int:
             dialogs.attach(window)  # "Datei wählen …" / "Ordner wählen …" in the settings
             webview.start()
             server.should_exit = True
+            from . import updater
+
+            updater.launch_pending()       # an update waits until the window is closed
             return 0
         except Exception:  # noqa: BLE001 - fall back to the browser
             log.warning("Eigenes Fenster nicht möglich, öffne Browser:\n%s", traceback.format_exc())
@@ -114,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(0.5)
     except KeyboardInterrupt:
         server.should_exit = True
+    from . import updater
+
+    updater.launch_pending()
     return 0
 
 

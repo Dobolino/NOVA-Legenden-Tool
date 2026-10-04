@@ -90,3 +90,24 @@ def test_update_channel_is_a_setting(client):  # noqa: F811
     assert client.put("/api/settings", json={"update_channel": "test"}).status_code == 200
     assert client.get("/api/status").json()["settings"]["update_channel"] == "test"
     assert client.put("/api/settings", json={"update_channel": "beta"}).status_code == 422
+
+
+def test_setup_starts_only_after_the_window_closed(monkeypatch, tmp_path):
+    import threading
+    from nova_legend import updater
+
+    started, order = [], []
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda args, **kw: started.append(args))
+    closed = threading.Event()
+
+    def shutdown():
+        order.append("window closed" if not started else "setup first")
+        closed.set()
+
+    updater.install(tmp_path / "setup.exe", shutdown, fallback_after=30)
+    assert closed.wait(5)
+    assert started == [] and order == ["window closed"]
+    # the main thread, after the window loop ended
+    assert updater.launch_pending() is True
+    assert started[0][0].endswith("setup.exe") and "/SILENT" in started[0]
+    assert updater.launch_pending() is False          # only once
