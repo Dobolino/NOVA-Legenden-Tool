@@ -110,6 +110,7 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
             "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
             "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0, "strip_fill": False,
+            "symbol_size": "real",
             "frame_on": False, "frame": "#000000"}
 
 
@@ -153,6 +154,9 @@ def normalize_style(value) -> dict:
         lines = 0
     style["text_lines"] = lines if lines in (1, 2, 3) else 0
     style["strip_fill"] = bool(v.get("strip_fill"))
+    # "real": every symbol at the common scale, on its insertion point, in grid rows;
+    # "tile": every drawing fills one tile of the same size
+    style["symbol_size"] = "tile" if v.get("symbol_size") == "tile" else "real"
     style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
     style["frame"] = _hex(v.get("frame"), "#000000")

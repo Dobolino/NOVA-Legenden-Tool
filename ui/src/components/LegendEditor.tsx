@@ -1527,8 +1527,15 @@ function DocProps({
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
-          <span>Abstand zwischen den Kacheln (mm)</span>
-          <NumberInput label="Abstand zwischen den Kacheln" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
+          <span>Symbolgrösse</span>
+          <select className="select" aria-label="Symbolgrösse" value={s.symbol_size ?? "real"} onChange={(e) => setStyle({ symbol_size: e.target.value as "real" | "tile" })}>
+            <option value="real">Echte Grösse (Massstab)</option>
+            <option value="tile">Gleiche Kacheln</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Abstand zwischen Einträgen (mm)</span>
+          <NumberInput label="Abstand zwischen Einträgen" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
         </label>
         <label className="field">
           <span>Textzeilen</span>
@@ -1549,9 +1556,10 @@ function DocProps({
         Symbol-Hintergründe/Schraffuren entfernen
       </label>
       <p className="hint">
-        Jede Symbolkachel ist {String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm gross.
-        Die Kante folgt der Schriftgrösse und dem Symbolmassstab. Langfeldleuchten behalten ihr Seitenverhältnis und füllen dieselbe Kachel.
-        Der Abstand gilt zwischen den Kacheln. Bei «Automatisch» bleibt der Text auf einer Zeile.
+        {(s.symbol_size ?? "real") === "real"
+          ? "Echte Grösse: Jedes Symbol hat den gemeinsamen Massstab und sitzt mit seinem Einfügepunkt auf der Achse. Ein grosses Symbol belegt mehr Rasterzeilen."
+          : `Gleiche Kacheln: Jedes Symbol füllt eine Kachel von ${String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm, unabhängig von seiner echten Grösse.`}{" "}
+        Bei Textzeilen «Automatisch» bricht ein langer Text um und die Zeile wird höher.
       </p>
       <p className="hint">
         Blattbreite inkl. 5 mm Rand: Standard 200 mm, höchstens 210 mm. Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}

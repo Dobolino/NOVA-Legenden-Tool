@@ -72,17 +72,19 @@ def build_review(evaluation: dict, category_colors: list[dict], legend: dict | N
                              "Die Bibliothek hat für diese Symbole keine Zeichnung: Vorschau und DXF zeigen einen Platzhalter.",
                              "Jedes Symbol der Legende hat eine Zeichnung."))
 
-        seen: set[str] = set()
+        # the same symbol in two sections is intended (one entry per category)
+        seen: set[tuple[str, str]] = set()
         doubles = []
         for b, it in visible:
             key = it.get("family_key") or it.get("symbol_key")
             if it["kind"] != "symbol" or not key:
                 continue
-            if key in seen:
+            if (b["id"], key) in seen:
                 doubles.append({"title": it["text"], "detail": b["title"]})
-            seen.add(key)
-        checks.append(_check("duplicates", "Doppelt in der Legende", "legend", doubles, "warn",
-                             "Dasselbe Symbol steht mehrmals in der Legende.", "Kein Symbol steht doppelt."))
+            seen.add((b["id"], key))
+        checks.append(_check("duplicates", "Doppelt in einem Abschnitt", "legend", doubles, "warn",
+                             "Dasselbe Symbol steht mehrmals im selben Abschnitt.",
+                             "Kein Symbol steht doppelt im selben Abschnitt."))
 
         stale = [{"title": it["text"], "detail": b["title"]} for b, it in visible
                  if it["kind"] == "symbol" and it.get("family_key")

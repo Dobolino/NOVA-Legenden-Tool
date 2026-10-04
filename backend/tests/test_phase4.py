@@ -200,7 +200,7 @@ def test_text_factor_changes_only_that_text_and_the_row_grows():
     doc["blocks"][0]["items"][1]["text"] = "Langer Text " * 8
     grown = layout(doc)
     h = {b["id"]: b["h"] for b in boxes(grown)}
-    assert h["A1"] == h["A0"]                                              # the tile stays one row
+    assert h["A1"] > h["A0"]
     doc["style"]["text_size"] = 3.0
     common = {t["item"]: t["size"] for t in layout(doc)["prims"] if t["t"] == "text" and t.get("item")}
     assert common["A0"] == 3.0 and common["A1"] == 3.6
@@ -512,6 +512,7 @@ def test_entries_share_one_tile_sized_from_the_text():
     doc, sizes = _sym_block([(4.0, 4.0, False), (9.0, 7.0, False), (40.0, 4.0, False), (6.0, 4.5, False)],
                             rotation=(3, 90))
     doc["blocks"][0]["items"][2]["text"] = "Sehr langer Text, der in seiner Spalte umbrechen muss " * 2
+    doc["style"]["symbol_size"] = "tile"                             # equal tiles
     lay = layout(doc, sizes)
     hits = boxes(lay)
     assert len({round(h["h"], 3) for h in hits}) == 1
@@ -532,6 +533,7 @@ def test_every_symbol_is_centred_in_the_same_tile_and_texts_share_one_line():
              "s1": (-2.0, -2.0, 2.0, 2.0, False),
              "s2": (-1.0, -1.5, 1.0, 1.5, False),
              "s3": (3.0, 1.0, 7.0, 3.0, False)}
+    doc["style"]["symbol_size"] = "tile"                             # equal tiles
     lay = layout(doc, sizes)
     syms = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
     texts = {p["item"]: p for p in lay["prims"] if p["t"] == "text" and p.get("item")}
@@ -549,8 +551,8 @@ def test_symbol_factor_enlarges_only_that_symbol_and_the_row_grows():
     lay = layout(doc, sizes)
     big = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
     assert abs(big["s0"]["scale"] - base["s0"]["scale"] * 1.5) < 1e-3 and big["s1"]["scale"] == base["s1"]["scale"]
-    rows = {h["id"]: h["h"] for h in boxes(lay)}
-    assert rows["s0"] == rows["s1"]
+    rows = {h["id"]: round(h["h"] / 4.55) for h in boxes(lay)}
+    assert rows["s0"] == 2 and rows["s1"] == 1
     assert normalize(doc)["blocks"][0]["items"][0]["symbol_factor"] == 1.5
 
 
@@ -683,3 +685,44 @@ def test_automatic_text_lines_never_cut_a_long_text():
     assert rows["s"]["h"] > rows["t"]["h"]                                  # the long text's row grows
     for t in [p for p in lay["prims"] if p["t"] == "text" and p.get("item") == "s"]:
         assert rows["s"]["y"] <= t["y"] - t["size"] and t["y"] <= rows["s"]["y"] + rows["s"]["h"]
+
+
+def test_entries_fill_whole_grid_rows_of_their_section():
+    doc, sizes = _sym_block([(4.0, 4.0, False), (9.0, 7.0, False), (2.0, 3.5, False), (6.0, 4.5, False)],
+                            rotation=(3, 90))
+    doc["blocks"][0]["items"][2]["text"] = "Sehr langer Text, der in seiner Spalte umbrechen muss " * 2
+    doc["blocks"][0]["items"][0]["text_scale"] = 1.2
+    lay = layout(doc, sizes)
+    grid = next(p for p in lay["prims"] if p["t"] == "grid")
+    row = grid["row"]
+    for h in boxes(lay):
+        k = h["h"] / row
+        assert abs(k - round(k)) < 1e-6 and k >= 1                       # whole rows
+        off = (h["y"] - grid["y"]) / row
+        assert abs(off - round(off)) < 1e-6                              # starts on a grid line
+        assert grid["y"] <= h["y"] and h["y"] + h["h"] <= grid["y"] + grid["h"] + 1e-6
+    syms = [p for p in lay["prims"] if p["t"] == "symbol"]
+    assert {s["scale"] for s in syms} == {1.0}                          # same scale, same size
+    tall = next(s for s in syms if s["id"] == "s1")                      # 7 mm high: two rows
+    assert next(h for h in boxes(lay) if h["id"] == "s1")["h"] == 2 * row and tall["h"] == 7.0
+    col0 = grid["x"]
+    assert all(abs(s["cx"] - (col0 + grid["axis"]) - k * grid["colw"]) < 1e-6
+               for s in syms for k in [round((s["cx"] - col0 - grid["axis"]) / grid["colw"])])
+
+
+def test_insertion_points_sit_on_the_axis_and_texts_start_right_of_the_widest_part():
+    # Steckdose T13 with a "3" on the right: the drawing reaches further right of the insertion point
+    items = [{"id": f"s{k}", "kind": "symbol", "symbol_key": f"k{k}", "text": f"Steckdose {k}"} for k in range(4)]
+    doc = normalize({"version": 3, "style": {"columns": 2}, "blocks": [{"id": "S", "title": "Dosen", "items": items}]})
+    sizes = {"s0": (-2.0, -2.0, 4.5, 2.0, False),      # label on the right
+             "s1": (-2.0, -2.0, 2.0, 2.0, False),      # centred
+             "s2": (-1.0, -1.5, 1.0, 1.5, False),
+             "s3": (3.0, 1.0, 7.0, 3.0, False)}        # insertion point outside: the middle is used
+    lay = layout(doc, sizes)
+    syms = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
+    texts = {p["item"]: p for p in lay["prims"] if p["t"] == "text" and p.get("item")}
+    assert syms["s0"]["cx"] == syms["s1"]["cx"] and (syms["s0"]["ax"], syms["s0"]["ay"]) == (0, 0)
+    assert (syms["s3"]["ax"], syms["s3"]["ay"]) == (5.0, 2.0)
+    assert texts["s0"]["x"] == texts["s1"]["x"]
+    assert texts["s0"]["x"] >= syms["s0"]["x0"] + syms["s0"]["w"] + 1.0          # right of the "3"
+    assert syms["s0"]["x0"] < syms["s0"]["cx"] - 1.9                              # drawing not re-centred

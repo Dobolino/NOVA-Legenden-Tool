@@ -117,6 +117,54 @@ def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
     return x0, y0, x1, y1, ax, ay, bool(engine)
 
 
+def symbol_scale(size: tuple[float, float] | None, style: dict, engine: bool,
+                 max_w: float | None = None) -> float:
+    """Real size: the common scale for every symbol (engine symbols at the plan scale).
+    No symbol is shrunk to fit a row: a tall symbol takes more grid rows, so equal scale
+    means equal size. Only a symbol wider than ``max_w`` (half a column) is limited."""
+    s = style["symbol_scale"] * (50.0 / style["plan_scale"] if engine else 1.0)
+    if not size or size[0] <= 0 or max_w is None or size[0] * s <= max_w:
+        return s
+    return round(max_w / size[0], 4)
+
+
+def _turn(left, right, up, down, rotation: int):
+    """Extents around the anchor after turning counter-clockwise."""
+    if rotation == 90:
+        return up, down, right, left
+    if rotation == 180:
+        return right, left, down, up
+    if rotation == 270:
+        return down, up, left, right
+    return left, right, up, down
+
+
+def _symbol_box_real(item: dict, size, style: dict, max_w: float) -> dict:
+    """Real size: extents around the insertion point on the symbol axis."""
+    kind = item["kind"]
+
+    def box(left, right, up, down, scale=1.0, ax=0.0, ay=0.0):
+        return {"left": left, "right": right, "up": up, "down": down, "scale": scale, "ax": ax, "ay": ay}
+
+    if kind == "symbol":
+        rot = int(item.get("rotation") or 0)
+        factor = float(item.get("symbol_factor") or 1.0)
+        if size:
+            x0, y0, x1, y1, ax, ay, engine = _anchor(size)
+            left, right, up, down = _turn(ax - x0, x1 - ax, y1 - ay, ay - y0, rot)
+            scale = symbol_scale((left + right, 2 * max(up, down)), style, engine, max_w) * factor
+            return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
+        half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
+        return box(half, half, half, half)
+    if kind == "line":
+        half = min(item["line_length"], style["text_offset"] * 2 - 2.4) / 2
+        return box(half, half, 0.5, 0.5)
+    if kind == "note":
+        half = min(3.6, style["row"] - SYMBOL_CLEARANCE) / 2
+        return box(half, half, half, half)
+    return box(0.0, 0.0, 0.0, 0.0)
+
+
 def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
     """Fit one drawing into the shared tile. The longer side fills the tile, the other
     side keeps its proportion, and the drawing is centred in the tile."""
@@ -220,14 +268,24 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     body: list[dict] = []
     colw = (inner - 2 * pad) / cols
     items = [it for it in block["items"] if not it.get("hidden")]
-    tile = min(symbol_tile(style), colw * 0.46)
-    boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, tile) for it in items}
     cap = _line_cap(style)
     gap_mm = max(0.0, float(style.get("entry_gap") or 0.0))
-    fixed = entry_slot(style, tile)
-    # one tile centre and one text start for the whole section
-    axis = tile / 2 + 0.4
-    text_x = axis + tile / 2 + 1.5
+    real = style.get("symbol_size", "real") != "tile"
+    if real:
+        # real size: insertion points on one axis, texts right of the widest part,
+        # every entry takes whole rows of the chosen grid
+        off = style["text_offset"]
+        boxes = {it["id"]: _symbol_box_real(it, sizes.get(it["id"]), style, colw / 2) for it in items}
+        axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
+        text_x = max([off] + [axis + boxes[it["id"]]["right"] + 1.2 for it in items])
+        fixed = None
+    else:
+        # equal tiles: every drawing fills one tile sized from the text
+        tile = min(symbol_tile(style), colw * 0.46)
+        boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, tile) for it in items}
+        fixed = entry_slot(style, tile)
+        axis = tile / 2 + 0.4
+        text_x = axis + tile / 2 + 1.5
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     for c in range(cols):
@@ -243,7 +301,8 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
     prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
-                  "w": inner - 2 * pad, "h": body_h, "row": fixed + gap_mm, "cols": cols, "colw": colw,
+                  "w": inner - 2 * pad, "h": body_h, "row": (row if fixed is None else fixed) + gap_mm,
+                  "cols": cols, "colw": colw,
                   "axis": axis, "text": text_x})
     if st.get("background_on"):
         prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": total_h, "fill": st["background"],
@@ -282,14 +341,22 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     tx = cx0 + text_x
     lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
     if lines_n:
-        # a chosen line count: every row has the same height, extra lines are dropped
+        # a chosen line count: extra lines are dropped
         reserve = lines_n
         lines = lines[:reserve] or [""]
-        h = fixed_h if fixed_h is not None else max(row, reserve * lh)
     else:
         # automatic: a long text wraps and its row grows, nothing is cut off
         reserve = len(lines) or 1
-        h = max(fixed_h or row, reserve * lh + TEXT_CLEARANCE)
+    if fixed_h is None:
+        # real size: whole rows of the grid, room for the text and for the symbol
+        # whose insertion point sits on the middle of the row
+        sym_h = 2 * max(box["up"], box["down"])
+        need = max(reserve * lh + TEXT_CLEARANCE, sym_h + SYMBOL_CLEARANCE if sym_h else 0.0)
+        h = row * max(1, math.ceil(need / row - 1e-3))
+    elif lines_n:
+        h = fixed_h
+    else:
+        h = max(fixed_h, reserve * lh + TEXT_CLEARANCE)
     mid = cy + h / 2
     sx = cx0 + axis
     w = box["left"] + box["right"]

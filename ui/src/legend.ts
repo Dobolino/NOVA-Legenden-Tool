@@ -60,6 +60,7 @@ export interface LegendStyle {
   entry_gap: number; // millimetres between rows; 0 means the rows touch
   text_lines: number; // 0 automatic, 1–3 fixed line count and one row height
   strip_fill: boolean; // legend-wide: drop symbol fills and hatches, keep the strokes
+  symbol_size?: "real" | "tile"; // real size on the insertion point (default) or equal tiles
   frame_on: boolean; // border round the whole legend
   frame: string;
 }
@@ -315,11 +316,12 @@ function symbolIdentity(it: { family_key: string | null; symbol_key: string | nu
   return it.family_key ? `f:${it.family_key}` : it.symbol_key ? `s:${it.symbol_key}` : null;
 }
 
-/** Second and later entries of the same symbol. */
+/** Second and later entries of the same symbol in the same section. The same symbol
+ *  in two sections is intended (one entry per category and layer colour). */
 export function duplicateItems(doc: LegendDoc): Set<string> {
-  const seen = new Set<string>();
   const out = new Set<string>();
-  for (const b of doc.blocks)
+  for (const b of doc.blocks) {
+    const seen = new Set<string>();
     for (const it of b.items) {
       if (it.kind !== "symbol" || it.hidden) continue;
       const k = symbolIdentity(it);
@@ -327,6 +329,7 @@ export function duplicateItems(doc: LegendDoc): Set<string> {
       if (seen.has(k)) out.add(it.id);
       else seen.add(k);
     }
+  }
   return out;
 }
 

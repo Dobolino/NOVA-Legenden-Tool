@@ -139,9 +139,11 @@ test("drag and drop: move in front of an entry, into another section, insert new
   assert.equal(rotateItem(rotateItem(doc(), "a", "i1"), "a", "i1").blocks[0].items[0].rotation, 180);
 });
 
-test("duplicates are marked, the first one is not", () => {
-  const r = insertItem(doc(), "b", { kind: "symbol", family_key: "lampe", symbol_key: "s:lampe", text: "Lampe 2" }, null);
+test("duplicates in one section are marked, the first one and other sections are not", () => {
+  const r = insertItem(doc(), "a", { kind: "symbol", family_key: "lampe", symbol_key: "s:lampe", text: "Lampe 2" }, null);
   assert.deepEqual([...duplicateItems(r.doc)], [r.id]);
+  const other = insertItem(doc(), "b", { kind: "symbol", family_key: "lampe", symbol_key: "s:lampe", text: "Lampe BMA" }, null);
+  assert.deepEqual([...duplicateItems(other.doc)], [], "same symbol in another section is intended");
   assert.equal(inLegend(doc(), "lampe", null), true);
   assert.equal(inLegend(doc(), "neu", null), false);
 });
