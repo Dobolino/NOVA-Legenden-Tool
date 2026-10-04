@@ -397,9 +397,10 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     elif kind == "line":
         out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
-                    "layer": block.get("layer") or ""})
+                    "layer": block.get("layer") or "", "item": item["id"]})
     elif kind == "note":
-        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"]})
+        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"],
+                    "item": item["id"]})
     # The first line of every entry shares one baseline. Further lines go downward.
     base = mid - (reserve - 1) * lh / 2 + its * 0.32
     for i, line in enumerate(lines):

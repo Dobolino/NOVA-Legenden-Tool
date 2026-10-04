@@ -246,6 +246,9 @@ def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
     page.mouse.down()
     page.mouse.move(tx - 40, ty, steps=5)
     page.mouse.move(tx, ty, steps=5)
+    # the entries glide: right after the preview arrives, a moved entry carries a transition
+    page.wait_for_function("""() => [...document.querySelectorAll('g[data-entry]')]
+        .some(g => (g.style.transition || '').includes('transform'))""", timeout=3000)
     page.wait_for_timeout(400)                 # live preview with the highlighted cell
     page.mouse.up()
     page.wait_for_timeout(1500)                # autosave

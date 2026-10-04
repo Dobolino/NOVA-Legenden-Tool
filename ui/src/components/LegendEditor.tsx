@@ -570,6 +570,33 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     };
   }, [dropAt, doc, projectId]);
 
+  // Entries glide to their new place when the layout changes (drag preview, drop, undo):
+  // FLIP, start where the entry was, then let CSS move it to where it is now.
+  const entryPos = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const layoutNow = dropAt?.cell !== undefined && preview ? preview.layout : placed;
+  useLayoutEffect(() => {
+    const svg = paperRef.current;
+    if (!svg || !layoutNow) return;
+    const now = new Map<string, { x: number; y: number }>();
+    for (const p of layoutNow.prims) if (p.t === "hit" && p.kind === "item") now.set(p.id, { x: p.x, y: p.y });
+    const before = entryPos.current;
+    entryPos.current = now;
+    if (!before.size || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    svg.querySelectorAll<SVGGElement>("g[data-entry]").forEach((g) => {
+      const id = g.dataset.entry ?? "";
+      const a = before.get(id);
+      const b = now.get(id);
+      if (!a || !b || (Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01)) return;
+      g.style.transition = "none";
+      g.style.transform = `translate(${a.x - b.x}px, ${a.y - b.y}px)`;
+      g.getBoundingClientRect();           // apply the start position before the move
+      requestAnimationFrame(() => {
+        g.style.transition = "transform 180ms cubic-bezier(.2,.7,.3,1)";
+        g.style.transform = "";
+      });
+    });
+  }, [layoutNow]);
+
   // -- save now and export ----------------------------------------------------------------
 
   async function exportFile(format: "dxf" | "dwg" | "pdf", block: string, withGeneral: boolean) {
@@ -966,11 +993,18 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                 <Prim key={`bg${i}`} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} />
               ))}
             {showGrid && (shown?.prims ?? []).filter((p) => p.t === "grid").map((g) => <GridLines key={`g${g.block}`} g={g} />)}
-            {(shown?.prims ?? [])
-              .filter((p) => !(p.t === "rect" && p.role === "background") && p.t !== "grid")
-              .map((p, i) => (
-                <Prim key={i} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
-              ))}
+            {groupByEntry((shown?.prims ?? []).filter((p) => !(p.t === "rect" && p.role === "background") && p.t !== "grid")).map((g, i) =>
+              g.item ? (
+                // one group per entry, keyed by its id: it glides to a new place (see the FLIP effect)
+                <g key={`e:${g.item}`} data-entry={g.item} className="lg-entry">
+                  {g.prims.map((p, j) => (
+                    <Prim key={j} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
+                  ))}
+                </g>
+              ) : (
+                <Prim key={`p${i}`} p={g.prims[0]} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
+              ),
+            )}
             {dropAt && dropAt.cell !== undefined && preview && <DropCell layout={preview.layout} id={preview.id} />}
             {dropAt && dropAt.cell === undefined && placed && <DropMarker placed={placed} target={dropAt} doc={doc} />}
           </svg>
@@ -1232,6 +1266,28 @@ function GridLines({ g }: { g: LegendPrim }) {
       </g>
     </g>
   );
+}
+
+/** Prims in drawing order, the ones of one entry (symbol, texts, hit area) together. */
+function groupByEntry(prims: LegendPrim[]): { item: string | null; prims: LegendPrim[] }[] {
+  const out: { item: string | null; prims: LegendPrim[] }[] = [];
+  const byItem = new Map<string, { item: string | null; prims: LegendPrim[] }>();
+  for (const p of prims) {
+    const item: string | undefined =
+      p.t === "symbol" || (p.t === "hit" && p.kind === "item") ? p.id : p.t === "text" || p.t === "line" || p.t === "half" ? p.item : undefined;
+    if (!item) {
+      out.push({ item: null, prims: [p] });
+      continue;
+    }
+    let g = byItem.get(item);
+    if (!g) {
+      g = { item, prims: [] };
+      byItem.set(item, g);
+      out.push(g);
+    }
+    g.prims.push(p);
+  }
+  return out;
 }
 
 /** The cell a dragged entry will take, in the preview where the others already made room. */
