@@ -439,7 +439,8 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .legend-toolbar .saved, .legend-toolbar .dirty { font-size: 11px; }
 .legend-toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 .legend-body {
-  display: grid; grid-template-columns: 220px minmax(0, 1fr) 260px; gap: 12px;
+  position: relative;
+  display: grid; grid-template-columns: var(--outline-w, 240px) minmax(0, 1fr) var(--props-w, 280px); gap: 12px;
   height: max(540px, calc(100dvh - 360px)); min-height: 460px;
 }
 .legend-outline, .legend-props {
@@ -450,7 +451,14 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .legend-props .field { margin-bottom: 8px; min-width: 0; }
 .legend-props .field > span { display: flex; align-items: flex-end; min-height: 2.5em; line-height: 1.25; }
 .legend-props .form.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 8px; align-items: end; }
-.legend-body.detached { grid-template-columns: 220px minmax(0, 1fr); }
+.legend-body.detached { grid-template-columns: var(--outline-w, 240px) minmax(0, 1fr); }
+/* drag handles between the panels (in the 12 px gap) */
+.pane-handle { position: absolute; top: 0; bottom: 0; width: 12px; cursor: col-resize; z-index: 5; border-radius: 6px; }
+.pane-handle::after { content: ""; position: absolute; top: 50%; left: 5px; width: 2px; height: 40px; margin-top: -20px; border-radius: 2px; background: var(--line); }
+.pane-handle:hover::after, body.pane-resizing .pane-handle::after { background: var(--accent); height: 80px; margin-top: -40px; }
+.pane-handle.outline { left: var(--outline-w, 240px); }
+.pane-handle.props { right: var(--props-w, 280px); }
+body.pane-resizing { cursor: col-resize; user-select: none; }
 .legend-props.floating {
   position: fixed; top: 84px; right: 16px; width: min(400px, calc(100vw - 24px));
   max-height: calc(100dvh - 104px); z-index: 50;
@@ -468,8 +476,10 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .outline-title { flex: 1; min-width: 0; border: 0; background: none; text-align: left; font-weight: 600; cursor: pointer; padding: 4px 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fold-btn { border: 0; background: none; cursor: pointer; color: var(--muted); width: 20px; padding: 0; }
-.outline-item { display: block; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13.5px;
-  padding: 3px 6px 3px 24px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item { display: flex; align-items: center; gap: 2px; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; font-size: 13.5px;
+  padding: 3px 6px 3px 24px; border-radius: 6px; overflow: hidden; white-space: nowrap; }
+.outline-item .outline-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.outline-item .badge { flex: none; }
 .outline-item.add { padding-left: 6px; }
 .outline-item:hover { background: var(--panel); }
 .outline-item.active { background: var(--accent-soft); color: var(--accent); }
@@ -478,7 +488,8 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .chip-btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 2px 8px; font-size: 12.5px; cursor: pointer; text-align: left; }
 .chip-btn:hover { border-color: var(--accent); }
 @media (max-width: 1250px) {
-  .legend-body { grid-template-columns: 230px minmax(0, 1fr); height: auto; }
+  .legend-body { grid-template-columns: var(--outline-w, 240px) minmax(0, 1fr); height: auto; }
+  .pane-handle.props { display: none; }
   .legend-canvas { height: 70vh; }
   .legend-props { grid-column: 1 / -1; }
 }

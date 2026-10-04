@@ -81,6 +81,19 @@ function readGridPref(): boolean {
   }
 }
 
+const PANE_KEY = "nl.legend.panes";
+const PANE_LIMITS = { outline: [180, 520], props: [240, 560] } as const;
+
+/** Widths of the side panels, as the user dragged them (per computer). */
+function readPanes(): { outline: number; props: number } {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(PANE_KEY) || "{}");
+    return { outline: Number(v.outline) || 240, props: Number(v.props) || 280 };
+  } catch {
+    return { outline: 240, props: 280 };
+  }
+}
+
 export default function LegendEditor({ projectId, data, categories, notify, legendId = null }: Props) {
   const [hist, setHist] = useState<History<LegendDoc> | null>(null);
   const [info, setInfo] = useState<LegendInfo | null>(null);
@@ -97,6 +110,45 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const [exportBlock, setExportBlock] = useState("");
   const [exportGeneral, setExportGeneral] = useState(true);
   const [showGrid, setShowGrid] = useState(readGridPref);
+  const [panes, setPanes] = useState(readPanes);
+
+  /** Drag the border of a side panel, like a pane in the Explorer. Double click: back to the default. */
+  function startPaneDrag(e: ReactPointerEvent, which: "outline" | "props") {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = panes[which];
+    const [lo, hi] = PANE_LIMITS[which];
+    let latest = panes;
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - x0;
+      const w = Math.round(Math.max(lo, Math.min(hi, which === "outline" ? w0 + dx : w0 - dx)));
+      latest = { ...latest, [which]: w };
+      setPanes(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("pane-resizing");
+      try {
+        window.localStorage.setItem(PANE_KEY, JSON.stringify(latest));
+      } catch {
+        /* only a convenience */
+      }
+    };
+    document.body.classList.add("pane-resizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function resetPane(which: "outline" | "props") {
+    const next = { ...panes, [which]: which === "outline" ? 240 : 280 };
+    setPanes(next);
+    try {
+      window.localStorage.setItem(PANE_KEY, JSON.stringify(next));
+    } catch {
+      /* only a convenience */
+    }
+  }
   const [detached, setDetached] = useState(false);
   const [windowed, setWindowed] = useState(false);
   const [dropAt, setDropAt] = useState<DropTarget | null>(null);
@@ -746,7 +798,16 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         </div>
       )}
 
-      <div className={`legend-body ${detached ? "detached" : ""}`}>
+      <div className={`legend-body ${detached ? "detached" : ""}`}
+        style={{ ["--outline-w" as string]: `${panes.outline}px`, ["--props-w" as string]: `${panes.props}px` }}>
+        <div className="pane-handle outline" role="separator" aria-orientation="vertical" aria-label="Breite der Liste links ändern"
+          title="Ziehen ändert die Breite. Doppelklick: Standardbreite." onPointerDown={(e) => startPaneDrag(e, "outline")}
+          onDoubleClick={() => resetPane("outline")} />
+        {!detached && (
+          <div className="pane-handle props" role="separator" aria-orientation="vertical" aria-label="Breite der Einstellungen ändern"
+            title="Ziehen ändert die Breite. Doppelklick: Standardbreite." onPointerDown={(e) => startPaneDrag(e, "props")}
+            onDoubleClick={() => resetPane("props")} />
+        )}
         <aside className="legend-outline">
           <div className="section" style={{ marginTop: 0 }}>
             Abschnitte
@@ -787,7 +848,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                   >
                     {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
-                    {it.text || "(ohne Text)"}
+                    <span className="outline-text">{it.text || "(ohne Text)"}</span>
                     {it.kind === "symbol" && it.family_key && descriptions[it.family_key] === it.text.trim() && (
                       <span className="badge company" title="Dieser Text ist der Firmentext">F</span>
                     )}
