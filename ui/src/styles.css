@@ -723,3 +723,13 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .ct-icon svg { width: 100%; height: 100%; }
 .ct-table td { vertical-align: middle; }
 .ct-table input.input { width: 100%; min-width: 180px; }
+
+/* legend editor: company text and view controls */
+.company-text { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); margin: 4px 0 10px; font-size: 12px; }
+.company-text.is-company { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 10%, var(--panel)); }
+.company-text .company-state { font-weight: 600; }
+.company-text.is-company .company-state { color: var(--ok); }
+.company-text .company-state.muted { font-weight: 400; color: var(--muted); }
+.badge.company { color: var(--ok); border-color: var(--ok); padding: 0 5px; }
+.legend-toolbar .zoom-value { min-width: 44px; text-align: center; }
+.legend-window-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); font-size: 12px; }

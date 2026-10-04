@@ -618,7 +618,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   return (
     <>
     {windowed && (
-      <button type="button" className="legend-window-back" aria-label="Fenster schliessen" onClick={() => setWindowed(false)} />
+      <button type="button" className="legend-window-back" aria-label="Grossansicht beenden" title="Grossansicht beenden" onClick={() => setWindowed(false)} />
     )}
     <div className={`legend-editor ${windowed ? "windowed" : ""}`}>
       {generalBox}
@@ -684,7 +684,43 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           </select>
         </label>
         </div>
+        <div className="tool-group" role="group" aria-label="Zoom">
+        <button className="btn small" onClick={() => setZoom((z) => Math.max(0.5, round(z / 1.25)))} aria-label="Verkleinern" title="Verkleinern">
+          −
+        </button>
+        <span className="hint zoom-value">{Math.round((zoom / 4) * 100)} %</span>
+        <button className="btn small" onClick={() => setZoom((z) => Math.min(12, round(z * 1.25)))} aria-label="Vergrössern" title="Vergrössern">
+          +
+        </button>
+        <button className="btn small" onClick={() => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const padding = getComputedStyle(canvas);
+          const width = canvas.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
+          setZoom(Math.max(0.5, Math.min(12, round(width / W))));
+        }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
+        </div>
+        <span style={{ flex: 1 }} />
+        <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
+          {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
+        </span>
+        <div className="tool-group" role="group" aria-label="Export">
+        <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
+          title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
+          <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
+        </button>
+        </div>
         <div className="tool-group" role="group" aria-label="Ansicht">
+        <button className={`btn small ${detached ? "is-on" : ""}`} aria-pressed={detached} onClick={() => setDetached((v) => !v)}
+          title={detached ? "Die Einstellungen wieder rechts neben der Legende zeigen" : "Die Einstellungen als schwebendes Feld über der Legende zeigen. Mehr Platz für das Blatt."}>
+          {detached ? "⇥ Einstellungen andocken" : "⧉ Einstellungen schwebend"}
+        </button>
+        {!windowed && (
+          <button className="btn small" onClick={() => setWindowed(true)}
+            title="Den Editor über das ganze Programmfenster öffnen. Esc oder «Grossansicht beenden» schliesst sie.">
+            ⤢ Grossansicht
+          </button>
+        )}
         <button
           className={`btn small ${showGrid ? "is-on" : ""}`}
           aria-pressed={showGrid}
@@ -699,44 +735,16 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           }}
           title="Rasterlinien im gewählten Mass einblenden. Sie erscheinen nicht im Export."
         >
-          Raster anzeigen
-        </button>
-        <button className="btn small" onClick={() => setZoom((z) => Math.max(0.5, round(z / 1.25)))} aria-label="Verkleinern">
-          −
-        </button>
-        <span className="hint" style={{ minWidth: 44, textAlign: "center" }}>
-          {Math.round((zoom / 4) * 100)} %
-        </span>
-        <button className="btn small" onClick={() => setZoom((z) => Math.min(12, round(z * 1.25)))} aria-label="Vergrössern">
-          +
-        </button>
-        <button className="btn small" onClick={() => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const padding = getComputedStyle(canvas);
-          const width = canvas.clientWidth - parseFloat(padding.paddingLeft) - parseFloat(padding.paddingRight);
-          setZoom(Math.max(0.5, Math.min(12, round(width / W))));
-        }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
-        <button className={`btn small ${detached ? "is-on" : ""}`} onClick={() => setDetached((v) => !v)}
-          title="Die Einstellungen als schwebendes Fenster über der Legende öffnen. Das Blatt bleibt weiss.">
-          {detached ? "Einstellungen andocken" : "Einstellungen lösen"}
-        </button>
-        <button className={`btn small ${windowed ? "is-on" : ""}`} onClick={() => setWindowed((v) => !v)}
-          title="Die Legende gross über dem Programm öffnen. Das Blatt bleibt weiss.">
-          {windowed ? "Fenster schliessen" : "Als Fenster"}
-        </button>
-        </div>
-        <span style={{ flex: 1 }} />
-        <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
-          {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
-        </span>
-        <div className="tool-group" role="group" aria-label="Export">
-        <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
-          title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
-          <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}
+          ▦ Raster anzeigen
         </button>
         </div>
       </div>
+      {windowed && (
+        <div className="legend-window-bar">
+          <span>Grossansicht. Esc kehrt zurück.</span>
+          <button className="btn small primary" onClick={() => setWindowed(false)}>✕ Grossansicht beenden</button>
+        </div>
+      )}
 
       <div className={`legend-body ${detached ? "detached" : ""}`}>
         <aside className="legend-outline">
@@ -780,6 +788,9 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                     {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
                     {it.text || "(ohne Text)"}
+                    {it.kind === "symbol" && it.family_key && descriptions[it.family_key] === it.text.trim() && (
+                      <span className="badge company" title="Dieser Text ist der Firmentext">F</span>
+                    )}
                     {it.hidden && <span className="badge">im Allgemeinteil</span>}
                     {dups.has(it.id) && <span className="badge warn">doppelt</span>}
                     {stale.has(it.id) && <span className="badge weg">nicht im Projekt</span>}
@@ -923,6 +934,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               field={field}
               change={change}
               notify={notify}
+              companyText={selItem.family_key ? descriptions[selItem.family_key] ?? null : null}
               onDescription={(fam, text) => setInfo((i) => (i ? { ...i, descriptions: { ...i.descriptions, [fam]: text } } : i))}
               onMoveTo={(to) => {
                 change(moveItemToBlock(doc, selBlock.id, selItem.id, to));
@@ -1283,6 +1295,7 @@ function ItemProps({
   field,
   change,
   notify,
+  companyText,
   onDescription,
   onMoveTo,
   onMove,
@@ -1300,6 +1313,7 @@ function ItemProps({
   field: FieldFn;
   change: (d: LegendDoc) => void;
   notify: (text: string, error?: boolean) => void;
+  companyText: string | null;
   onDescription: (familyKey: string, text: string) => void;
   onMoveTo: (blockId: string) => void;
   onMove: (delta: number) => void;
@@ -1307,6 +1321,18 @@ function ItemProps({
 }) {
   const [suggest, setSuggest] = useState<{ text: string; source: string }[]>([]);
   const set = (patch: Partial<LegendItem>) => change(updateItem(doc, block.id, item.id, patch));
+
+  async function saveCompanyText() {
+    const text = item.text.trim();
+    if (!item.family_key || !text) return;
+    try {
+      await api.setDescription(item.family_key, text);
+      onDescription(item.family_key, text);
+      notify("Als Firmentext gespeichert. Gilt beim Hinzufügen und bei neuen Vorschlägen in allen Projekten.");
+    } catch (e) {
+      notify((e as Error).message, true);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -1357,20 +1383,30 @@ function ItemProps({
         </div>
       )}
       {item.kind === "symbol" && item.family_key && (
-        <button
-          className="btn small"
-          onClick={async () => {
-            try {
-              await api.setDescription(item.family_key!, item.text);
-              onDescription(item.family_key!, item.text);
-              notify("Als Firmentext gespeichert (gilt beim Hinzufügen und bei neuen Vorschlägen in allen Projekten)");
-            } catch (e) {
-              notify((e as Error).message, true);
-            }
-          }}
-        >
-          Als Firmentext speichern
-        </button>
+        <div className={`company-text ${companyText !== null && companyText === item.text.trim() ? "is-company" : ""}`}>
+          {companyText !== null && companyText === item.text.trim() ? (
+            <span className="company-state">✓ Das ist der Firmentext</span>
+          ) : companyText !== null ? (
+            <>
+              <span className="company-state">Firmentext: «{companyText}»</span>
+              <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+                <button className="btn small" onClick={() => set({ text: companyText })} title="Den Firmentext in diesen Eintrag übernehmen">
+                  Firmentext übernehmen
+                </button>
+                <button className="btn small" onClick={saveCompanyText} title="Den Text dieses Eintrags als neuen Firmentext speichern, für alle Projekte">
+                  Diesen Text als Firmentext
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="company-state muted">Noch kein Firmentext. Der Text kommt aus der Schablone.</span>
+              <button className="btn small" onClick={saveCompanyText} title="Gilt beim Hinzufügen und bei neuen Vorschlägen in allen Projekten">
+                Als Firmentext speichern
+              </button>
+            </>
+          )}
+        </div>
       )}
       <div className="form two">
         <label className="field">
