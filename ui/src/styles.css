@@ -709,3 +709,11 @@ details.fold[open] > summary { margin-bottom: 10px; }
   *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
   .tile:hover { box-shadow: var(--shadow); }
 }
+
+/* named legends of a project */
+.legend-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.legend-tab { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 999px; padding: 5px 14px; font-size: 13px; cursor: pointer; }
+.legend-tab:hover { border-color: var(--accent); }
+.legend-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.legend-tabs-end { margin-left: auto; display: flex; gap: 6px; }
+.legend-cat-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 12px; margin: 4px 0 8px 26px; max-height: 220px; overflow-y: auto; }

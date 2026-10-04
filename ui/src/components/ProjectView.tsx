@@ -4,6 +4,7 @@ import { planFiles } from "../floors";
 import { formatDateTime, layerStateText, plansOpen, rememberPlansOpen } from "../uiState";
 import ChangesTab, { changeHint } from "./ChangesTab";
 import LegendEditor from "./LegendEditor";
+import LegendTabs from "./LegendTabs";
 import ImportDialog from "./ImportDialog";
 import ReviewPanel from "./ReviewPanel";
 import Menu from "./Menu";
@@ -33,6 +34,9 @@ export default function ProjectView({ projectId, projects, categories, notify, o
   const loadGeneration = useRef(0);
   const [data, setData] = useState<ProjectDetail | null>(null);
   const [tab, setTab] = useState<Tab>("list");
+  // the selected legend belongs to one project; another project starts with its first legend
+  const [legendSel, setLegendSel] = useState<{ project: string; id: number } | null>(null);
+  const legendId = legendSel?.project === projectId ? legendSel.id : null;
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ files: File[]; planId?: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -734,7 +738,14 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "legend" && (
-              <LegendEditor key={projectId} projectId={projectId} data={data} categories={categories} notify={notify} />
+              <>
+                <LegendTabs key={projectId} projectId={projectId} categories={data.category_colors} active={legendId}
+                  onSelect={(id) => setLegendSel({ project: projectId, id })} notify={notify} />
+                {legendId !== null && (
+                  <LegendEditor key={`${projectId}:${legendId}`} projectId={projectId} legendId={legendId || null}
+                    data={data} categories={categories} notify={notify} />
+                )}
+              </>
             )}
 
             {tab === "changes" && (

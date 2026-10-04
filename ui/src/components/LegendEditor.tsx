@@ -51,6 +51,8 @@ interface Props {
   data: ProjectDetail;
   categories: Category[];
   notify: (text: string, error?: boolean) => void;
+  /** The named legend to edit; null opens the first legend of the project. */
+  legendId?: number | null;
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -75,7 +77,7 @@ function readGridPref(): boolean {
   }
 }
 
-export default function LegendEditor({ projectId, data, categories, notify }: Props) {
+export default function LegendEditor({ projectId, data, categories, notify, legendId = null }: Props) {
   const [hist, setHist] = useState<History<LegendDoc> | null>(null);
   const [info, setInfo] = useState<LegendInfo | null>(null);
   const [placed, setPlaced] = useState<LegendLayout | null>(null);
@@ -98,7 +100,8 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
   const dragPayload = useRef<DragPayload | null>(null);
   const sheetDrag = useRef<{ block: string; item: string; x: number; y: number; active: boolean } | null>(null);
   const justDragged = useRef(false);
-  const [saveSession] = useState(() => new SaveSession(projectId, api.saveLegend));
+  // one save session per legend: writes always go to the legend that was edited
+  const [saveSession] = useState(() => new SaveSession(projectId, (pid: string, d: LegendDoc) => api.saveLegend(pid, d, undefined, legendId)));
   const { register } = useNavigation();
   const layoutGate = useRef({ generation: 0 });
   const fieldBefore = useRef<LegendDoc | null>(null);
@@ -116,7 +119,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     let alive = true;
     setInfo(null);
     api
-      .legend(projectId)
+      .legend(projectId, legendId)
       .then((r) => {
         if (!alive) return;
         setInfo(r);
@@ -143,7 +146,7 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     return () => {
       alive = false;
     };
-  }, [projectId, notify, saveSession]);
+  }, [projectId, legendId, notify, saveSession]);
 
   // Register the latest rendered edit before navigation events can flush it.
   useLayoutEffect(() => { saveSession.update(doc); }, [doc, saveSession]);
@@ -461,8 +464,8 @@ export default function LegendEditor({ projectId, data, categories, notify }: Pr
     setExporting(true);
     try {
       await saveNow();
-      const { name } = await api.legendExportName(projectId, format, block);
-      const blob = await api.legendExportFile(api.legendExportUrl(projectId, name, format, block, withGeneral));
+      const { name } = await api.legendExportName(projectId, format, block, legendId);
+      const blob = await api.legendExportFile(api.legendExportUrl(projectId, name, format, block, withGeneral, legendId));
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

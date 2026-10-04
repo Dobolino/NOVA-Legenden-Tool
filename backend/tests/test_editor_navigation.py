@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
 import threading
 import time
@@ -82,6 +83,10 @@ def editor(env):
         sock.close()
 
 
+# the editor saves to one named legend: /legend?legend=<id>
+LEGEND_URL = re.compile(r"/legend(\?.*)?$")
+
+
 def title(client, pid):
     return client.get(f"/api/projects/{pid}/legend").json()["legend"]["doc"]["title"]["text"]
 
@@ -93,7 +98,7 @@ def test_immediate_navigation_saves_to_the_original_project(editor, destination)
     page.evaluate("""() => {
         const original = window.fetch;
         window.fetch = async (...args) => {
-            if (String(args[0]).includes('/Browser%20B/legend') && (!args[1]?.method || args[1].method === 'GET'))
+            if (/\/Browser%20B\/legend(\?.*)?$/.test(String(args[0])) && (!args[1]?.method || args[1].method === 'GET'))
                 await new Promise(resolve => setTimeout(resolve, 1400));
             return original(...args);
         };
@@ -126,7 +131,7 @@ def test_failed_save_keeps_the_editor_open_and_can_be_retried(editor, destinatio
         else:
             route.continue_()
 
-    page.route("**/legend", fail_save)
+    page.route(LEGEND_URL, fail_save)
     field.fill("Retry this edit")
     if destination == "global_tab":
         page.get_by_role("button", name="Kategorien", exact=True).click()
@@ -138,7 +143,7 @@ def test_failed_save_keeps_the_editor_open_and_can_be_retried(editor, destinatio
     playwright.expect(field).to_have_value("Retry this edit")
     playwright.expect(page.get_by_role("combobox", name="Projekt wechseln", exact=True)).to_have_value(a)
     assert title(client, a) == "Browser A"
-    page.unroute("**/legend", fail_save)
+    page.unroute(LEGEND_URL, fail_save)
     page.get_by_role("button", name="Kategorien", exact=True).click()
     playwright.expect(page.get_by_role("button", name="Kategorien", exact=True)).to_have_class("tab active")
     assert title(client, a) == "Retry this edit"
@@ -150,7 +155,7 @@ def test_navigation_waits_for_an_inflight_autosave_and_then_saves_the_latest_edi
         const original = window.fetch;
         window.legendWrites = [];
         window.fetch = async (...args) => {
-            if (String(args[0]).endsWith('/legend') && args[1]?.method === 'PUT') {
+            if (/\/legend(\?.*)?$/.test(String(args[0])) && args[1]?.method === 'PUT') {
                 window.legendWrites.push(JSON.parse(args[1].body).doc.title.text);
                 if (window.legendWrites.length === 1) {
                     window.saveWaiting = true;
@@ -191,8 +196,29 @@ def test_close_warning_only_appears_while_the_document_is_unsaved(editor):
     assert not closing_is_blocked()
     field.fill("Not saved yet")
     assert closing_is_blocked()
-    with page.expect_response(lambda response: response.request.method == "PUT" and response.url.endswith("/legend")):
+    with page.expect_response(lambda response: response.request.method == "PUT" and LEGEND_URL.search(response.url)):
         page.get_by_role("button", name="Kategorien", exact=True).click()
     playwright.expect(page.get_by_role("button", name="Kategorien", exact=True)).to_have_class("tab active")
     assert not closing_is_blocked()
     assert title(client, a) == "Not saved yet"
+
+
+def test_several_legends_are_edited_and_saved_separately(editor):
+    page, field, client, (a, b) = editor
+    field.fill("Hauptlegende")
+    page.get_by_role("button", name="+ Neue Legende", exact=True).click()
+    page.get_by_label("Name", exact=True).fill("Brandmelder")
+    page.get_by_role("radio", name="Leer", exact=True).check()
+    page.get_by_role("button", name="Anlegen", exact=True).click()
+    playwright.expect(page.get_by_role("tab", name="Brandmelder", exact=True)).to_have_attribute("aria-selected", "true")
+    page.get_by_role("button", name="T Titel", exact=True).click()
+    playwright.expect(field).to_have_value("Brandmelder")
+    field.fill("Brandmelder EG")
+    page.get_by_role("tab", name="Legende", exact=True).click()
+    page.get_by_role("button", name="T Titel", exact=True).click()
+    playwright.expect(field).to_have_value("Hauptlegende")
+    items = client.get(f"/api/projects/{a}/legends").json()["items"]
+    assert [i["name"] for i in items] == ["Legende", "Brandmelder"]
+    second = client.get(f"/api/projects/{a}/legend?legend={items[1]['id']}").json()["legend"]
+    assert second["doc"]["title"]["text"] == "Brandmelder EG"
+    assert title(client, a) == "Hauptlegende"

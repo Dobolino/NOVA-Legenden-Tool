@@ -31,6 +31,18 @@ class LegendIn(BaseModel):
 
 class ProposeIn(BaseModel):
     style: dict | None = None
+    categories: list[str] | None = None     # only these categories (e.g. a fire alarm legend)
+
+
+class NewLegendIn(BaseModel):
+    name: str
+    source: str = "proposal"                # "proposal", "empty" or "copy"
+    categories: list[str] | None = None     # proposal: only these categories
+    copy_of: int | None = None              # copy: this legend
+
+
+class RenameLegendIn(BaseModel):
+    name: str
 
 
 class SymbolRequest(BaseModel):
@@ -270,29 +282,19 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                                 "symbol_scale": s.get("symbol_scale", c["symbol_scale"]),
                                 "columns": s.get("columns", 2)})
 
-    @app.get("/api/projects/{project_id}/legend")
-    def get_legend(project_id: str) -> dict:
-        p = project(project_id)
-        stored = p.legend()
-        if stored:
-            stored = {**stored, "doc": normalize(stored["doc"])}
-        gen = load_general()
-        descriptions = st.company.descriptions()
-        rows = evaluator().evaluate(p)["rows"] if gen.kind else []
-        in_general = {**gen.contents(), "covered": sorted(covered_families(gen, rows, descriptions))}
-        return {"legend": stored, "template_texts": template_texts(), "descriptions": descriptions,
-                "in_general": in_general,
-                "grids": [{"id": k, **v} for k, v in GRIDS.items()], "style": project_style(p),
-                "company": company_legend(), "oda": bool(st.settings.oda_path or config.find_oda_converter())}
+    def stored_legend(p, legend_id: int | None) -> dict | None:
+        """One legend of the project (the first without an id); 404 for an unknown id."""
+        stored = p.legend(legend_id)
+        if legend_id is not None and stored is None:
+            raise HTTPException(404, "Legende nicht gefunden")
+        return stored
 
-    @app.put("/api/projects/{project_id}/legend")
-    def put_legend(project_id: str, body: LegendIn) -> dict:
-        return {"legend": project(project_id).set_legend(normalize(body.doc))}
+    def legend_part_name(p, stored: dict | None) -> str:
+        """File name part of a whole legend: its own name when the project has several."""
+        name = (stored or {}).get("name") or "Legende"
+        return name if len(p.legends()) > 1 else "Legende"
 
-    @app.post("/api/projects/{project_id}/legend/propose")
-    def propose_legend(project_id: str, body: ProposeIn | None = None) -> dict:
-        """A new proposal from the current project counts. Not saved: the editor saves it."""
-        p = project(project_id)
+    def make_proposal(p, style: dict | None, categories: list[str] | None) -> dict:
         ev = evaluator()
         result = ev.evaluate(p)
         meta = p.meta()
@@ -303,15 +305,91 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         for c in picked:
             if c.get("layer"):
                 layer_categories.setdefault(c["layer"], c["id"])
-        style = body.style if body and body.style else project_style(p)
         descriptions = st.company.descriptions()
         gen = load_general()
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
-                      descriptions, title.strip(), style=style, colors=colors,
+                      descriptions, title.strip(), style=style or project_style(p), colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
                       ap_covered=norm_text(AP_NOTE) in set(gen.texts),
                       layer_categories=layer_categories)
-        return {"doc": doc}
+        if categories:
+            wanted = set(categories)
+            doc["blocks"] = [b for b in doc["blocks"] if b.get("category_id") in wanted]
+        return doc
+
+    # -- several legends per project -------------------------------------------------------
+
+    @app.get("/api/projects/{project_id}/legends")
+    def list_legends(project_id: str) -> dict:
+        return {"items": project(project_id).legends()}
+
+    @app.post("/api/projects/{project_id}/legends")
+    def new_legend(project_id: str, body: NewLegendIn) -> dict:
+        """A new named legend: a proposal (optionally only some categories), empty or a copy."""
+        p = project(project_id)
+        name = body.name.strip() or "Legende"
+        if body.source == "copy":
+            src = stored_legend(p, body.copy_of)
+            if not src:
+                raise HTTPException(400, "Es gibt keine Legende zum Kopieren.")
+            doc = normalize(src["doc"])
+        elif body.source == "empty":
+            doc = normalize({"title": {"text": name}, "style": project_style(p), "blocks": []})
+        else:
+            doc = make_proposal(p, None, body.categories)
+            if body.categories:
+                doc["title"]["text"] = name
+        stored = p.add_legend(name, normalize(doc))
+        return {"legend": {**stored, "doc": normalize(stored["doc"])}, "items": p.legends()}
+
+    @app.put("/api/projects/{project_id}/legends/{legend_id}")
+    def rename_legend(project_id: str, legend_id: int, body: RenameLegendIn) -> dict:
+        p = project(project_id)
+        try:
+            p.rename_legend(legend_id, body.name)
+        except KeyError:
+            raise HTTPException(404, "Legende nicht gefunden") from None
+        return {"items": p.legends()}
+
+    @app.delete("/api/projects/{project_id}/legends/{legend_id}")
+    def delete_legend(project_id: str, legend_id: int) -> dict:
+        p = project(project_id)
+        try:
+            p.delete_legend(legend_id)
+        except KeyError:
+            raise HTTPException(404, "Legende nicht gefunden") from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"items": p.legends()}
+
+    @app.get("/api/projects/{project_id}/legend")
+    def get_legend(project_id: str, legend: int | None = None) -> dict:
+        p = project(project_id)
+        stored = stored_legend(p, legend)
+        if stored:
+            stored = {**stored, "doc": normalize(stored["doc"])}
+        gen = load_general()
+        descriptions = st.company.descriptions()
+        rows = evaluator().evaluate(p)["rows"] if gen.kind else []
+        in_general = {**gen.contents(), "covered": sorted(covered_families(gen, rows, descriptions))}
+        return {"legend": stored, "legends": p.legends(),
+                "template_texts": template_texts(), "descriptions": descriptions,
+                "in_general": in_general,
+                "grids": [{"id": k, **v} for k, v in GRIDS.items()], "style": project_style(p),
+                "company": company_legend(), "oda": bool(st.settings.oda_path or config.find_oda_converter())}
+
+    @app.put("/api/projects/{project_id}/legend")
+    def put_legend(project_id: str, body: LegendIn, legend: int | None = None) -> dict:
+        try:
+            return {"legend": project(project_id).set_legend(normalize(body.doc), legend)}
+        except KeyError:
+            raise HTTPException(404, "Legende nicht gefunden") from None
+
+    @app.post("/api/projects/{project_id}/legend/propose")
+    def propose_legend(project_id: str, body: ProposeIn | None = None) -> dict:
+        """A new proposal from the current project counts. Not saved: the editor saves it."""
+        p = project(project_id)
+        return {"doc": make_proposal(p, body.style if body else None, body.categories if body else None)}
 
     @app.post("/api/projects/{project_id}/legend/layout")
     def layout_legend(project_id: str, body: LegendIn) -> dict:
@@ -328,21 +406,22 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         return {**gen.info(), "svg": gen.svg, "prims": gen.prims}
 
     @app.get("/api/projects/{project_id}/legend/export-name")
-    def export_file_name(project_id: str, format: str = "dxf", block: str = "") -> dict:  # noqa: A002
+    def export_file_name(project_id: str, format: str = "dxf", block: str = "",  # noqa: A002
+                         legend: int | None = None) -> dict:
         p = project(project_id)
-        stored = p.legend()
+        stored = stored_legend(p, legend)
         doc = normalize(stored["doc"]) if stored else {"blocks": []}
         target = next((b for b in doc["blocks"] if b["id"] == block), None) if block else None
-        return {"name": export_name(p.meta(), target["title"] if target else "Legende",
+        return {"name": export_name(p.meta(), target["title"] if target else legend_part_name(p, stored),
                                     "dwg" if format.lower() == "dwg" else "dxf")}
 
     # The file name is part of the path, so a browser that ignores the header still saves it right.
     @app.get("/api/projects/{project_id}/legend/export/{file_name}")
     @app.get("/api/projects/{project_id}/legend/export")
     def export_legend(project_id: str, format: str = "dxf", block: str = "", general: bool = True,  # noqa: A002
-                      file_name: str = ""):
+                      file_name: str = "", legend: int | None = None):
         p = project(project_id)
-        stored = p.legend()
+        stored = stored_legend(p, legend)
         if not stored:
             raise HTTPException(400, "Für dieses Projekt gibt es noch keine Legende.")
         doc = normalize(stored["doc"])
@@ -356,7 +435,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                         lambda prim: geometry(prim["key"], prim.get("length_mm"), prim.get("width_mm"))[0],
                         doc["style"]["font"])
         ext = "dwg" if format.lower() == "dwg" else "dxf"
-        name = export_name(p.meta(), target_block["title"] if target_block else "Legende", ext)
+        name = export_name(p.meta(), target_block["title"] if target_block else legend_part_name(p, stored), ext)
         tmp = Path(tempfile.mkdtemp(prefix="nl_legend_"))
         dxf_path = tmp / (Path(name).stem + ".dxf")
         dxf.saveas(dxf_path)
@@ -393,9 +472,19 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         ev = evaluator()
         result = ev.evaluate(p)
         colors = category_colors(p, ev, result)
-        stored = p.legend()
-        if stored:
-            stored = {**stored, "doc": normalize(stored["doc"])}
+        # all legends of the project together: an apparatus counts as shown when any
+        # legend shows it; entries name their legend when there are several
+        legends = [p.legend(item["id"]) for item in p.legends()]
+        legends = [x for x in legends if x]
+        stored = None
+        if legends:
+            several = len(legends) > 1
+            blocks = []
+            for lg in legends:
+                for b in normalize(lg["doc"])["blocks"]:
+                    blocks.append({**b, "title": f"{lg['name']} · {b['title']}" if several else b["title"]})
+            stored = {"doc": {"blocks": blocks},
+                      "updated_at": min(lg.get("updated_at") or "" for lg in legends)}
         covered = covered_families(load_general(), result["rows"], st.company.descriptions())
 
         def has_drawing(key: str | None) -> bool:

@@ -256,9 +256,20 @@ export interface Review {
 }
 
 export interface StoredLegend {
+  id?: number;
+  name?: string;
   doc: LegendDoc;
   updated_at: string;
   updated_by: string;
+}
+
+/** One of the named legends of a project. */
+export interface LegendListItem {
+  id: number;
+  name: string;
+  updated_at: string;
+  updated_by: string;
+  entries: number;
 }
 
 export interface GeneralInfo {
@@ -510,21 +521,28 @@ export const api = {
   reorder: (ids: string[]) => request<{ items: Category[] }>("POST", "/api/categories/reorder", { ids }),
   dialog: (kind: "dataset" | "folder" | "legend", start = "") =>
     request<{ available: boolean; path: string | null }>("POST", `/api/dialog/${kind}`, { start }),
-  legend: (id: string) =>
-    request<LegendInfo>("GET", `/api/projects/${encodeURIComponent(id)}/legend`),
-  saveLegend: (id: string, doc: LegendDoc, signal?: AbortSignal) =>
-    request<{ legend: StoredLegend }>("PUT", `/api/projects/${encodeURIComponent(id)}/legend`, { doc }, signal),
+  legend: (id: string, legendId?: number | null) =>
+    request<LegendInfo>("GET", `/api/projects/${encodeURIComponent(id)}/legend${legendId ? `?legend=${legendId}` : ""}`),
+  saveLegend: (id: string, doc: LegendDoc, signal?: AbortSignal, legendId?: number | null) =>
+    request<{ legend: StoredLegend }>("PUT", `/api/projects/${encodeURIComponent(id)}/legend${legendId ? `?legend=${legendId}` : ""}`, { doc }, signal),
+  legends: (id: string) => request<{ items: LegendListItem[] }>("GET", `/api/projects/${encodeURIComponent(id)}/legends`),
+  newLegend: (id: string, body: { name: string; source: "proposal" | "empty" | "copy"; categories?: string[]; copy_of?: number | null }) =>
+    request<{ legend: StoredLegend; items: LegendListItem[] }>("POST", `/api/projects/${encodeURIComponent(id)}/legends`, body),
+  renameLegend: (id: string, legendId: number, name: string) =>
+    request<{ items: LegendListItem[] }>("PUT", `/api/projects/${encodeURIComponent(id)}/legends/${legendId}`, { name }),
+  deleteLegend: (id: string, legendId: number) =>
+    request<{ items: LegendListItem[] }>("DELETE", `/api/projects/${encodeURIComponent(id)}/legends/${legendId}`),
   proposeLegend: (id: string, style?: LegendDoc["style"]) =>
     request<{ doc: LegendDoc }>("POST", `/api/projects/${encodeURIComponent(id)}/legend/propose`, { style: style ?? null }),
   layoutLegend: (id: string, doc: LegendDoc, signal?: AbortSignal) =>
     request<LegendLayout>("POST", `/api/projects/${encodeURIComponent(id)}/legend/layout`, { doc }, signal),
   legendGeneral: (id: string) =>
     request<GeneralInfo & { svg: string; prims: LegendPrim[] }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/general`),
-  legendExportName: (id: string, format: "dxf" | "dwg", block: string) =>
-    request<{ name: string }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/export-name?${qs({ format, block })}`),
+  legendExportName: (id: string, format: "dxf" | "dwg" | "pdf", block: string, legendId?: number | null) =>
+    request<{ name: string }>("GET", `/api/projects/${encodeURIComponent(id)}/legend/export-name?${qs({ format, block, ...(legendId ? { legend: legendId } : {}) })}`),
   /** The file name is part of the path, so the download keeps it even if the header is ignored. */
-  legendExportUrl: (id: string, name: string, format: "dxf" | "dwg", block: string, general: boolean) =>
-    `/api/projects/${encodeURIComponent(id)}/legend/export/${encodeURIComponent(name)}?${qs({ format, block, general })}`,
+  legendExportUrl: (id: string, name: string, format: "dxf" | "dwg" | "pdf", block: string, general: boolean, legendId?: number | null) =>
+    `/api/projects/${encodeURIComponent(id)}/legend/export/${encodeURIComponent(name)}?${qs({ format, block, general, ...(legendId ? { legend: legendId } : {}) })}`,
   legendExportFile: async (url: string): Promise<Blob> => {
     const res = await fetch(url);
     if (!res.ok) {

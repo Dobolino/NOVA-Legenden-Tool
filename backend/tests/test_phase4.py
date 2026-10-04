@@ -760,3 +760,56 @@ def test_dxf_text_height_is_the_capital_height_of_the_editor_font():
     dxf = build_dxf(lay, None, lambda prim: None)
     taster = next(t for t in dxf.modelspace().query("TEXT") if t.dxf.text == "Taster")
     assert abs(taster.dxf.height - 2.5 * CAP_HEIGHT) < 1e-3
+
+
+def test_several_named_legends_per_project(env, monkeypatch):  # noqa: F811
+    import sqlite3
+
+    client, tmp = env
+    pid = _project(client, tmp)
+    doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
+    client.put(f"/api/projects/{pid}/legend", json={"doc": doc})
+    first = client.get(f"/api/projects/{pid}/legends").json()["items"]
+    assert [l["name"] for l in first] == ["Legende"]
+    cat = doc["blocks"][0]["category_id"]
+    made = client.post(f"/api/projects/{pid}/legends",
+                       json={"name": "Brandmelder", "source": "proposal", "categories": [cat]}).json()
+    bma = made["legend"]
+    assert [l["name"] for l in made["items"]] == ["Legende", "Brandmelder"]
+    assert {b["category_id"] for b in bma["doc"]["blocks"]} == {cat} and bma["doc"]["title"]["text"] == "Brandmelder"
+    # each legend saves on its own; the first one stays where older versions read it
+    bdoc = bma["doc"]
+    bdoc["title"]["text"] = "BMA geändert"
+    client.put(f"/api/projects/{pid}/legend", params={"legend": bma["id"]}, json={"doc": bdoc})
+    assert client.get(f"/api/projects/{pid}/legend", params={"legend": bma["id"]}).json()["legend"]["doc"]["title"]["text"] == "BMA geändert"
+    assert client.get(f"/api/projects/{pid}/legend").json()["legend"]["doc"]["title"]["text"] == doc["title"]["text"]
+    folder = client.get(f"/api/projects/{pid}").json()["folder"]
+    with sqlite3.connect(f"{folder}/projekt.nlproj") as con:
+        old = con.execute("SELECT doc FROM legend WHERE id=1").fetchone()[0]
+    assert doc["title"]["text"] in old
+    # export names use the legend name when there are several
+    name = client.get(f"/api/projects/{pid}/legend/export-name", params={"legend": bma["id"]}).json()["name"]
+    assert name == "edeco ag-Test-Brandmelder.dxf"
+    res = client.get(f"/api/projects/{pid}/legend/export/{name}", params={"legend": bma["id"], "general": "false"})
+    assert res.status_code == 200
+    # copy, rename, delete; the last legend stays
+    copy = client.post(f"/api/projects/{pid}/legends", json={"name": "Kopie", "source": "copy",
+                                                            "copy_of": bma["id"]}).json()["legend"]
+    assert copy["doc"]["title"]["text"] == "BMA geändert"
+    client.put(f"/api/projects/{pid}/legends/{copy['id']}", json={"name": "BMA Variante"})
+    items = client.get(f"/api/projects/{pid}/legends").json()["items"]
+    assert [l["name"] for l in items] == ["Legende", "Brandmelder", "BMA Variante"]
+    for item in items[1:]:
+        assert client.delete(f"/api/projects/{pid}/legends/{item['id']}").status_code == 200
+    assert client.delete(f"/api/projects/{pid}/legends/{items[0]['id']}").status_code == 400
+    assert client.get(f"/api/projects/{pid}/legend", params={"legend": 999}).status_code == 404
+
+
+def test_template_hands_over_all_its_legends(env):  # noqa: F811
+    client, tmp = env
+    tpl = _project(client, tmp, "Vorlage")
+    doc = client.post(f"/api/projects/{tpl}/legend/propose").json()["doc"]
+    client.put(f"/api/projects/{tpl}/legend", json={"doc": doc})
+    client.post(f"/api/projects/{tpl}/legends", json={"name": "Brandmelder", "source": "empty"})
+    new = client.post("/api/projects", json={"name": "Neu", "template": tpl}).json()["id"]
+    assert [l["name"] for l in client.get(f"/api/projects/{new}/legends").json()["items"]] == ["Legende", "Brandmelder"]
