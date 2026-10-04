@@ -922,3 +922,20 @@ def test_empty_cells_keep_their_place_and_every_cell_is_a_drop_target():
     assert "g1" not in hits and "g2" not in hits
     # X sits at the bottom of the third column, level with the third row of the first
     assert hits["x"]["y"] == pytest.approx(hits["e2"]["y"]) and hits["x"]["x"] > hits["e5"]["x"]
+
+
+def test_up_ap_hint_fills_the_tile_like_a_symbol_scales_and_has_a_company_text(env, monkeypatch, tmp_path):  # noqa: F811
+    from nova_legend.legend.layout import TILE_FILL, symbol_tile
+    doc = normalize({"blocks": [{"id": "A", "title": "A", "items": [
+        {"id": "n", "kind": "note", "text": "Unterscheidung UP / AP (halbausgefüllt)"}]}]})
+    tile = symbol_tile(doc["style"])
+    half = next(p for p in layout(doc)["prims"] if p["t"] == "half")
+    assert half["r"] == pytest.approx(tile * TILE_FILL / 2, abs=0.01)
+    doc["blocks"][0]["items"][0]["symbol_factor"] = 0.6
+    half = next(p for p in layout(doc)["prims"] if p["t"] == "half")
+    assert half["r"] == pytest.approx(tile * TILE_FILL / 2 * 0.6, abs=0.01)
+    # company text of the hint: used by new proposals, listed with a readable name
+    client, tmp = env
+    client.put("/api/descriptions", json={"family_key": "hinweis:up-ap", "text": "UP voll, AP halb gefüllt"})
+    row = next(r for r in client.get("/api/descriptions").json()["items"] if r["family_key"] == "hinweis:up-ap")
+    assert row["known"] and row["title"].startswith("Hinweis")

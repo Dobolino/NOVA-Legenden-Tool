@@ -201,6 +201,15 @@ export function moveItemToBlock(doc: LegendDoc, fromId: string, itemId: string, 
   };
 }
 
+/** Company text key of the UP / AP hint (same as AP_NOTE_KEY in the backend). */
+export const AP_NOTE_KEY = "hinweis:up-ap";
+
+/** Key under which an entry's company text is stored: its family, or the hint key. */
+export function companyKey(it: { kind: ItemKind; family_key: string | null }): string | null {
+  if (it.kind === "symbol") return it.family_key;
+  return it.kind === "note" ? AP_NOTE_KEY : null;
+}
+
 let counter = 0;
 export function newId(): string {
   counter += 1;

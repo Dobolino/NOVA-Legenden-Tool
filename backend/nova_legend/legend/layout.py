@@ -161,11 +161,12 @@ def _symbol_box_real(item: dict, size, style: dict, max_w: float) -> dict:
             return box(left * scale, right * scale, up * scale, down * scale, round(scale, 4), ax, ay)
         half = min(5.0 * style["symbol_scale"], style["row"] - SYMBOL_CLEARANCE) * factor / 2
         return box(half, half, half, half)
+    factor = float(item.get("symbol_factor") or 1.0)
     if kind == "line":
-        half = min(item["line_length"], style["text_offset"] * 2 - 2.4) / 2
+        half = min(item["line_length"], style["text_offset"] * 2 - 2.4) / 2 * factor
         return box(half, half, 0.5, 0.5)
     if kind == "note":
-        half = min(3.6, style["row"] - SYMBOL_CLEARANCE) / 2
+        half = min(3.6, style["row"] - SYMBOL_CLEARANCE) / 2 * factor
         return box(half, half, half, half)
     return box(0.0, 0.0, 0.0, 0.0)
 
@@ -192,10 +193,13 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
                        round(scale, 4), (x0 + x1) / 2, (y0 + y1) / 2)
         half = tile * TILE_FILL / 2 * factor
         return box(half, half, half, half, round(factor, 4))
+    # the hint symbols fill the tile like a drawing (75 %), with their own size factor
+    factor = float(item.get("symbol_factor") or 1.0)
+    half = tile * TILE_FILL / 2 * factor
     if kind == "line":
-        return box(tile / 2, tile / 2, 0.35, 0.35)
+        return box(half, half, 0.35, 0.35)
     if kind == "note":
-        return box(tile / 2, tile / 2, tile / 2, tile / 2)
+        return box(half, half, half, half)
     return box(0.0, 0.0, 0.0, 0.0)
 
 

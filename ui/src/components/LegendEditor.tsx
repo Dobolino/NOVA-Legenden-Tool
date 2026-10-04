@@ -26,6 +26,7 @@ import {
   moveItemInOrder,
   moveItemTo,
   moveItemToBlock,
+  companyKey,
   makeItem,
   placeInCell,
   push,
@@ -872,7 +873,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                     {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
                     <span className="outline-text">{it.text || "(ohne Text)"}</span>
-                    {it.kind === "symbol" && it.family_key && descriptions[it.family_key] === it.text.trim() && (
+                    {companyKey(it) && descriptions[companyKey(it)!] === it.text.trim() && (
                       <span className="badge company" title="Dieser Text ist der Firmentext">F</span>
                     )}
                     {it.hidden && <span className="badge">im Allgemeinteil</span>}
@@ -1031,7 +1032,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               field={field}
               change={change}
               notify={notify}
-              companyText={selItem.family_key ? descriptions[selItem.family_key] ?? null : null}
+              companyText={companyKey(selItem) ? descriptions[companyKey(selItem)!] ?? null : null}
               onDescription={(fam, text) => setInfo((i) => (i ? { ...i, descriptions: { ...i.descriptions, [fam]: text } } : i))}
               onMoveTo={(to) => {
                 change(moveItemToBlock(doc, selBlock.id, selItem.id, to));
@@ -1443,10 +1444,11 @@ function ItemProps({
 
   async function saveCompanyText() {
     const text = item.text.trim();
-    if (!item.family_key || !text) return;
+    const key = companyKey(item);
+    if (!key || !text) return;
     try {
-      await api.setDescription(item.family_key, text);
-      onDescription(item.family_key, text);
+      await api.setDescription(key, text);
+      onDescription(key, text);
       notify("Als Firmentext gespeichert. Gilt beim Hinzufügen und bei neuen Vorschlägen in allen Projekten.");
     } catch (e) {
       notify((e as Error).message, true);
@@ -1501,7 +1503,7 @@ function ItemProps({
           ))}
         </div>
       )}
-      {item.kind === "symbol" && item.family_key && (
+      {companyKey(item) && (
         <div className={`company-text ${companyText !== null && companyText === item.text.trim() ? "is-company" : ""}`}>
           {companyText !== null && companyText === item.text.trim() ? (
             <span className="company-state">✓ Das ist der Firmentext</span>
@@ -1532,7 +1534,7 @@ function ItemProps({
           <span>Textgrösse (Faktor)</span>
           <NumberInput label="Textgrösse Faktor" value={item.text_scale ?? 1} step={0.1} onCommit={(v) => set({ text_scale: Math.max(0.5, Math.min(3, v)) })} />
         </label>
-        {item.kind === "symbol" && (
+        {(item.kind === "symbol" || item.kind === "note" || item.kind === "line") && (
           <label className="field">
             <span>Symbolgrösse (Faktor)</span>
             <NumberInput label="Symbolgrösse Faktor" value={item.symbol_factor ?? 1} step={0.1} onCommit={(v) => set({ symbol_factor: Math.max(0.3, Math.min(4, v)) })} />

@@ -22,7 +22,7 @@ from ..legend.export import build_dxf, dxf_to_dwg
 from ..legend.pdf import build_pdf
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
-from ..legend.model import AP_NOTE, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
+from ..legend.model import AP_NOTE, AP_NOTE_KEY, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
 from ..projects.review import build_review
 from ..projects.store import Project, safe_folder_name
 from ..render.engine import engine_geometry
@@ -340,7 +340,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
                       descriptions, title.strip(), style=style or project_style(p), colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
-                      ap_covered=norm_text(AP_NOTE) in set(gen.texts),
+                      ap_covered=bool({norm_text(AP_NOTE), norm_text(descriptions.get(AP_NOTE_KEY) or AP_NOTE)} & set(gen.texts)),
                       layer_categories=layer_categories)
         if categories:
             wanted = set(categories)
@@ -545,6 +545,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         out: dict[str, tuple[str, str]] = {}
         for fam in st.library.families(st.family_options()).values():
             out.setdefault(fam.key, (fam.title, fam.representative.svg or ""))
+        out[AP_NOTE_KEY] = ("Hinweis: " + AP_NOTE, "")
         return out
 
     @app.get("/api/descriptions")

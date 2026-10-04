@@ -17,6 +17,7 @@ from pathlib import Path
 
 DOC_VERSION = 4
 AP_NOTE = "Unterscheidung UP / AP (halbausgefüllt)"
+AP_NOTE_KEY = "hinweis:up-ap"      # key of its company text (table descriptions)
 SHEET_WIDTH = 200.0          # mm, including the margin (standard)
 MAX_SHEET_WIDTH = 210.0      # widest sheet the user may choose
 MIN_SHEET_WIDTH = 80.0
@@ -321,6 +322,6 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
     if has_ap and doc["blocks"] and not ap_covered:
         first = next((b for b in doc["blocks"] if b["category_id"] == "allgemein"), doc["blocks"][0])
         first["items"].append({"id": new_id(), "kind": "note", "family_key": None, "symbol_key": None,
-                               "text": AP_NOTE, "length_mm": None, "width_mm": None,
+                               "text": descriptions.get(AP_NOTE_KEY) or AP_NOTE, "length_mm": None, "width_mm": None,
                                "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
     return doc
