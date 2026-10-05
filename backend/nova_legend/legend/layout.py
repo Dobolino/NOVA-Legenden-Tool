@@ -248,8 +248,11 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
         for r, lines, size, h in chunk:
             mid = cy + h / 2
             if r.get("heading"):
-                prims.append({"t": "text", "x": round(cx, 3), "y": round(mid + 1.0 + size * 0.32, 3), "size": round(size, 3),
-                              "text": lines[0] if lines else r["text"], "bold": True, "color": "#000000"})
+                shown = lines or [r["text"]]
+                base = mid + 1.0 - (len(shown) - 1) * lh / 2 + size * 0.32
+                for j, line in enumerate(shown):
+                    prims.append({"t": "text", "x": round(cx, 3), "y": round(base + j * lh, 3),
+                                  "size": round(size, 3), "text": line, "bold": True, "color": "#000000"})
             else:
                 if r.get("gw") is not None:
                     gx = cx + area * k + r["gx"] * k

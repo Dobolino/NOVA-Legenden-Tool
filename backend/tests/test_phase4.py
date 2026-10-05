@@ -1007,6 +1007,30 @@ def test_general_part_rows_flow_into_two_or_three_columns(tmp_path):
     assert len(xs[3]) > len(xs[2]) or xs[3] != xs[2]          # the rows move with the column count
 
 
+def test_a_long_general_heading_keeps_every_line():
+    text = "Farbcodes der Installationszonen und Leitungsführungen im ganzen Gebäude"
+    general = {"rows": [{"id": "g0", "text": text, "heading": True, "text_h": 2.0}], "symbol_area": 12}
+    doc = normalize({"style": {"columns": 3, "width": 80, "text_size": 2.5}, "blocks": []})
+    texts = [p["text"] for p in layout(doc, {}, general)["prims"] if p["t"] == "text"]
+    assert len(texts) > 1 and "".join(texts).replace(" ", "") == text.replace(" ", "")
+
+
+def test_hidden_general_row_no_longer_covers_the_project(tmp_path):
+    from pathlib import Path as _P
+    from nova_legend.api.legend import covered_families
+    from nova_legend.legend import general as gp
+
+    part = gp._from_dxf("x", _P(_rows_dxf(tmp_path / "g.dxf")), 190)
+    shown = gp.apply_overrides(part, {
+        gp.norm_text("Verteilung"): {"hidden": True},
+        gp.norm_text("Leitung von/nach OBEN"): {"hidden": True},
+    })
+    assert "verteilung" not in shown.texts and "steigleitung nach oben" not in shown.symbol_names
+    rows = [{"family_key": "steigleitung, nach oben", "title": "Steigleitung, nach oben"},
+            {"family_key": "verteilung", "title": "Verteilung"}]
+    assert covered_families(shown, rows, {}) == set()
+
+
 def test_general_part_symbols_hide_their_families_in_the_sections(tmp_path):
     from pathlib import Path as _P
     from nova_legend.api.legend import covered_families

@@ -181,15 +181,19 @@ def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
         return part
     rows = []
     families = set(part.family_keys)
+    hidden_texts: set[str] = set()
     for r in part.rows:
         key = norm_text(r["text"])
         o = overrides.get(key) or {}
-        families.update(o.get("links") or [])
         if o.get("hidden"):
+            # a hidden row is gone: its text and symbol must not stay out of the project sections
+            hidden_texts.add(key)
             continue
+        families.update(o.get("links") or [])
         rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"]})
-    texts = set(part.texts) | {norm_text(r["text"]) for r in rows}
-    return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts))
+    texts = (set(part.texts) - hidden_texts) | {norm_text(r["text"]) for r in rows}
+    names = sorted({n for r in rows for n in (r.get("names") or [])})
+    return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts), symbol_names=names)
 
 
 # -- rows of a DXF general part -----------------------------------------------------------
