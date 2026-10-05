@@ -3,6 +3,7 @@ import CompanyLegendCard from "./CompanyLegendCard";
 import CompanyTextsCard from "./CompanyTextsCard";
 import { api, DATASET_LABEL, StencilData, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
+import InfoTip from "./InfoTip";
 import type { ThemeMode } from "../theme";
 
 interface Props {
@@ -150,37 +151,38 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               {update.size ? ` (${Math.round(update.size / 1e6)} MB)` : ""}.
             </p>
           )}
-          <label className="field" style={{ maxWidth: 420 }}>
-            <span>Welche Versionen</span>
-            <select
-              className="select"
-              value={status.settings.update_channel ?? "stable"}
-              disabled={busy || updating}
-              onChange={async (e) => {
-                await save({ update_channel: e.target.value as "stable" | "test" }, "Update-Kanal gespeichert");
-                checkUpdate();
-              }}
-              aria-label="Update-Kanal"
-            >
-              <option value="stable">Freigegebene Versionen</option>
-              <option value="test">Auch Testversionen (Entwicklung)</option>
-            </select>
-          </label>
-          <p className="hint">
-            Freigegebene Versionen kommen aus dem Hauptstand. Testversionen entstehen bei jeder Änderung in der Entwicklung und
-            können unfertig sein. Die Einstellung gilt nur für diesen Computer.
-          </p>
-          {update && !update.available && update.message && <p className="hint">{update.message}</p>}
-          {update?.available && !update.can_install && <p className="warn-text">{update.message}</p>}
-          <div className="row">
-            <button className="btn" disabled={busy || updating} onClick={checkUpdate}>
-              Nach Updates suchen
-            </button>
-            {update?.available && update.can_install && (
-              <button className="btn primary" disabled={updating} onClick={installUpdate}>
-                {updating ? "Update läuft …" : "Jetzt aktualisieren"}
+          <div className="update-row">
+            <label className="field">
+              <span>
+                Welche Versionen
+                <InfoTip text="Freigegebene Versionen kommen aus dem Hauptstand. Testversionen entstehen in der Entwicklung und können unfertig sein. Gilt nur für diesen Computer." />
+              </span>
+              <select
+                className="select"
+                value={status.settings.update_channel ?? "stable"}
+                disabled={busy || updating}
+                onChange={async (e) => {
+                  await save({ update_channel: e.target.value as "stable" | "test" }, "Update-Kanal gespeichert");
+                  checkUpdate();
+                }}
+                aria-label="Update-Kanal"
+              >
+                <option value="stable">Freigegebene Versionen</option>
+                <option value="test">Auch Testversionen</option>
+              </select>
+            </label>
+            <div className="update-actions">
+              {update && !update.available && update.message && <span className="hint">{update.message}</span>}
+              {update?.available && !update.can_install && <span className="warn-text">{update.message}</span>}
+              <button className="btn" disabled={busy || updating} onClick={checkUpdate}>
+                Nach Updates suchen
               </button>
-            )}
+              {update?.available && update.can_install && (
+                <button className="btn primary" disabled={updating} onClick={installUpdate}>
+                  {updating ? "Update läuft …" : "Jetzt aktualisieren"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

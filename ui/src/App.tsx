@@ -133,7 +133,6 @@ function AppContent() {
         <div className="nav-footer">
           <span className="nav-footer-label">NOVA-Legenden</span>
           <span>Elektroplanung</span>
-          <span>edeco ag</span>
           <span className="nav-copy">
             <span>© 2026 edeco ag</span>
             <span>Alle Rechte vorbehalten.</span>

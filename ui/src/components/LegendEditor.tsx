@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, StencilData, StencilEntry, SymbolRender } from "../api";
 import { exportDiagnostic } from "../diagnostics";
+import InfoTip from "./InfoTip";
 import {
   addBlock,
   addItem,
@@ -740,22 +741,6 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             ⤢ Grossansicht
           </button>
         )}
-        <button
-          className={`btn small ${showGrid ? "is-on" : ""}`}
-          aria-pressed={showGrid}
-          onClick={() => {
-            const next = !showGrid;
-            setShowGrid(next);
-            try {
-              window.localStorage.setItem(GRID_KEY, next ? "1" : "0");
-            } catch {
-              /* only a convenience */
-            }
-          }}
-          title="Rasterlinien im gewählten Mass einblenden. Sie erscheinen nicht im Export."
-        >
-          ▦ Raster anzeigen
-        </button>
         </div>
       </div>
       <div className="legend-toolbar">
@@ -836,10 +821,31 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           setZoom(Math.max(0.5, Math.min(12, round(width / W))));
         }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
         </div>
-        <span style={{ flex: 1 }} />
-        <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
-          {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
-        </span>
+        <div className="legend-status">
+          <span className="legend-project" title={`${data.meta.project_number ? `${data.meta.project_number} · ` : ""}${data.meta.name}`}>
+            {data.meta.project_number && <span className="number">{data.meta.project_number}</span>}
+            <span className="name">{data.meta.name}</span>
+          </span>
+          <button
+            className={`btn small ${showGrid ? "is-on" : ""}`}
+            aria-pressed={showGrid}
+            onClick={() => {
+              const next = !showGrid;
+              setShowGrid(next);
+              try {
+                window.localStorage.setItem(GRID_KEY, next ? "1" : "0");
+              } catch {
+                /* only a convenience */
+              }
+            }}
+            title="Rasterlinien im gewählten Mass einblenden. Sie erscheinen nicht im Export."
+          >
+            ▦ Raster anzeigen
+          </button>
+          <span className={saveState === "error" ? "dirty" : saveState === "saving" ? "hint" : "saved"} role="status">
+            {saveState === "saving" ? "Speichert …" : saveState === "error" ? "Nicht gespeichert" : savedInfo ? `Gespeichert ${savedInfo}` : ""}
+          </span>
+        </div>
       </div>
       {windowed && (
         <div className="legend-window-bar">
@@ -1787,7 +1793,7 @@ function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; ch
   const mm = t.size_mm > 0 ? t.size_mm : Math.round(doc.style.text_size * (t.scale ?? 1) * 100) / 100;
   return (
     <>
-      <h4>Titel</h4>
+      <h4>Titel <InfoTip text="Grösse, Farbe und Schriftart gelten nur für den Titel." /></h4>
       <label className="field">
         <span>Text</span>
         <input className="input" value={t.text} {...field((d, v) => ({ ...d, title: { ...d.title, text: v } }))} />
@@ -1808,7 +1814,6 @@ function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; ch
           <option value="Verdana">Verdana</option>
         </select>
       </label>
-      <p className="hint">Titelgrösse, Farbe und Schriftart gelten nur für den Titel, nicht für die Einträge.</p>
       <div className="color-grid">
         <label className="color-field">
           <input type="color" value={t.color || "#000000"} onChange={(e) => set({ color: e.target.value })} aria-label="Farbe Titel" />
@@ -1827,12 +1832,10 @@ function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; ch
 function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: string }) | null; company: LegendInfo["company"] }) {
   return (
     <>
-      <h4>Allgemeinteil (gesperrt)</h4>
-      <p className="hint">Steht in jeder Legende zuoberst.</p>
-      <p className="hint">Verknüpft ist eine DXF- oder DWG-Datei auf dem Server.</p>
-      <p className="hint">Die Datei wird nur an die Blattbreite angepasst.</p>
-      <p className="hint">Kachelgrösse, Schrift und Abstand gelten für die erzeugten Einträge, nicht für diese Zeichnung.</p>
-      <p className="hint">Einträge darin lassen sich nicht ziehen. N4D wird für diese Verknüpfung nicht gelesen.</p>
+      <h4>
+        Allgemeinteil (gesperrt)
+        <InfoTip text={"Steht zuoberst. Verknüpfte DXF- oder DWG-Datei, nur an die Blattbreite angepasst.\nSchrift, Kachel und Abstand gelten für die erzeugte Legende. Einträge darin lassen sich nicht ziehen. N4D wird nicht gelesen.\nPfad: Einstellungen, Legende der Firma, nur Admins."} />
+      </h4>
       <dl className="kv">
         <dt>Quelle</dt>
         <dd style={{ wordBreak: "break-all" }}>{general?.source || "–"}</dd>
@@ -1841,7 +1844,6 @@ function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: str
         <dt>Admins</dt>
         <dd>{company.admins.join(", ") || "noch keine"}</dd>
       </dl>
-      <p className="hint">Den Pfad ändern nur Admins unter Einstellungen → Legende der Firma.</p>
     </>
   );
 }
@@ -1877,10 +1879,13 @@ function DocProps({
 }) {
   const s = doc.style;
   const company = info.company;
+  const tileMm = String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",");
+  const sizeTip = (s.symbol_size ?? "tile") === "real"
+    ? "Jedes Symbol im gemeinsamen Massstab, Einfügepunkt auf der Achse. Ein grosses Symbol belegt mehr Zeilen."
+    : `Kachel ${tileMm} mm, aus der Schriftgrösse. Jedes Symbol füllt 75 % davon.`;
   return (
     <>
-      <h4>Legende</h4>
-      <p className="hint">Klicke auf einen Eintrag oder eine Kopfleiste, um sie zu bearbeiten. Einträge ziehst du mit der Maus an einen anderen Platz, ↑ ↓ geht auch.</p>
+      <h4>Legende <InfoTip text="Eintrag oder Kopfleiste anklicken. Ziehen oder ↑ ↓ verschiebt." /></h4>
       <label className="field">
         <span>Titel</span>
         <input className="input" value={doc.title.text} {...field((d, v) => ({ ...d, title: { ...d.title, text: v } }))} />
@@ -1895,57 +1900,55 @@ function DocProps({
           <NumberInput label="Symbolmassstab" value={s.symbol_scale} step={0.1} onCommit={(v) => setStyle({ symbol_scale: Math.max(0.2, Math.min(5, v)) })} />
         </label>
         <label className="field">
-          <span>Abstand zwischen Abschnitten (mm)</span>
+          <span>Abschnitte (mm)</span>
           <NumberInput label="Abstand zwischen Abschnitten" value={s.section_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ section_gap: Math.max(0, Math.min(50, v)) })} />
         </label>
         <label className="field">
-          <span>Symbolgrösse</span>
+          <span>Symbolgrösse <InfoTip text={sizeTip} /></span>
           <select className="select" aria-label="Symbolgrösse" value={s.symbol_size ?? "tile"} onChange={(e) => setStyle({ symbol_size: e.target.value as "real" | "tile" })}>
-            <option value="tile">Gleiche Kacheln (75 % gefüllt)</option>
-            <option value="real">Echte Grösse (Massstab)</option>
+            <option value="tile">Gleiche Kacheln</option>
+            <option value="real">Echte Grösse</option>
           </select>
         </label>
         <label className="field">
-          <span>Abstand zwischen Einträgen (mm)</span>
+          <span>Einträge (mm)</span>
           <NumberInput label="Abstand zwischen Einträgen" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />
         </label>
         <label className="field">
-          <span>Textzeilen</span>
+          <span>Textzeilen <InfoTip text="«Automatisch» bricht langen Text um, die Zeile wird höher. 1 bis 3 Zeilen halten alle Einträge gleich hoch." /></span>
           <select className="select" aria-label="Textzeilen" value={String(s.text_lines ?? 0)} onChange={(e) => setStyle({ text_lines: Number(e.target.value) })}>
             <option value="0">Automatisch</option>
-            <option value="1">1 Zeile, gleiche Höhe</option>
-            <option value="2">2 Zeilen, gleiche Höhe</option>
-            <option value="3">3 Zeilen, gleiche Höhe</option>
+            <option value="1">1 Zeile</option>
+            <option value="2">2 Zeilen</option>
+            <option value="3">3 Zeilen</option>
           </select>
         </label>
         <label className="field">
-          <span>Blattbreite (mm)</span>
+          <span>
+            Blattbreite (mm)
+            <InfoTip text={`Inkl. 5 mm Rand. Standard 200 mm, höchstens 210 mm. Firmen-Standard: Schrift ${String(company.text_size).replace(".", ",")} mm, Massstab ${String(company.symbol_scale).replace(".", ",")}.`} />
+          </span>
           <NumberInput label="Blattbreite" value={s.width} step={5} min={80} max={210} onCommit={(v) => setStyle({ width: v })} />
         </label>
       </div>
-      <label className="toggle" style={{ color: "var(--fg)" }}>
-        <input type="checkbox" checked={Boolean(s.hatch_off)} onChange={(e) => setStyle({ hatch_off: e.target.checked })} />
-        Weiche Schraffur aus (alle Symbole)
-      </label>
-      <label className="toggle" style={{ color: "var(--fg)" }}>
-        <input type="checkbox" checked={Boolean(s.fill_off)} onChange={(e) => setStyle({ fill_off: e.target.checked })} />
-        Volle Flächen aus (alle Symbole)
-      </label>
-      <p className="hint">Weiche Schraffur: Schraffuren und helle Flächen hinter Linien. Volle Flächen: ganz ausgefüllte Teile, z. B. der Anschlusspunkt oder die halbe Fläche bei AP. Die Umrisse bleiben. Gilt in Vorschau, DXF und PDF.</p>
-      <p className="hint">
-        {(s.symbol_size ?? "tile") === "real"
-          ? "Echte Grösse: Jedes Symbol hat den gemeinsamen Massstab und sitzt mit seinem Einfügepunkt auf der Achse. Ein grosses Symbol belegt mehr Rasterzeilen."
-          : `Gleiche Kacheln: Die Kachel ist ${String(Math.round(s.text_size * 3.6 * s.symbol_scale * 10) / 10).replace(".", ",")} mm gross (aus der Schriftgrösse). Jedes Symbol füllt 75 % davon, unabhängig von seiner echten Grösse.`}{" "}
-        Bei Textzeilen «Automatisch» bricht ein langer Text um und die Zeile wird höher.
-      </p>
-      <p className="hint">
-        Blattbreite inkl. 5 mm Rand: Standard 200 mm, höchstens 210 mm. Gilt für alle Texte und Symbole dieses Projekts. Firmen-Standard: Schrift {String(company.text_size).replace(".", ",")} mm, Massstab{" "}
-        {String(company.symbol_scale).replace(".", ",")}.
-      </p>
+      <div className="row">
+        <label className="toggle" style={{ color: "var(--fg)" }}>
+          <input type="checkbox" checked={Boolean(s.hatch_off)} onChange={(e) => setStyle({ hatch_off: e.target.checked })} />
+          Weiche Schraffur aus
+        </label>
+        <InfoTip text="Schraffur und helle Fläche hinter Linien. Gilt für alle Symbole in Vorschau, DXF und PDF. Umrisse bleiben." />
+      </div>
+      <div className="row">
+        <label className="toggle" style={{ color: "var(--fg)" }}>
+          <input type="checkbox" checked={Boolean(s.fill_off)} onChange={(e) => setStyle({ fill_off: e.target.checked })} />
+          Volle Flächen aus
+        </label>
+        <InfoTip text="Ganz gefüllte Teile, z. B. Anschlusspunkt oder die halbe Fläche bei AP. Gilt für alle Symbole. Umrisse bleiben." />
+      </div>
       <button
         className="btn small"
         disabled={!company.is_admin}
-        title={company.is_admin ? "Schriftgrösse und Symbolmassstab als Firmen-Standard für neue Projekte speichern" : "Nur Admins aus den Firmeneinstellungen"}
+        title={company.is_admin ? "Schriftgrösse und Symbolmassstab als Firmen-Standard für neue Projekte speichern" : `Nur Admins (${company.admins.join(", ") || "noch keine"})`}
         onClick={async () => {
           try {
             const r = await api.rememberLegend(projectId, doc);
@@ -1959,18 +1962,20 @@ function DocProps({
       >
         Für neue Projekte merken
       </button>
-      {!company.is_admin && <p className="hint">Nur Admins ({company.admins.join(", ")}) dürfen den Firmen-Standard ändern.</p>}
 
       <div className="color-grid">
         <label className="color-field">
           <input type="checkbox" checked={Boolean(s.frame_on)} onChange={(e) => setStyle({ frame_on: e.target.checked })} aria-label="Umrandung der Legende an" />
           <input type="color" value={s.frame || "#000000"} onChange={(e) => setStyle({ frame: e.target.value })} aria-label="Farbe Umrandung der Legende" />
-          <span>Umrandung der ganzen Legende</span>
+          <span>Umrandung</span>
+          <InfoTip text="Rahmen der ganzen Legende. Für den Titel in der Liste «Titel» anklicken." />
         </label>
       </div>
-      <p className="hint">Titel anklicken: Textgrösse, Farbe und Umrandung des Titels.</p>
 
-      <div className="section">Export</div>
+      <div className="section">
+        Export
+        <InfoTip text={"Speichert zuerst die Legende.\nDateiname aus Bezeichnung und Abschnitt.\nPDF ist dieselbe Zeichnung, 1:1 in mm, 10 mm Rand.\nDXF R2013, Truecolor, Symbole als Blöcke. Das Blatt bleibt weiss."} />
+      </div>
       <label className="field">
         <span>Was exportieren</span>
         <select className="select" value={exportBlock} onChange={(e) => setExportBlock(e.target.value)}>
@@ -1982,48 +1987,41 @@ function DocProps({
           ))}
         </select>
       </label>
-      <label className="toggle" style={{ color: "var(--fg)" }}>
-        <input
-          type="checkbox"
-          checked={exportGeneral && hasGeneral}
-          onChange={(e) => {
-            if (!hasGeneral) {
-              notify("Es ist keine Servervorlage für den Allgemeinteil eingestellt. Der Export läuft ohne ihn.", true);
-              return;
-            }
-            setExportGeneral(e.target.checked);
-          }}
-        />
-        Allgemeinteil einschliessen
-      </label>
-      <p className="hint">
-        Verknüpft ist eine DXF- oder DWG-Datei.
-        <br />Schriftgrösse, Kachel und Abstand ändern nur die erzeugte Legende darunter.
-        <br />Die Zeichnung bleibt gesperrt. Einträge darin lassen sich nicht ziehen.
-        <br />N4D wird für diese Verknüpfung nicht gelesen.
-      </p>
+      <div className="row">
+        <label className="toggle" style={{ color: "var(--fg)" }}>
+          <input
+            type="checkbox"
+            checked={exportGeneral && hasGeneral}
+            onChange={(e) => {
+              if (!hasGeneral) {
+                notify("Es ist keine Servervorlage für den Allgemeinteil eingestellt. Der Export läuft ohne ihn.", true);
+                return;
+              }
+              setExportGeneral(e.target.checked);
+            }}
+          />
+          Allgemeinteil einschliessen
+        </label>
+        <InfoTip text="Verknüpfte DXF- oder DWG-Datei. Schrift, Kachel und Abstand ändern die erzeugte Legende. Die Zeichnung bleibt gesperrt. N4D wird nicht gelesen." />
+      </div>
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn small" disabled={exporting} onClick={() => onExport("dxf", exportBlock, exportGeneral && hasGeneral)}>
-          DXF exportieren
+          DXF
         </button>
         <button className="btn small" disabled={exporting} onClick={() => onExport("dwg", exportBlock, exportGeneral && hasGeneral)}>
-          DWG exportieren
+          DWG
         </button>
         <button className="btn small" disabled={exporting} onClick={() => onExport("pdf", exportBlock, exportGeneral && hasGeneral)}>
-          PDF exportieren
+          PDF
         </button>
       </div>
-      <p className="hint">Der Export speichert zuerst die Legende. Dateiname: edeco ag-{"<Bezeichnung>"}-{"<Abschnitt>"}.dxf bzw. …-Legende.dxf. Bei mehreren Legenden steht der Name der Legende statt «Legende».</p>
-      <p className="hint">Das PDF zeigt dieselbe Zeichnung wie die DXF-Datei, als Vektorgrafik in Originalgrösse (1:1 in mm) mit 10 mm Rand. Zum Drucken oder Weitergeben ohne CAD.</p>
-      <p className="hint">Die Datei entspricht der Vorschau: DXF R2013, Farben als Truecolor, jedes Symbol als Block. N4D wird nicht geschrieben. Das Blatt bleibt weiss, unabhängig vom Hell- oder Dunkelmodus.</p>
       {!info.oda && (
         <p className="hint">
-          DWG braucht den ODA File Converter. DXF funktioniert ohne.{" "}
-          <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer">ODA File Converter herunterladen</a>
+          DWG braucht den ODA File Converter.{" "}
+          <a href="https://www.opendesign.com/guestfiles/oda_file_converter" target="_blank" rel="noreferrer">Herunterladen</a>
         </p>
       )}
-      <p className="hint">© 2026 edeco ag. Alle Rechte vorbehalten.</p>
-      <button className="btn small" type="button" onClick={() => exportDiagnostic(projectId, notify)}>Prüfbericht exportieren</button>
+      <button className="btn small" type="button" onClick={() => exportDiagnostic(projectId, notify)}>Prüfbericht</button>
     </>
   );
 }

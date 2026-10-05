@@ -83,8 +83,6 @@ export default function HelpPage({ notify }: { notify: (text: string, error?: bo
           </label>
           <button className="btn primary" type="button" onClick={() => exportDiagnostic(projectId, notify)}>Prüfbericht exportieren</button>
         </div>
-
-        <p className="hint copyline">© 2026 edeco ag. Alle Rechte vorbehalten.</p>
       </div>
     </div>
   );
