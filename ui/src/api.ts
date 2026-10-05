@@ -282,7 +282,7 @@ export interface GeneralInfo {
   h: number;
   file?: string;
   /** a DXF / DWG split into rows (graphic + text): they flow into the legend columns */
-  rows?: { id: string; key?: string; text: string; heading: boolean; names: string[]; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom"; line?: boolean }[];
+  rows?: { id: string; key?: string; text: string; heading: boolean; names: string[]; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom"; line?: boolean; picture?: "line" | "swatch" | "symbol"; swatch?: string }[];
   /** drawing of every row graphic (preview), by row id */
   row_svgs?: Record<string, { vb: string; svg: string }>;
 }

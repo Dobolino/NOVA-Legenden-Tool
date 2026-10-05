@@ -307,8 +307,16 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                 factor = max(0.3, min(4.0, float(r.get("symbol_factor") or 1.0)))
                 gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
                 rot = int(r.get("rotation") or 0) % 360
-                if r.get("gw") is not None and (gw > 0 or gh > 0):
-                    line_row = gh <= 0.35
+                if r.get("picture") == "swatch":
+                    # one chip per colour, the same size in every row, text beside it
+                    shrink = factor if factor < 1 else 1.0
+                    w = min(tile * 0.92, colw * 0.42) * shrink
+                    hgt = min(tile * 0.38, max(1.3, ts * 0.95)) * shrink
+                    prims.append({"t": "rect", "x": round(cx + axis - w / 2, 3), "y": round(mid - hgt / 2, 3),
+                                  "w": round(w, 3), "h": round(hgt, 3), "fill": r.get("swatch") or "#9aa0a6",
+                                  "stroke": None, "role": "swatch"})
+                elif r.get("gw") is not None and (gw > 0 or gh > 0):
+                    line_row = r.get("picture") == "line" or (r.get("picture") != "symbol" and gh <= 0.35)
                     if line_row:
                         # one sample of the stroke, as long as the symbol tile, so the line type
                         # reads next to the symbols of the other sections
@@ -318,6 +326,15 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                         prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
                                       "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
                                       "k": round(scale, 5), "rot": 0})
+                    elif r.get("picture") == "symbol":
+                        # the whole symbol, leaders and notes already removed, fitted into the tile
+                        view = min(tile * 0.92, max(slot - 0.4, side))
+                        shrink = factor if factor < 1 else 1.0
+                        fit = min(view / max(gw, 1e-6), view / max(gh, 1e-6)) * shrink
+                        w, hgt = gw * fit, gh * fit
+                        prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
+                                      "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
+                                      "k": round(fit, 5), "rot": rot})
                     else:
                         # the bulky part (the symbol) fills the same tile as the project symbols.
                         # a long stroke beside it is cut at the tile, so it cannot shrink the symbol

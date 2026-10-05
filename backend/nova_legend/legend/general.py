@@ -275,11 +275,84 @@ def _mark_focus(ents, to_mm: float, x0: float, y0: float, x1: float, y1: float) 
 
 
 def _is_line_graphic(row: dict) -> bool:
-    """A flat stroke (a cable, a colour bar). It stays one readable sample, not a scaled symbol."""
+    """A flat stroke (a cable). It stays one readable sample, not a scaled symbol."""
+    if row.get("picture") == "line":
+        return True
+    if row.get("picture") in ("symbol", "swatch"):
+        return False
     gw, gh = float(row.get("gw") or 0.0), float(row.get("gh") or 0.0)
     if gw <= 0:
         return False
     return gh <= 0.35
+
+
+_NOTE = {"TEXT", "MTEXT", "ATTRIB", "ATTDEF"}
+_FILL = {"HATCH", "SOLID", "TRACE", "3DFACE", "MPOLYGON"}
+
+
+def _span_mm(box, to_mm: float) -> tuple[float, float]:
+    return (box.extmax.x - box.extmin.x) * to_mm, (box.extmax.y - box.extmin.y) * to_mm
+
+
+def _paint(entity) -> str | None:
+    """The entity colour as #rrggbb, or None when it has no own colour."""
+    if entity.dxf.hasattr("true_color"):
+        return f"#{int(entity.dxf.true_color) & 0xFFFFFF:06x}"
+    try:
+        rgb = entity.rgb
+    except Exception:  # noqa: BLE001
+        rgb = None
+    if rgb is not None:
+        return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
+    aci = int(entity.dxf.color) if entity.dxf.hasattr("color") else 256
+    if aci <= 0 or aci >= 256:
+        return None
+    from ezdxf.colors import aci2rgb
+    r, g, b = aci2rgb(aci)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _is_bar(entity, box, to_mm: float) -> bool:
+    """A colour field across the symbol column, not a symbol."""
+    w, h = _span_mm(box, to_mm)
+    if entity.dxftype() in _FILL and w >= 12 and 0.3 <= h <= 8 and w >= h * 3.2:
+        return True
+    if entity.dxftype() == "LWPOLYLINE" and entity.dxf.hasattr("const_width"):
+        thick = max(float(entity.dxf.const_width) * to_mm, h)
+        return 0.6 <= thick <= 8 and w >= max(12.0, thick * 3.2)
+    return False
+
+
+def _is_hairline(box, to_mm: float) -> bool:
+    """A long thin stroke beside a symbol (a leader). It is not part of the symbol."""
+    w, h = _span_mm(box, to_mm)
+    return h <= 0.45 and w >= max(8.0, h * 6)
+
+
+def _row_picture(ents, to_mm: float) -> dict | None:
+    """What of this row is worth drawing.
+
+    The source legend mixes the symbol with leaders, notes («90°») and colour
+    bars. Cropping that mix slices the symbol. Instead the symbol is kept whole,
+    a colour bar becomes one chip, and a bare stroke stays a line sample."""
+    geom = [(e, b) for e, b in ents if e.dxftype() not in _NOTE and b.has_data]
+    if not geom:
+        return None
+    bars, hair, core = [], [], []
+    for item in geom:
+        e, b = item
+        if _is_bar(e, b, to_mm):
+            bars.append(item)
+        elif _is_hairline(b, to_mm):
+            hair.append(item)
+        else:
+            core.append(item)
+    if not core and bars:
+        bars.sort(key=lambda eb: _span_mm(eb[1], to_mm)[0] * _span_mm(eb[1], to_mm)[1], reverse=True)
+        return {"picture": "swatch", "swatch": _paint(bars[0][0]) or "#9aa0a6"}
+    if not core:
+        return {"picture": "line", "keep": hair or geom}
+    return {"picture": "symbol", "keep": core}
 
 
 def _row_factor(value, lo: float, hi: float) -> float:
@@ -407,18 +480,31 @@ def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
                 simplify_linetypes(doc)
                 doc._nl_simple_lt = True
             tune_entities(doc, [e for e, _b in r["ents"]], to_mm)
-            x0 = min(b.extmin.x for _e, b in r["ents"])
-            y0 = min(b.extmin.y for _e, b in r["ents"])
-            x1 = max(b.extmax.x for _e, b in r["ents"])
-            y1 = max(b.extmax.y for _e, b in r["ents"])
-            item.update({"gx": round((x0 - text_x) * to_mm, 3), "gw": round((x1 - x0) * to_mm, 3),
-                         "gh": round((y1 - y0) * to_mm, 3),
-                         "focus": _mark_focus(r["ents"], to_mm, x0, y0, x1, y1),
-                         "src": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)],
-                         "handles": [e.dxf.handle for e, _b in r["ents"]]})
-            item["vb"], item["svg"] = _row_svg(doc, [e for e, _b in r["ents"]], (x0, y0, x1, y1), f"g{i}")
+            pic = _row_picture(r["ents"], to_mm)
+            if pic and pic["picture"] == "swatch":
+                item["picture"] = "swatch"
+                item["swatch"] = pic["swatch"]
+                item["vb"], item["svg"] = _swatch_svg(pic["swatch"])
+            elif pic and pic.get("keep"):
+                kept = pic["keep"]
+                x0 = min(b.extmin.x for _e, b in kept)
+                y0 = min(b.extmin.y for _e, b in kept)
+                x1 = max(b.extmax.x for _e, b in kept)
+                y1 = max(b.extmax.y for _e, b in kept)
+                item.update({"picture": pic["picture"],
+                             "gx": round((x0 - text_x) * to_mm, 3), "gw": round((x1 - x0) * to_mm, 3),
+                             "gh": round((y1 - y0) * to_mm, 3),
+                             "focus": _mark_focus(kept, to_mm, x0, y0, x1, y1),
+                             "src": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)],
+                             "handles": [e.dxf.handle for e, _b in kept]})
+                item["vb"], item["svg"] = _row_svg(doc, [e for e, _b in kept], (x0, y0, x1, y1), f"g{i}")
         out.append(item)
     return out, area, text_x
+
+
+def _swatch_svg(color: str) -> tuple[str, str]:
+    """A plain colour chip, so the row list shows the same field as the sheet."""
+    return "0 0 16 6", f'<rect width="16" height="6" fill="{color}"/>'
 
 
 def _row_svg(doc, entities, box, prefix: str = "g") -> tuple[str, str]:

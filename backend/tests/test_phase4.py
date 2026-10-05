@@ -823,12 +823,13 @@ def test_clipping_cuts_a_fill_a_thick_stroke_and_drops_text_outside_the_window()
     assert texts == ["L3"]
 
 
-def test_a_wide_general_fill_stays_inside_its_tile_on_export(tmp_path):
-    """A colour bar and a symbol note must not run across the description in the DXF."""
+def test_a_colour_bar_becomes_a_chip_and_the_symbol_stays_whole(tmp_path):
+    """Leaders and notes are left out. A colour bar is a chip. The symbol is not sliced."""
     from ezdxf import bbox as ezbbox
 
     from nova_legend.legend.export import build_dxf
     from nova_legend.legend.general import load
+    from nova_legend.legend.layout import symbol_tile
 
     d = ezdxf.new("R2013", units=4)
     d.header["$INSUNITS"] = 4
@@ -836,11 +837,9 @@ def test_a_wide_general_fill_stays_inside_its_tile_on_export(tmp_path):
     labels = [("Farbcode", 24), ("Kanal", 12), ("Leitung", 0)]
     for text, y in labels:
         msp.add_text(text, height=2.5).set_placement((100, y))
-    # colour bars across the whole symbol column
-    msp.add_solid([(0, 23.2), (70, 23.2), (70, 27.2), (0, 27.2)], dxfattribs={"true_color": 0xFFCC00})
+    msp.add_solid([(0, 23.2), (70, 23.2), (0, 27.2), (70, 27.2)], dxfattribs={"true_color": 0xFFCC00})
     bar = msp.add_hatch(dxfattribs={"true_color": 0x2255FF})
     bar.paths.add_polyline_path([(0, 11.2), (70, 11.2), (70, 15.2), (0, 15.2)], is_closed=True)
-    # a symbol on the left, a note that belongs to the drawing and would cover the description
     msp.add_hatch(dxfattribs={"true_color": 0x111111}).paths.add_polyline_path(
         [(0, -2), (12, -2), (12, 8), (0, 8)], is_closed=True)
     msp.add_line((0, 1), (78, 1))
@@ -848,23 +847,35 @@ def test_a_wide_general_fill_stays_inside_its_tile_on_export(tmp_path):
     path = tmp_path / "allgemein.dxf"
     d.saveas(path)
     part = load(str(path), 180, None)
-    assert len(part.rows) >= 3
+    by_text = {r["text"]: r for r in part.rows}
+    assert by_text["Farbcode"]["picture"] == "swatch" and by_text["Farbcode"]["swatch"] == "#ffcc00"
+    assert by_text["Kanal"]["picture"] == "swatch"
+    assert by_text["Leitung"]["picture"] == "symbol"
+    assert by_text["Leitung"]["gw"] < 20 and "handles" in by_text["Leitung"]
     doc = normalize({"style": {"text_size": 2.5}, "blocks": []})
     lay = layout(doc, {}, part.info())
+    chips = [p for p in lay["prims"] if p.get("role") == "swatch"]
+    assert {p["fill"] for p in chips} == {"#ffcc00", "#2255ff"}
+    tile = symbol_tile(doc["style"])
+    assert all(abs(p["w"] - p["h"]) > 0.4 and p["w"] <= tile * 0.92 + 0.05 for p in chips)
     grows = [p for p in lay["prims"] if p["t"] == "grow"]
-    assert grows and any(p.get("full_w", 0) > p["w"] + 1 for p in grows)
+    assert len(grows) == 1 and "full_w" not in grows[0]
+    # the whole symbol fits in the tile and keeps its shape
+    assert max(grows[0]["w"], grows[0]["h"]) <= tile * 0.92 + 0.05
+    assert grows[0]["w"] / grows[0]["h"] == pytest.approx(12 / 10, rel=0.08)
     out = build_dxf(lay, part, lambda prim: None)
     names = {e.dxf.text for e in out.modelspace().query("TEXT")}
     assert {"Farbcode", "Kanal", "Leitung"} <= names and "90°" not in names
-    height = lay["height"]
-    for g in grows:
-        ins = next(e for e in out.modelspace().query("INSERT") if e.dxf.name == f"Allgemeinteil_{g['row']}")
-        ext = ezbbox.extents([ins], fast=False)
-        assert ext.has_data
-        assert ext.extmin.x >= g["x"] - 0.4
-        assert ext.extmax.x <= g["x"] + g["w"] + 0.4
-        assert ext.extmin.y >= height - (g["y"] + g["h"]) - 0.4
-        assert ext.extmax.y <= height - g["y"] + 0.4
+    ins = next(e for e in out.modelspace().query("INSERT") if e.dxf.name.startswith("Allgemeinteil_"))
+    blk = out.blocks.get(ins.dxf.name)
+    assert {e.dxftype() for e in blk} == {"HATCH"}
+    ext = ezbbox.extents([ins], fast=False)
+    g = grows[0]
+    assert ext.extmin.x >= g["x"] - 0.4 and ext.extmax.x <= g["x"] + g["w"] + 0.4
+    # the chip stays in the symbol column, left of its label
+    label = next(p for p in lay["prims"] if p["t"] == "text" and p["text"] == "Farbcode")
+    chip = next(p for p in chips if p["fill"] == "#ffcc00")
+    assert chip["x"] + chip["w"] < label["x"] - 0.5
 
 
 def test_a_chosen_symbol_colour_replaces_the_drawing_colour():

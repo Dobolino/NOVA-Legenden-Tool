@@ -2002,7 +2002,7 @@ function GeneralRowProps({
   onSave,
   notify,
 }: {
-  row: { id: string; key?: string; text: string; heading: boolean; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom"; line?: boolean } | null;
+  row: { id: string; key?: string; text: string; heading: boolean; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom"; line?: boolean; picture?: "line" | "swatch" | "symbol" } | null;
   admin: boolean;
   onSave: (patch: { text?: string; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom" }) => Promise<void>;
   notify: (text: string, error?: boolean) => void;
@@ -2028,9 +2028,11 @@ function GeneralRowProps({
       <p className="hint">
         {row.heading
           ? "Zwischenüberschrift ohne Symbol, zum Beispiel «Farbcodes». Die Lage in der Rasterzeile stellst du unten ein."
-          : row.line
-            ? "Eine Linie bleibt immer gleich lang, damit Strich, Punkt und Farbe lesbar bleiben. Die Symbolgrösse ändert sie nicht."
-            : "Das Symbol bleibt in der Kachel. Drehen gilt nur für dieses Symbol, der Text bleibt waagrecht."}
+          : row.picture === "swatch"
+            ? "Ein Farbcode wird als gleich grosses Farbfeld gezeichnet. Der Text steht daneben."
+            : row.line
+              ? "Eine Linie bleibt immer gleich lang, damit Strich, Punkt und Farbe lesbar bleiben. Die Symbolgrösse ändert sie nicht."
+              : "Das Symbol wird vollständig in die Kachel gesetzt, ohne Führungslinie und ohne Beschriftung aus der Vorlage. Der Text bleibt waagrecht."}
         {admin ? " Die Änderung gilt in allen Projekten." : " Nur Admins können das ändern."}
       </p>
       <label className="field">
@@ -2044,7 +2046,7 @@ function GeneralRowProps({
           <NumberInput label="Textgrösse Faktor Allgemeinteil" value={row.text_scale ?? 1} step={0.1} disabled={!admin}
             onCommit={(v) => save({ text_scale: Math.max(0.5, Math.min(3, v)) })} />
         </label>
-        {!row.heading && !row.line && (
+        {!row.heading && !row.line && row.picture !== "swatch" && (
           <label className="field">
             <span>Symbolgrösse (Faktor)</span>
             <NumberInput label="Symbolgrösse Faktor Allgemeinteil" value={row.symbol_factor ?? 1} step={0.1} disabled={!admin}
@@ -2063,7 +2065,7 @@ function GeneralRowProps({
           </select>
         </label>
       )}
-      {!row.heading && !row.line && (
+      {!row.heading && !row.line && row.picture !== "swatch" && (
         <div className="field">
           <span>Drehung {row.rotation || 0}°</span>
           <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
