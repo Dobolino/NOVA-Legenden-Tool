@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
-import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, SymbolRender } from "../api";
+import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, StencilData, StencilEntry, SymbolRender } from "../api";
 import { exportDiagnostic } from "../diagnostics";
 import {
   addBlock,
@@ -172,6 +172,22 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const layerByCat = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c.layer ?? ""])), [categories]);
   const catTitle = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c.title])), [categories]);
   const descriptions = info?.descriptions ?? {};
+  const stencilNames = info?.stencil_names ?? {};
+  // your Nova user stencil: loaded once per editor, one tab open at a time
+  const [stencil, setStencil] = useState<StencilData | null>(null);
+  const [stencilTab, setStencilTab] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.stencils(projectId).then((r) => alive && setStencil(r)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  const openStencilEntries = useMemo(() => {
+    if (!stencil || !stencilTab) return [];
+    const [si, ti] = stencilTab.split(":").map(Number);
+    return stencil.sets[si]?.tabs[ti]?.entries ?? [];
+  }, [stencil, stencilTab]);
 
   // -- load, general part, save ------------------------------------------------------------
 
@@ -271,6 +287,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     const listed = [
       ...data.rows.filter((r) => r.total > 0 && r.symbol_key).map((r) => ({ key: r.symbol_key, family_key: r.family_key })),
       ...results.map((f) => ({ key: f.representative.key, family_key: f.key })),
+      ...openStencilEntries.filter((e) => e.symbol_key).map((e) => ({ key: e.symbol_key as string, family_key: e.family_key })),
     ];
     for (const l of listed) {
       const key = symbolRequestKey({ symbol_key: l.key, length_mm: null, width_mm: null });
@@ -291,7 +308,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         });
       })
       .catch(() => undefined);
-  }, [placed, general, symbols, data.rows, results, stripFill]);
+  }, [placed, general, symbols, data.rows, results, openStencilEntries, stripFill]);
 
   useEffect(() => {
     if (search.trim().length < 2) {
@@ -360,7 +377,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     let last: { block: string; item: string } | null = null;
     for (const r of rows) {
       const target = ensureBlock(d, r.categories, selectedBlockId());
-      const res = addItem(target.doc, target.id, { kind: "symbol", family_key: r.family_key, symbol_key: r.symbol_key, text: describe(r.family_key, r.title, descriptions) });
+      const res = addItem(target.doc, target.id, { kind: "symbol", family_key: r.family_key, symbol_key: r.symbol_key, text: describe(r.family_key, r.title, descriptions, stencilNames) });
       d = res.doc;
       last = { block: target.id, item: res.id };
     }
@@ -372,10 +389,19 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     if (!doc) return;
     const familyKey = f.key;
     const target = ensureBlock(doc, f.categories, selectedBlockId());
-    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: familyKey, symbol_key: f.representative.key, text: describe(familyKey, f.title, descriptions) });
+    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: familyKey, symbol_key: f.representative.key, text: describe(familyKey, f.title, descriptions, stencilNames) });
     change(res.doc);
     setSel({ type: "item", block: target.id, item: res.id });
     setSearch("");
+  }
+
+  function addFromStencil(e: StencilEntry) {
+    if (!doc || !e.symbol_key) return;
+    const target = ensureBlock(doc, e.categories, selectedBlockId());
+    const text = describe(e.family_key, e.name, descriptions, {});
+    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: e.family_key, symbol_key: e.symbol_key, text });
+    change(res.doc);
+    setSel({ type: "item", block: target.id, item: res.id });
   }
 
   function addKind(kind: "line" | "note" | "text") {
@@ -891,7 +917,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             <>
               <p className="hint">Anklicken oder auf einen Abschnitt ziehen.</p>
               {missing.slice(0, 40).map((r) => {
-                const text = describe(r.family_key, r.title, descriptions);
+                const text = describe(r.family_key, r.title, descriptions, stencilNames);
                 return (
                   <button
                     key={r.family_key}
@@ -916,7 +942,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               <div className="section">Im Allgemeinteil ({inGeneralRows.length})</div>
               <p className="hint">Der Allgemeinteil zeigt diese Apparate schon. Sie kommen nicht in den Vorschlag. Ziehen geht trotzdem.</p>
               {inGeneralRows.map((r) => {
-                const text = describe(r.family_key, r.title, descriptions);
+                const text = describe(r.family_key, r.title, descriptions, stencilNames);
                 return (
                   <div
                     key={r.family_key}
@@ -936,7 +962,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           <input className="input" style={{ width: "100%" }} placeholder="Name oder Katalogcode" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Bibliothek durchsuchen" />
           {results.map((f) => {
             const fam = f.key;
-            const text = describe(fam, f.title, descriptions);
+            const text = describe(fam, f.title, descriptions, stencilNames);
             const twice = inLegend(doc, fam, f.representative.key);
             return (
               <button
@@ -952,6 +978,55 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               </button>
             );
           })}
+
+          <div className="section">Benutzerschablone{stencil?.nova ? ` · Nova ${stencil.nova}` : ""}</div>
+          {stencil && !stencil.sets.length && (
+            <p className="hint" style={{ wordBreak: "break-all" }}>
+              {stencil.found ? "Im Ordner liegt keine lesbare Schablone (.n5q)." : "Ordner nicht gefunden."} {stencil.folder}
+              <br />Pfad ändern: Einstellungen → Benutzerschablonen.
+            </p>
+          )}
+          {stencil?.sets.map((sset, si) => (
+            <div key={`${sset.name}${si}`} className="stencil-set">
+              <div className="stencil-set-name" title={sset.description}>{sset.name}</div>
+              {sset.tabs.map((tab, ti) => {
+                const id = `${si}:${ti}`;
+                const open = stencilTab === id;
+                return (
+                  <div key={id}>
+                    <button className={`outline-row stencil-tab ${open ? "active" : ""}`} aria-expanded={open}
+                      onClick={() => setStencilTab(open ? null : id)} title={tab.description}>
+                      <span className="fold-btn" aria-hidden>{open ? "▾" : "▸"}</span>
+                      <span className="outline-text">{tab.name}</span>
+                      <span className="hint">{tab.entries.length}</span>
+                    </button>
+                    {open && tab.entries.map((e, k) =>
+                      e.symbol_key ? (
+                        <button key={k} className="outline-item add" onClick={() => addFromStencil(e)}
+                          title={`${e.name}${e.item ? ` · ${e.item}` : ""}${e.description ? ` · ${e.description}` : ""}`}
+                          {...dragProps({ type: "add", family_key: e.family_key, symbol_key: e.symbol_key, text: describe(e.family_key, e.name, descriptions, {}), categories: e.categories })}>
+                          <SymIcon r={symbols[symbolRequestKey({ symbol_key: e.symbol_key, length_mm: null, width_mm: null })]} />
+                          <span className="outline-text">{e.name}</span>
+                          {e.family_key && inLegend(doc, e.family_key, e.symbol_key) && <span className="badge warn">doppelt</span>}
+                        </button>
+                      ) : (
+                        <div key={k} className="outline-item add disabled"
+                          title={e.macro ? `Makro: ${e.macro}. Makros lassen sich noch nicht in die Legende ziehen.` : "Ohne Katalogsymbol: nicht in der Bibliothek."}>
+                          {e.macro && e.macro_found ? (
+                            <img className="sym-icon" src={api.macroPreviewUrl(projectId, e.macro)} alt="" />
+                          ) : (
+                            <span className="sym-icon empty" aria-hidden />
+                          )}
+                          <span className="outline-text">{e.name}</span>
+                          <span className="badge">{e.macro ? "Makro" : "kein Symbol"}</span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </aside>
 
         <div

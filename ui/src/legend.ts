@@ -480,8 +480,10 @@ export function blockForCategory(doc: LegendDoc, categories: string[], fallback:
 }
 
 /** Description of a new entry: the company text first, else the library name. */
-export function describe(familyKey: string | null, fallback: string, descriptions: Record<string, string>): string {
-  return (familyKey && descriptions[familyKey]) || fallback;
+/** Legend text of a symbol: company text, else the name in your Nova user stencil, else `fallback`. */
+export function describe(familyKey: string | null, fallback: string, descriptions: Record<string, string>,
+  stencilNames: Record<string, string> = {}): string {
+  return (familyKey && (descriptions[familyKey] || stencilNames[familyKey])) || fallback;
 }
 
 export function symbolRequestKey(it: { symbol_key: string | null; length_mm: number | null; width_mm: number | null }): string {

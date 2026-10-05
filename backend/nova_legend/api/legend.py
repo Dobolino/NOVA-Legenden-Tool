@@ -20,6 +20,8 @@ from .. import config
 from ..legend import general as general_part
 from ..legend.export import build_dxf, dxf_to_dwg
 from ..legend.pdf import build_pdf
+from ..library.families import family_title
+from ..parser.stencil import read_stencil_file, stencil_folder
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
 from ..legend.model import AP_NOTE, AP_NOTE_KEY, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
@@ -324,6 +326,97 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         name = (stored or {}).get("name") or "Legende"
         return name if len(p.legends()) > 1 else "Legende"
 
+    # -- user stencils (Benutzerschablonen, per user and Nova version) -------------------
+
+    stencil_cache: dict = {}
+
+    def stencil_sets(nova_version: str) -> dict:
+        """All *.n5q in the stencil folder of this Nova version, read once per file change."""
+        folder = stencil_folder(st.settings.stencil_folder, nova_version)
+        files = sorted(folder.glob("*.n5q")) if folder.is_dir() else []
+        stamp = (str(folder), tuple((str(f), f.stat().st_mtime, f.stat().st_size) for f in files))
+        if stencil_cache.get("stamp") != stamp:
+            sets = []
+            errors = []
+            for f in files:
+                try:
+                    sets.extend(read_stencil_file(f))
+                except Exception as exc:  # noqa: BLE001 - one unreadable file does not stop the others
+                    errors.append(f"{f.name}: {exc}")
+            stencil_cache.update(stamp=stamp, sets=sets, errors=errors)
+        return {"folder": str(folder), "found": folder.is_dir(), "files": [f.name for f in files],
+                "sets": stencil_cache["sets"], "errors": stencil_cache["errors"]}
+
+    def stencil_symbol(ev, entry) -> tuple[str | None, str | None]:
+        """(symbol key, family key) of a stencil entry in the library, or (None, None)."""
+        if not entry.item:
+            return None, None
+        syms = ev.index.by_code_any(entry.item, ev.index.dataset_id(entry.dataset or ""))
+        if not syms:
+            return None, None
+        sym = next((x for x in syms if x.graphic_id == entry.graphic_id), syms[0])
+        fam = ev.families.get(ev.family_of.get(sym.key, ""))
+        return sym.key, (fam.key if fam else None)
+
+    def stencil_names(ev, nova_version: str) -> dict[str, str]:
+        """Family key -> the name your stencil gives it (the most used one, without UP/AP).
+        Used for legend texts when there is no company text."""
+        from collections import Counter
+
+        counts: dict[str, Counter] = {}
+        for sset in stencil_sets(nova_version)["sets"]:
+            for tab in sset.tabs:
+                for entry in tab.entries:
+                    _key, fk = stencil_symbol(ev, entry)
+                    label = family_title(entry.label, st.family_options()) if entry.label else ""
+                    if fk and label:
+                        counts.setdefault(fk, Counter())[label] += 1
+        return {fk: c.most_common(1)[0][0] for fk, c in counts.items()}
+
+    def project_nova(p) -> str:
+        return str(p.meta().get("nova_version") or st.settings.nova_version or "19.2")
+
+    @app.get("/api/stencils")
+    def stencils(project_id: str = "", nova: str = "") -> dict:
+        """Your user stencils as in Nova: set, tab, entries, each with its library symbol."""
+        version = nova or (project_nova(project(project_id)) if project_id else st.settings.nova_version)
+        data = stencil_sets(version)
+        ev = evaluator()
+        out_sets = []
+        for sset in data["sets"]:
+            tabs = []
+            for tab in sset.tabs:
+                entries = []
+                for entry in tab.entries:
+                    key, fk = stencil_symbol(ev, entry)
+                    fam = ev.families.get(ev.family_of.get(key, "")) if key else None
+                    entries.append({"categories": ev.family_categories(fam) if fam else [],"name": entry.label, "description": entry.description, "item": entry.item,
+                                    "layer": entry.layer, "symbol_key": key, "family_key": fk,
+                                    "macro": entry.macro, "macro_found": bool(entry.macro and Path(entry.macro).is_file())})
+                tabs.append({"name": tab.name, "description": tab.description, "entries": entries})
+            out_sets.append({"name": sset.name, "description": sset.description, "tabs": tabs})
+        return {"folder": data["folder"], "found": data["found"], "files": data["files"], "errors": data["errors"],
+                "nova": version, "sets": out_sets}
+
+    @app.get("/api/stencils/macro-preview")
+    def macro_preview(path: str, project_id: str = "") -> Response:
+        """Nova's preview picture of a macro (.n4d) your stencil uses. Only macros of the stencil."""
+        import olefile
+
+        version = project_nova(project(project_id)) if project_id else st.settings.nova_version
+        known = {e.macro for s in stencil_sets(version)["sets"] for t in s.tabs for e in t.entries if e.macro}
+        if path not in known or not Path(path).is_file():
+            raise HTTPException(404, "Makro nicht gefunden")
+        try:
+            ole = olefile.OleFileIO(path)
+            try:
+                data = ole.openstream("BITMAP").read()
+            finally:
+                ole.close()
+        except Exception:  # noqa: BLE001 - no picture in this file
+            raise HTTPException(404, "Kein Vorschaubild im Makro") from None
+        return Response(data, media_type="image/bmp")
+
     def make_proposal(p, style: dict | None, categories: list[str] | None) -> dict:
         ev = evaluator()
         result = ev.evaluate(p)
@@ -336,9 +429,11 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             if c.get("layer"):
                 layer_categories.setdefault(c["layer"], c["id"])
         descriptions = st.company.descriptions()
+        # legend text: company text, else the name of your stencil, else the catalogue name
+        texts = {**stencil_names(ev, project_nova(p)), **descriptions}
         gen = load_general()
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
-                      descriptions, title.strip(), style=style or project_style(p), colors=colors,
+                      texts, title.strip(), style=style or project_style(p), colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
                       ap_covered=bool({norm_text(AP_NOTE), norm_text(descriptions.get(AP_NOTE_KEY) or AP_NOTE)} & set(gen.texts)),
                       layer_categories=layer_categories)
@@ -404,6 +499,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         in_general = {**gen.contents(), "covered": sorted(covered_families(gen, rows, descriptions))}
         return {"legend": stored, "legends": p.legends(),
                 "template_texts": template_texts(), "descriptions": descriptions,
+                "stencil_names": stencil_names(evaluator(), project_nova(p)),
                 "in_general": in_general,
                 "grids": [{"id": k, **v} for k, v in GRIDS.items()], "style": project_style(p),
                 "company": company_legend(), "oda": bool(st.settings.oda_path or config.find_oda_converter())}

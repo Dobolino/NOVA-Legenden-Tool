@@ -74,6 +74,7 @@ export interface Settings {
   oda_path: string;
   ui_theme?: string;
   update_channel?: "stable" | "test";
+  stencil_folder?: string;
 }
 
 export interface UpdateInfo {
@@ -303,10 +304,33 @@ export interface CompanyText {
   known: boolean;
 }
 
+/** One entry of your Nova user stencil (Benutzerschablone). */
+export interface StencilEntry {
+  name: string;
+  description: string;
+  item: string | null;
+  layer: string | null;
+  symbol_key: string | null;
+  family_key: string | null;
+  categories: string[];
+  macro: string | null;
+  macro_found: boolean;
+}
+
+export interface StencilData {
+  folder: string;
+  found: boolean;
+  files: string[];
+  errors: string[];
+  nova: string;
+  sets: { name: string; description: string; tabs: { name: string; description: string; entries: StencilEntry[] }[] }[];
+}
+
 export interface LegendInfo {
   legend: StoredLegend | null;
   template_texts: string[];
   descriptions: Record<string, string>;
+  stencil_names?: Record<string, string>;
   grids: { id: string; label: string; row: number; text_offset: number }[];
   style: LegendDoc["style"];
   company: CompanyLegend;
@@ -557,6 +581,9 @@ export const api = {
   legendExportUrl: (id: string, name: string, format: "dxf" | "dwg" | "pdf", block: string, general: boolean, legendId?: number | null) =>
     `/api/projects/${encodeURIComponent(id)}/legend/export/${encodeURIComponent(name)}?${qs({ format, block, general, ...(legendId ? { legend: legendId } : {}) })}`,
   descriptions: () => request<{ items: CompanyText[]; file: string }>("GET", "/api/descriptions"),
+  stencils: (projectId: string, nova = "") =>
+    request<StencilData>("GET", `/api/stencils?${qs(projectId ? { project_id: projectId } : { nova })}`),
+  macroPreviewUrl: (projectId: string, path: string) => `/api/stencils/macro-preview?${qs({ project_id: projectId, path })}`,
   descriptionsExportUrl: "/api/descriptions/export/edeco%20ag-Firmentexte.csv",
   importDescriptions: (file: File) => upload<{ changed: number; removed: number; rows: number }>("/api/descriptions/import", {}, file),
   legendExportFile: async (url: string): Promise<Blob> => {

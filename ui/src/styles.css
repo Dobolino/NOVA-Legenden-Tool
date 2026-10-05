@@ -754,3 +754,10 @@ body.pane-resizing { cursor: col-resize; user-select: none; }
 .legend-toolbar > [role="status"] { margin-left: auto; }
 .props-export { position: sticky; top: -14px; z-index: 2; margin: -14px -14px 10px; padding: 12px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .props-export .btn { width: 100%; justify-content: center; }
+
+/* user stencil in the legend editor */
+.stencil-set-name { font-size: 12px; font-weight: 650; color: var(--muted); margin: 8px 0 2px; }
+.stencil-tab { width: 100%; border: 0; background: none; cursor: pointer; text-align: left; color: inherit; font-size: 13px; margin-top: 2px; padding: 3px 4px; }
+.stencil-tab .outline-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.outline-item.disabled { cursor: default; opacity: 0.6; }
+img.sym-icon { object-fit: contain; }

@@ -116,6 +116,10 @@ def resolve_company_db(folder: Path) -> Path:
     return current
 
 
+# Nova keeps the user stencils per user and per Nova version ({nova} = 19, 20 ...)
+DEFAULT_STENCIL_FOLDER = r"%USERPROFILE%\OneDrive - edeco AG\Dokumente\Trimble\nova{nova}\Stencils"
+
+
 @dataclass
 class Settings:
     dataset_paths: list[str] = field(default_factory=list)
@@ -125,6 +129,7 @@ class Settings:
     oda_path: str = ""
     ui_theme: str = "system"          # "system", "light" or "dark" (this computer)
     update_channel: str = "stable"    # "stable": builds of main, "test": also development builds
+    stencil_folder: str = DEFAULT_STENCIL_FOLDER   # Benutzerschablonen (this computer, this user)
 
     @property
     def company_db(self) -> Path:

@@ -74,6 +74,7 @@ class SettingsIn(BaseModel):
     nova_version: str | None = None
     oda_path: str | None = None
     update_channel: Literal["stable", "test"] | None = None
+    stencil_folder: str | None = None
 
 
 class CategoryIn(BaseModel):

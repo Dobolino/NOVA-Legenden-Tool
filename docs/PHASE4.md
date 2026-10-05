@@ -69,6 +69,14 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 - Verteiler (UV, HV, ZV, HAK, Hausanschluss) gehören in den Allgemeinteil. Der Vorschlag lässt sie weg, die Prüfung meldet sie nicht als fehlend. Links lassen sie sich trotzdem einfügen.
 - NUP und andere Montagearten: ein Eintrag pro Funktion. Was NUP bedeutet, steht im Allgemeinteil.
 
+## Benutzerschablone (Nova-Schablonen)
+
+- Einstellungen → Benutzerschablonen: Ordner der .n5q-Dateien. Voreinstellung `%USERPROFILE%\OneDrive - edeco AG\Dokumente\Trimble\nova{nova}\Stencils`. `{nova}` ersetzt das Programm durch die Nova-Version des Projekts (19 für 19.2, 20 für 20). Die Einstellung gilt für diesen Computer und Benutzer.
+- Der Legenden-Editor zeigt links «Benutzerschablone» mit Sätzen und Registerkarten wie in Nova. Einträge mit Katalogsymbol lassen sich anklicken oder ziehen. Der Text ist der Firmentext, sonst der Name des Eintrags.
+- Makros (Plankopf, Planrahmen, eigene Symbole) stehen mit dem Nova-Vorschaubild in der Liste, lassen sich aber noch nicht in die Legende ziehen.
+- Vorschlag: Firmentext, sonst die Bezeichnung aus der Benutzerschablone (die häufigste für dieses Symbol, ohne UP/AP), sonst die Bauteil-Bezeichnung aus dem Trimble-Katalog.
+- Die Schablone verweist auf einen bestimmten Datensatz (heute meist Elektroinstallationen.CH). Bei Plänen aus V2 greifen ihre Namen nur, wo die Symbolfamilie gleich heisst.
+
 ## Freier Text
 
 Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster wie ein Eintrag, in einem Abschnitt, und nutzt die gemeinsame Schriftgrösse. Ohne gewählten Abschnitt entsteht ein Abschnitt «Zusatztext». Entfernen über das Mülleimer-Symbol («Text entfernen»). Alte freie Texte (Version 1) wandern beim Öffnen in einen Abschnitt «Zusatztext».

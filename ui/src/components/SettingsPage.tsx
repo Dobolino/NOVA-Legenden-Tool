@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import CompanyLegendCard from "./CompanyLegendCard";
 import CompanyTextsCard from "./CompanyTextsCard";
-import { api, DATASET_LABEL, Status, UpdateInfo } from "../api";
+import { api, DATASET_LABEL, StencilData, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
 import type { ThemeMode } from "../theme";
 
@@ -21,6 +21,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   const [company, setCompany] = useState(status.settings.company_folder);
   const [projectsFolder, setProjectsFolder] = useState(status.settings.projects_folder);
   const [nova, setNova] = useState(status.settings.nova_version);
+  const [stencilFolder, setStencilFolder] = useState(status.settings.stencil_folder ?? "");
+  const [stencilInfo, setStencilInfo] = useState<StencilData | null>(null);
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
 
@@ -54,6 +56,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
     setCompany(status.settings.company_folder);
     setProjectsFolder(status.settings.projects_folder);
     setNova(status.settings.nova_version);
+    setStencilFolder(status.settings.stencil_folder ?? "");
+    api.stencils("", status.settings.nova_version).then(setStencilInfo).catch(() => setStencilInfo(null));
   }, [status]);
 
   async function save(values: Parameters<typeof api.saveSettings>[0], ok: string) {
@@ -357,6 +361,30 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           {!canPick && <p className="hint">{pickHint}</p>}
           <p className="hint" style={{ wordBreak: "break-all" }}>Aktuelle Datei: {status.company_db}</p>
           {status.company_error && <p className="warn-text">{status.company_error}</p>}
+        </div>
+
+        <div className="card">
+          <h3>Benutzerschablonen</h3>
+          <p className="desc">
+            Deine Nova-Schablonen (.n5q). Der Legenden-Editor zeigt sie links unter «Benutzerschablone», und der Vorschlag nimmt ihre
+            Bezeichnungen, wenn es keinen Firmentext gibt. {"{nova}"} im Pfad ersetzt das Programm durch die Nova-Version des
+            Projekts: 19 für Nova 19.2, 20 für Nova 20. %USERPROFILE% ist dein Benutzerordner.
+          </p>
+          <div className="row">
+            <input className="input" style={{ flex: 1, minWidth: 260 }} value={stencilFolder} title={stencilFolder}
+              aria-label="Ordner der Benutzerschablonen" onChange={(e) => setStencilFolder(e.target.value)} />
+            <button className="btn primary" disabled={busy || stencilFolder === (status.settings.stencil_folder ?? "")}
+              onClick={() => save({ stencil_folder: cleanPath(stencilFolder) }, "Ordner der Benutzerschablonen gespeichert")}>
+              Speichern
+            </button>
+          </div>
+          {stencilInfo && (
+            <p className="hint" style={{ wordBreak: "break-all" }}>
+              Nova {stencilInfo.nova}: {stencilInfo.folder} ·{" "}
+              {!stencilInfo.found ? "Ordner nicht gefunden"
+                : stencilInfo.files.length ? `${stencilInfo.files.join(", ")} (${stencilInfo.sets.length} Schablonen-Sätze)` : "keine .n5q-Datei im Ordner"}
+            </p>
+          )}
         </div>
 
         <CompanyLegendCard canPick={canPick} choose={choose} notify={notify} />
