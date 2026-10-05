@@ -258,3 +258,57 @@ def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
     page.wait_for_timeout(1500)                # autosave
     items = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]["blocks"][0]["items"]
     assert [it["kind"] == "gap" and "_" or it["id"] for it in items] == ["_", "e1", "e2", "e3", "_", "e0"]
+
+
+def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypatch):
+    """Everyone sees the same star list. An empty list stays open; afterwards only admins edit it."""
+    from nova_legend import config
+
+    client, _tmp = env
+    ui = Path(__file__).resolve().parents[2] / "ui" / "dist"
+    if not (ui / "index.html").is_file():
+        pytest.skip("Build the UI with npm run build before browser tests")
+    me = config.current_user()
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(create_app(client.app.state.nova, ui_dir=ui), log_level="error"))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        if not thread.is_alive() or time.monotonic() > deadline:
+            raise RuntimeError("Browser test API did not start")
+        time.sleep(0.02)
+    shots = Path("/opt/cursor/artifacts/screenshots")
+    shots.mkdir(parents=True, exist_ok=True)
+    try:
+        with playwright.sync_playwright() as pw:
+            browser = launch_chromium(pw)
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page.goto(f"http://127.0.0.1:{port}")
+            page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_text("Offen für alle", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_text("jeder darf ändern", exact=False)).to_be_visible()
+            page.locator(".admin-box").screenshot(path=str(shots / "admin-offen.png"))
+            assert client.put("/api/company/legend", json={"admins": [me, "marco"]}).status_code == 200
+            page.reload()
+            page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_text("Du bist Admin", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_text("Nur Admins können weitere Namen", exact=False)).to_be_visible()
+            playwright.expect(page.locator(".admin-list")).to_contain_text(me)
+            playwright.expect(page.locator(".admin-list")).to_contain_text("marco")
+            assert page.locator(".admin-list .star").count() == 2
+            page.locator("section.admin-box").screenshot(path=str(shots / "admin-du.png"))
+            monkeypatch.setattr(config, "current_user", lambda: "gast")
+            page.reload()
+            page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_text("Nicht Admin", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_text("Die Liste ist gesperrt", exact=False)).to_be_visible()
+            playwright.expect(page.get_by_label("Admin-Liste")).to_be_disabled()
+            page.locator(".card", has=page.locator(".admin-title")).screenshot(path=str(shots / "admin-gesperrt.png"))
+            browser.close()
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        sock.close()

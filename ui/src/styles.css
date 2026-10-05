@@ -185,6 +185,19 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .update-row .field { margin: 0; flex: 1 1 240px; max-width: 420px; }
 .update-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .warn-text { color: var(--warn); font-size: 13px; }
+.admin-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.admin-title h3 { margin: 0; }
+.admin-badge { font-size: 12px; font-weight: 650; letter-spacing: 0.2px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.admin-badge.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.admin-box { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel-2); }
+.admin-box h4 { margin: 0 0 4px; font-size: 14px; }
+.admin-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; padding: 0; }
+.admin-list li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
+.admin-list li.me { border-color: var(--ok); }
+.admin-list .star { color: var(--brand-orange); }
+.admin-list .you { color: var(--ok); font-size: 12px; font-weight: 650; }
+.admin-list .empty { color: var(--muted); background: transparent; border: 0; padding: 0; }
+.admin-chip { display: inline-flex; margin: 0 8px 4px 0; }
 
 /* --- pages -------------------------------------------------------------- */
 .page { flex: 1; min-width: 0; overflow-y: auto; padding: var(--space-6); }

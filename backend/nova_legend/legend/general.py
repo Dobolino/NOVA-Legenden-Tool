@@ -46,7 +46,7 @@ class GeneralPart:
 
     def info(self) -> dict:
         out = {"source": self.source, "kind": self.kind, "error": self.error,
-               "w": round(self.w, 2), "h": round(self.h, 2)}
+               "w": round(self.w, 2), "h": round(self.h, 2), "file": self.dxf_path}
         if self.rows:
             out["rows"] = [{k: v for k, v in r.items() if k not in ("svg", "vb", "handles")} for r in self.rows]
             out["symbol_area"] = round(self.symbol_area, 3)
@@ -68,13 +68,79 @@ def norm_text(text: str) -> str:
 _cache: dict[tuple, GeneralPart] = {}
 
 
+def _files(folder: Path) -> list[Path]:
+    try:
+        return [f for f in folder.iterdir() if f.is_file()]
+    except OSError:
+        return []
+
+
+def _pick_drawing(files: list[Path], prefer: str = "") -> Path | None:
+    """One DXF or DWG. Prefer the folder name, then the usual Nova names
+    (E_Legende, Allgemein), then a lone drawing. Several unrelated drawings
+    are left for the caller to name."""
+    drawings = [f for f in files if f.suffix.lower() in (".dxf", ".dwg")]
+    wants = []
+    for name in (prefer, "E_Legende", "Allgemein", "Legende"):
+        if name and name.lower() not in wants:
+            wants.append(name.lower())
+    for name in wants:
+        named = [f for f in drawings if f.stem.lower() == name]
+        if named:
+            dxf = [f for f in named if f.suffix.lower() == ".dxf"]
+            return (dxf or named)[0]
+    if len(drawings) == 1:
+        return drawings[0]
+    return None
+
+
+def resolve_source(path: str) -> tuple[Path | None, str]:
+    """The file to read for a typed path.
+
+    A folder may hold the drawing (``Allgemein.dxf`` inside ``Allgemein``) or a template
+    project (``projekt.nlproj``). A path without an extension also matches ``.dxf`` / ``.dwg``.
+    """
+    raw = (path or "").strip().strip('"')
+    if not raw:
+        return None, ""
+    p = Path(raw)
+    if p.is_dir():
+        project = p / "projekt.nlproj"
+        if project.is_file():
+            return project, ""
+        found = _files(p)
+        drawing = _pick_drawing(found, p.name)
+        if drawing:
+            return drawing, ""
+        n4d = [f.name for f in found if f.suffix.lower() == ".n4d"]
+        if n4d:
+            return None, f"{NOT_SUPPORTED} Im Ordner liegt {', '.join(n4d)}."
+        names = ", ".join(sorted(f.name for f in found)[:8])
+        extra = f" Im Ordner liegen: {names}." if names else " Der Ordner enthält keine Datei."
+        return None, ("Im Ordner liegt keine DXF- oder DWG-Datei und kein Vorlagen-Projekt "
+                      f"(projekt.nlproj).{extra}")
+    if p.is_file():
+        return p, ""
+    if p.suffix == "":
+        for ext in (".dxf", ".dwg"):
+            cand = Path(str(p) + ext)
+            if cand.is_file():
+                return cand, ""
+    if p.parent.is_dir():
+        drawing = _pick_drawing(_files(p.parent), p.name)
+        if drawing:
+            return drawing, ""
+    return None, f"Servervorlage nicht gefunden: {raw}"
+
+
 def load(path: str, inner_width: float, oda_exe: str | None, project_layout=None) -> GeneralPart:
     """Read the general part. ``project_layout(folder)`` returns a layout of a project legend."""
     path = (path or "").strip().strip('"')
     if not path:
         return GeneralPart()
-    p = Path(path)
-    target = p / "projekt.nlproj" if p.is_dir() else p
+    target, missing = resolve_source(path)
+    if target is None:
+        return GeneralPart(source=path, error=missing)
     try:
         mtime = target.stat().st_mtime
     except OSError:

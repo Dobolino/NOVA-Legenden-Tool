@@ -47,12 +47,17 @@ export default function CompanyLegendCard({
 
   const num = (v: string) => Number(v.replace(",", "."));
 
+  const me = info.user.toLocaleLowerCase("de-CH");
   return (
     <div className="card">
-      <h3>Legende der Firma</h3>
+      <div className="admin-title">
+        <h3>Legende der Firma</h3>
+        <span className={`admin-badge ${info.is_admin && !info.bootstrap ? "on" : ""}`}>
+          {info.bootstrap ? "Offen für alle" : info.is_admin ? "Du bist Admin" : "Nicht Admin"}
+        </span>
+      </div>
       <p className="desc">
-        Gilt für die ganze Firma. Ändern dürfen nur die Admins unten (Windows-Benutzer). Du bist angemeldet als <b>{info.user}</b>
-        {info.is_admin ? " und darfst ändern." : ", ohne Admin-Recht."}
+        Gilt für die ganze Firma. Angemeldet als <b>{info.user}</b>.
         {info.bootstrap && " Noch kein Admin eingetragen: trage dich zuerst selbst ein."}
       </p>
 
@@ -89,11 +94,13 @@ export default function CompanyLegendCard({
       <p className="hint">
         Empfehlung: die einspaltige Legende einmal als DXF direkt aus Nova speichern und hier eintragen. Eine DXF braucht keinen
         ODA File Converter, eine DWG schon (auf jedem Arbeitsplatz). Das Programm ordnet sie selbst in 2 oder 3 Spalten. Änderst du
-        die Datei auf dem Server, liest das Programm sie beim nächsten Öffnen der Legende neu.
+        die Datei auf dem Server, liest das Programm sie beim nächsten Öffnen der Legende neu. Liegt die Zeichnung im
+        Ordner oder heisst sie wie der Ordner mit Endung .dxf oder .dwg, reicht der Ordnerpfad.
       </p>
       {info.general.kind ? (
         <p className="hint">
           Gelesen: {info.general.kind === "dxf" ? "DXF/DWG" : "Vorlagen-Projekt"}, {info.general.w} × {info.general.h} mm.
+          {info.general.file ? <><br />Datei: {info.general.file}</> : null}
           <br />Steht in jeder Legende zuoberst.
           <br />Nur die Blattbreite skaliert die Datei. Kachelgrösse, Schrift und Abstand gelten für die erzeugte Legende.
           <br />Einträge darin lassen sich nicht ziehen.
@@ -109,19 +116,41 @@ export default function CompanyLegendCard({
         </p>
       )}
 
-      <label className="field" style={{ marginTop: 10 }}>
-        <span>Admins (Windows-Benutzernamen, durch Komma getrennt)</span>
-        <div className="row">
-          <input className="input" style={{ flex: 1, minWidth: 260 }} value={admins} disabled={locked} onChange={(e) => setAdmins(e.target.value)} placeholder={info.user} />
-          <button
-            className="btn primary"
-            disabled={locked || busy || admins === info.admins.join(", ")}
-            onClick={() => save({ admins: admins.split(",").map((a) => a.trim()).filter(Boolean) }, "Admin-Liste gespeichert")}
-          >
-            Speichern
-          </button>
-        </div>
-      </label>
+      <section className="admin-box" aria-label="Admins">
+        <h4>Admins</h4>
+        <p className="hint">
+          {info.bootstrap
+            ? "Noch niemand eingetragen: jeder darf ändern und sich selbst eintragen. Steht ein Name drin, sehen das alle. Weitere Namen trägt nur ein Admin ein."
+            : info.is_admin
+              ? "Du stehst in der Liste. Nur Admins können weitere Namen eintragen oder entfernen."
+              : "Die Liste ist gesperrt. Nur die markierten Admins können sie ändern."}
+        </p>
+        <ul className="admin-list">
+          {info.admins.length ? info.admins.map((name) => {
+            const mine = name.toLocaleLowerCase("de-CH") === me;
+            return (
+              <li key={name} className={mine ? "me" : ""}>
+                <span className="star" aria-hidden="true">★</span>
+                <span>{name}</span>
+                {mine && <span className="you">du</span>}
+              </li>
+            );
+          }) : <li className="empty">Noch keine Admins</li>}
+        </ul>
+        <label className="field">
+          <span>Windows-Benutzernamen, durch Komma getrennt</span>
+          <div className="row">
+            <input className="input" style={{ flex: 1, minWidth: 260 }} value={admins} disabled={locked} onChange={(e) => setAdmins(e.target.value)} placeholder={info.user} aria-label="Admin-Liste" />
+            <button
+              className="btn primary"
+              disabled={locked || busy || admins === info.admins.join(", ")}
+              onClick={() => save({ admins: admins.split(",").map((a) => a.trim()).filter(Boolean) }, "Admin-Liste gespeichert")}
+            >
+              Speichern
+            </button>
+          </div>
+        </label>
+      </section>
 
       <div className="head-fields" style={{ marginTop: 10 }}>
         <label className="field">

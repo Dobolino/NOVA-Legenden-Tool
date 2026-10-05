@@ -1850,7 +1850,12 @@ function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: str
         <dt>Grösse</dt>
         <dd>{general ? `${general.w} × ${general.h} mm` : "–"}</dd>
         <dt>Admins</dt>
-        <dd>{company.admins.join(", ") || "noch keine"}</dd>
+        <dd>
+          {company.is_admin && company.admins.length > 0 && <span className="admin-badge on">Du bist Admin</span>}
+          {company.admins.length ? company.admins.map((name) => (
+            <span key={name} className="admin-chip">★ {name}{name.toLocaleLowerCase("de-CH") === company.user.toLocaleLowerCase("de-CH") ? " (du)" : ""}</span>
+          )) : "noch keine"}
+        </dd>
       </dl>
     </>
   );

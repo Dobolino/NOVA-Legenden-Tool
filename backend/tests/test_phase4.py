@@ -333,6 +333,29 @@ def test_general_part_from_dxf_is_on_top_and_n4d_is_refused(env, monkeypatch, tm
     assert info["general"]["kind"] == "" and "DXF- oder DWG" in info["general"]["error"]
 
 
+def test_general_part_is_found_in_the_folder_and_without_an_extension(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    folder = tmp_path / "Allgemein"
+    folder.mkdir()
+    _template_dxf(folder / "E_Legende.dxf")
+    _template_dxf(folder / "andere.dxf")
+    # the drawing sits in the folder; the stored path is the folder, as picked in the dialog
+    info = client.put("/api/company/legend", json={"general_path": str(folder)}).json()
+    assert info["general"]["kind"] == "dxf" and not info["general"]["error"]
+    assert info["general"]["file"].endswith("E_Legende.dxf")
+    bare = tmp_path / "Legenden" / "Allgemein"
+    bare.parent.mkdir()
+    _template_dxf(bare.with_suffix(".dxf"))
+    info = client.put("/api/company/legend", json={"general_path": str(bare)}).json()
+    assert info["general"]["kind"] == "dxf"
+    only_n4d = tmp_path / "NurN4D"
+    only_n4d.mkdir()
+    (only_n4d / "Allgemein.n4d").write_bytes(b"x")
+    info = client.put("/api/company/legend", json={"general_path": str(only_n4d)}).json()
+    assert info["general"]["kind"] == "" and "N4D" in info["general"]["error"]
+
+
 def test_general_part_from_a_template_project(env, monkeypatch):  # noqa: F811
     client, tmp = env
     monkeypatch.setattr(config, "current_user", lambda: "chef")
