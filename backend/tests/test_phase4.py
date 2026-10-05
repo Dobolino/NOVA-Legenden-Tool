@@ -727,6 +727,28 @@ def test_a_grey_section_takes_a_known_plan_colour():
     assert apply_plan_section_colors(chosen, {"licht": "#0000ff"})["blocks"][0]["style"]["header"] == "#123456"
 
 
+def test_a_line_stays_put_and_a_symbol_stays_in_the_tile_and_can_turn():
+    from nova_legend.legend.layout import symbol_tile
+
+    general = {"rows": [
+        {"id": "g0", "text": "UP-Bodenleitung", "gw": 18, "gh": 0.3, "symbol_factor": 4},
+        {"id": "g1", "text": "Verteilung", "gw": 6, "gh": 6, "symbol_factor": 4, "rotation": 90},
+    ], "symbol_area": 12}
+    doc = normalize({"style": {"text_size": 2.5}, "blocks": []})
+    lay = layout(doc, {}, general)
+    tile = symbol_tile(doc["style"])
+    line = next(p for p in lay["prims"] if p["t"] == "grow" and p["row"] == "g0")
+    symbol = next(p for p in lay["prims"] if p["t"] == "grow" and p["row"] == "g1")
+    assert line["w"] < tile + 0.2 and line["h"] < 1.3 and line["rot"] == 0
+    assert max(symbol["w"], symbol["h"]) <= tile * 0.92 + 0.05 and symbol["rot"] == 90
+    top = layout(doc, {}, {"rows": [{"id": "h", "text": "Farbcodes", "heading": True, "text_place": "top"}],
+                           "symbol_area": 12})
+    bottom = layout(doc, {}, {"rows": [{"id": "h", "text": "Farbcodes", "heading": True, "text_place": "bottom"}],
+                              "symbol_area": 12})
+    y = lambda lay: next(p["y"] for p in lay["prims"] if p["t"] == "text" and p["text"] == "Farbcodes")
+    assert y(top) < y(bottom)
+
+
 def test_a_general_heading_sits_on_the_bottom_of_its_grid_cell():
     general = {"rows": [
         {"id": "g0", "text": "Farbcodes", "heading": True},

@@ -790,7 +790,7 @@ body.pane-resizing { cursor: col-resize; user-select: none; }
 .legend-head-info { flex: 1; min-width: 0; }
 .legend-head-info:empty { display: none; }
 .legend-head-info .info-line { margin: 0; }
-.legend-head-actions { margin-left: auto; }
+.legend-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .legend-status { display: flex; align-items: center; gap: 10px; margin-left: auto; min-width: 0; }
 .legend-toolbar > [role="status"] { margin-left: auto; }
 .props-export { position: sticky; top: -14px; z-index: 2; margin: -14px -14px 10px; padding: 12px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }

@@ -39,6 +39,8 @@ class GeneralRowIn(BaseModel):
     links: list[str] | None = None
     text_scale: float | None = None
     symbol_factor: float | None = None
+    rotation: int | None = None
+    text_place: str | None = None
 
 
 class LegendIn(BaseModel):
@@ -332,9 +334,15 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             o["text_scale"] = max(0.5, min(3.0, float(body.text_scale)))
         if body.symbol_factor is not None:
             o["symbol_factor"] = max(0.3, min(4.0, float(body.symbol_factor)))
+        if body.rotation is not None:
+            o["rotation"] = int(body.rotation) % 360
+        if body.text_place in ("top", "middle", "bottom"):
+            o["text_place"] = body.text_place
         o.update(by=config.current_user(), at=datetime.now().isoformat(timespec="seconds"))
         plain = (not o.get("text") and not o.get("hidden") and not o.get("links")
-                 and float(o.get("text_scale") or 1) == 1 and float(o.get("symbol_factor") or 1) == 1)
+                 and float(o.get("text_scale") or 1) == 1 and float(o.get("symbol_factor") or 1) == 1
+                 and int(o.get("rotation") or 0) % 360 == 0
+                 and (o.get("text_place") or "bottom") == "bottom")
         if plain:
             overrides.pop(body.key, None)          # back to the drawing as it is
         else:

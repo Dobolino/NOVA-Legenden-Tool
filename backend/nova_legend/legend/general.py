@@ -238,6 +238,14 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     return part
 
 
+def _is_line_graphic(row: dict) -> bool:
+    """A flat stroke (a cable, a colour bar). It stays one readable sample, not a scaled symbol."""
+    gw, gh = float(row.get("gw") or 0.0), float(row.get("gh") or 0.0)
+    if gw <= 0:
+        return False
+    return gh <= max(0.9, gw * 0.18)
+
+
 def _row_factor(value, lo: float, hi: float) -> float:
     try:
         n = float(value)
@@ -266,9 +274,17 @@ def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
             hidden_texts.add(key)
             continue
         families.update(o.get("links") or [])
+        place = str(o.get("text_place") or "bottom")
+        if place not in ("top", "middle", "bottom"):
+            place = "bottom"
+        try:
+            rotation = int(o.get("rotation") or 0) % 360
+        except (TypeError, ValueError):
+            rotation = 0
         rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"],
                      "text_scale": _row_factor(o.get("text_scale"), 0.5, 3.0),
-                     "symbol_factor": _row_factor(o.get("symbol_factor"), 0.3, 4.0)})
+                     "symbol_factor": _row_factor(o.get("symbol_factor"), 0.3, 4.0),
+                     "rotation": rotation, "text_place": place, "line": _is_line_graphic(r)})
     texts = (set(part.texts) - hidden_texts) | {norm_text(r["text"]) for r in rows}
     names = sorted({n for r in rows for n in (r.get("names") or [])})
     return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts), symbol_names=names)

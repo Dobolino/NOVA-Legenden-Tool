@@ -201,18 +201,28 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
     imp.finalize()
     # line types of the rows: plain dash patterns, readable at the size the layout gives them
     simplify_linetypes(doc)
-    k = next((p["k"] for p in grows), 1.0)
     seen: set = set()
-    for name in names.values():
-        tune_entities(doc, list(doc.blocks.get(name)), general.to_mm * k, seen)
+    tuned: set = set()
     for p in grows:
         r = rows.get(p["row"])
         if not r or r["id"] not in names:
             continue
+        if r["id"] not in tuned:
+            tune_entities(doc, list(doc.blocks.get(names[r["id"]])), general.to_mm * p["k"], seen)
+            tuned.add(r["id"])
         s = general.to_mm * p["k"]
-        x0, y0 = r["src"][0], r["src"][1]
-        msp.add_blockref(names[r["id"]], (round(p["x"] - x0 * s, 4), round(Y(p["y"] + p["h"]) - y0 * s, 4)),
-                         dxfattribs={"xscale": s, "yscale": s, "layer": _layer(doc, FRAME_LAYER)})
+        x0, y0, x1, y1 = r["src"]
+        rot = int(p.get("rot") or 0) % 360
+        cmx, cmy = (x0 + x1) / 2, (y0 + y1) / 2
+        a = math.radians(rot)
+        sx, sy = s * cmx, s * cmy
+        rx = sx * math.cos(a) - sy * math.sin(a)
+        ry = sx * math.sin(a) + sy * math.cos(a)
+        # the centre of the graphic stays in the cell; the block turns around that centre
+        ix = p["x"] + p["w"] / 2 - rx
+        iy = Y(p["y"] + p["h"] / 2) - ry
+        msp.add_blockref(names[r["id"]], (round(ix, 4), round(iy, 4)), dxfattribs={
+            "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, FRAME_LAYER)})
 
 
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:

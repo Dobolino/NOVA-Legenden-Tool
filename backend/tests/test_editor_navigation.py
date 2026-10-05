@@ -100,12 +100,13 @@ def test_the_wide_view_button_sits_on_the_settings_row(editor):
     page.get_by_role("button", name=re.compile(r"Grossansicht$")).click()
     close = page.locator("button.btn", has_text="Grossansicht beenden")
     playwright.expect(close).to_be_visible()
-    same_row = page.evaluate("""() => {
-        const a = document.querySelector('[aria-label="Ansicht"]')?.getBoundingClientRect();
-        const b = [...document.querySelectorAll("button")].find((el) => el.textContent.includes("Grossansicht beenden"))?.getBoundingClientRect();
-        return Boolean(a && b && Math.abs(a.top - b.top) < 8);
+    side_by_side = page.evaluate("""() => {
+        const buttons = [...document.querySelectorAll("button")];
+        const a = buttons.find((el) => el.textContent.includes("Einstellungen schwebend"))?.getBoundingClientRect();
+        const b = buttons.find((el) => el.textContent.includes("Grossansicht beenden"))?.getBoundingClientRect();
+        return Boolean(a && b && Math.abs(a.top - b.top) < 8 && b.left >= a.right - 4 && b.left - a.right < 24);
     }""")
-    assert same_row
+    assert side_by_side
 
 
 def test_the_grid_starts_on_and_stays_off_once_switched(editor):

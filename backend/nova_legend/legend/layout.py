@@ -273,22 +273,42 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
             shown = lines or [r["text"]]
             row_lh = size * LINE_FACTOR
             if r.get("heading"):
-                # a heading such as «Farbcodes» sits on the bottom line of its grid cell
-                base = cy + h - 0.7 - (len(shown) - 1) * row_lh
+                # top, middle or bottom of the grid cell (default: on the bottom line)
+                place = r.get("text_place") or "bottom"
+                if place == "top":
+                    base = cy + size * 0.9
+                elif place == "middle":
+                    base = mid - (len(shown) - 1) * row_lh / 2 + size * 0.32
+                else:
+                    base = cy + h - 0.7 - (len(shown) - 1) * row_lh
                 for j, line in enumerate(shown):
                     prims.append({"t": "text", "x": round(cx + 0.8, 3), "y": round(base + j * row_lh, 3),
                                   "size": round(size, 3), "text": line, "bold": True, "color": "#000000"})
             else:
                 factor = max(0.3, min(4.0, float(r.get("symbol_factor") or 1.0)))
                 gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
+                rot = int(r.get("rotation") or 0) % 360
                 if r.get("gw") is not None and (gw > 0 or gh > 0):
-                    # a line has no height of its own; give it the stroke so it still sits in the tile
-                    gw, gh = gw or 0.35, gh or 0.35
-                    scale = side / max(gw, gh, 1e-6) * factor
-                    w, hgt = gw * scale, gh * scale
+                    line_row = gh <= max(0.9, gw * 0.18)
+                    if line_row:
+                        # one sample of the stroke, always the same length, so the line type stays readable
+                        length = side
+                        thick = 0.45
+                        if 0.15 < gh <= gw * 0.28:
+                            thick = min(1.1, max(0.35, gh * length / max(gw, 1e-6)))
+                        w, hgt, scale = length, thick, length / max(gw, 1e-6)
+                    else:
+                        gw, gh = gw or 0.35, gh or 0.35
+                        scale = side / max(gw, gh, 1e-6) * factor
+                        w, hgt = gw * scale, gh * scale
+                        limit = min(tile * 0.92, max(2.0, (text_x - axis - 0.8) * 2), slot - 0.6)
+                        longest = max(w, hgt, 1e-6)
+                        if longest > limit:
+                            shrink = limit / longest
+                            w, hgt, scale = w * shrink, hgt * shrink, scale * shrink
                     prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
                                   "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
-                                  "k": round(scale, 5)})
+                                  "k": round(scale, 5), "rot": rot})
                 base = mid - (len(shown) - 1) * row_lh / 2 + size * 0.32
                 for j, line in enumerate(shown):
                     prims.append({"t": "text", "x": round(cx + text_x, 3), "y": round(base + j * row_lh, 3),

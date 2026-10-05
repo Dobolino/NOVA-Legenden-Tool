@@ -735,14 +735,12 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     )}
     <div className={`legend-editor ${windowed ? "windowed" : ""}`}>
       <div className="legend-head">
-        <div className="tool-group" role="group" aria-label="Ansicht">
+        <div className="legend-head-info">{generalBox}</div>
+        <div className="legend-head-actions">
         <button className={`btn small ${detached ? "is-on" : ""}`} aria-pressed={detached} onClick={() => setDetached((v) => !v)}
           title={detached ? "Die Einstellungen wieder rechts neben der Legende zeigen" : "Die Einstellungen als schwebendes Feld über der Legende zeigen. Mehr Platz für das Blatt."}>
           {detached ? "⇥ Einstellungen andocken" : "⧉ Einstellungen schwebend"}
         </button>
-        </div>
-        <div className="legend-head-info">{generalBox}</div>
-        <div className="legend-head-actions">
         {windowed ? (
           <button className="btn small primary" onClick={() => setWindowed(false)} title="Grossansicht schliessen. Esc geht auch.">
             ✕ Grossansicht beenden
@@ -1270,9 +1268,18 @@ function Prim({
       // one row graphic of the general part, as drawn in the server file
       const r = general?.row_svgs?.[p.row];
       if (!r) return null;
-      return (
+      const graphic = (
         <svg x={p.x} y={p.y} width={p.w} height={p.h} viewBox={r.vb} preserveAspectRatio="xMidYMid meet" overflow="visible"
           pointerEvents="none" dangerouslySetInnerHTML={{ __html: r.svg }} />
+      );
+      const rot = Number(p.rot) || 0;
+      if (!rot) return graphic;
+      const cx = p.x + p.w / 2;
+      const cy = p.y + p.h / 2;
+      return (
+        <g transform={`translate(${cx} ${cy}) rotate(${-rot}) translate(${-cx} ${-cy})`} pointerEvents="none">
+          {graphic}
+        </g>
       );
     }
     case "hit": {
@@ -1947,16 +1954,16 @@ function GeneralRowProps({
   onSave,
   notify,
 }: {
-  row: { id: string; key?: string; text: string; heading: boolean; text_scale?: number; symbol_factor?: number } | null;
+  row: { id: string; key?: string; text: string; heading: boolean; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom"; line?: boolean } | null;
   admin: boolean;
-  onSave: (patch: { text?: string; text_scale?: number; symbol_factor?: number }) => Promise<void>;
+  onSave: (patch: { text?: string; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom" }) => Promise<void>;
   notify: (text: string, error?: boolean) => void;
 }) {
   const [text, setText] = useState(row?.text ?? "");
   const [busy, setBusy] = useState(false);
   useEffect(() => { setText(row?.text ?? ""); }, [row?.id, row?.text]);
   if (!row) return <p className="hint">Zeile nicht gefunden.</p>;
-  async function save(patch: { text?: string; text_scale?: number; symbol_factor?: number }) {
+  async function save(patch: { text?: string; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom" }) {
     setBusy(true);
     try {
       await onSave(patch);
@@ -1972,8 +1979,10 @@ function GeneralRowProps({
       <h4>{row.heading ? "Zwischenüberschrift" : "Zeile im Allgemeinteil"}</h4>
       <p className="hint">
         {row.heading
-          ? "Sitzt unten auf der Rasterlinie der Zelle, ohne Symbol. Zum Beispiel «Farbcodes»."
-          : "Text und Grösse wie bei den anderen Einträgen. Die Grafik kommt aus der Firmenvorlage."}
+          ? "Zwischenüberschrift ohne Symbol, zum Beispiel «Farbcodes». Die Lage in der Rasterzeile stellst du unten ein."
+          : row.line
+            ? "Eine Linie bleibt immer gleich lang, damit Strich, Punkt und Farbe lesbar bleiben. Die Symbolgrösse ändert sie nicht."
+            : "Das Symbol bleibt in der Kachel. Drehen gilt nur für dieses Symbol, der Text bleibt waagrecht."}
         {admin ? " Die Änderung gilt in allen Projekten." : " Nur Admins können das ändern."}
       </p>
       <label className="field">
@@ -1987,14 +1996,43 @@ function GeneralRowProps({
           <NumberInput label="Textgrösse Faktor Allgemeinteil" value={row.text_scale ?? 1} step={0.1} disabled={!admin}
             onCommit={(v) => save({ text_scale: Math.max(0.5, Math.min(3, v)) })} />
         </label>
-        {!row.heading && (
+        {!row.heading && !row.line && (
           <label className="field">
             <span>Symbolgrösse (Faktor)</span>
             <NumberInput label="Symbolgrösse Faktor Allgemeinteil" value={row.symbol_factor ?? 1} step={0.1} disabled={!admin}
-              onCommit={(v) => save({ symbol_factor: Math.max(0.3, Math.min(4, v)) })} />
+              onCommit={(v) => save({ symbol_factor: Math.max(0.5, Math.min(2, v)) })} />
           </label>
         )}
       </div>
+      {row.heading && (
+        <label className="field">
+          <span>Lage in der Zeile</span>
+          <select className="select" aria-label="Lage der Zwischenüberschrift" value={row.text_place || "bottom"} disabled={!admin || busy}
+            onChange={(e) => save({ text_place: e.target.value as "top" | "middle" | "bottom" })}>
+            <option value="top">Oben</option>
+            <option value="middle">Mittig</option>
+            <option value="bottom">Unten</option>
+          </select>
+        </label>
+      )}
+      {!row.heading && !row.line && (
+        <div className="field">
+          <span>Drehung {row.rotation || 0}°</span>
+          <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+            <button className="btn small" disabled={!admin || busy} onClick={() => save({ rotation: ((row.rotation || 0) + 45) % 360 })} title="Um 45 Grad drehen. Der Text bleibt waagrecht.">
+              ↻ 45°
+            </button>
+            <button className="btn small" disabled={!admin || busy} onClick={() => save({ rotation: ((row.rotation || 0) + 90) % 360 })} title="Um 90 Grad drehen. Der Text bleibt waagrecht.">
+              ↻ 90°
+            </button>
+            {(row.rotation || 0) !== 0 && (
+              <button className="btn small" disabled={!admin || busy} onClick={() => save({ rotation: 0 })}>
+                Zurück
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
