@@ -14,9 +14,11 @@ SAMPLE = Path(__file__).resolve().parents[2] / "samples" / "Benutzerschablonen.n
 
 def test_stencil_folder_follows_the_nova_version():
     template = r"%USERPROFILE%\OneDrive - edeco AG\Dokumente\Trimble\nova{nova}\Stencils"
-    assert str(stencil_folder(template, "19.2", "C:/Users/aduerger")).endswith(r"Trimble\nova19\Stencils")
-    assert r"\nova20\Stencils" in str(stencil_folder(template, "20", "C:/Users/aduerger"))
-    assert str(stencil_folder(template, "20", "C:/Users/aduerger")).startswith("C:/Users/aduerger")
+    nova19 = str(stencil_folder(template, "19.2", "C:/Users/aduerger")).replace("\\", "/")
+    nova20 = str(stencil_folder(template, "20", "C:/Users/aduerger")).replace("\\", "/")
+    assert nova19.endswith("Trimble/nova19/Stencils")
+    assert nova20.endswith("Trimble/nova20/Stencils")
+    assert nova20.startswith("C:/Users/aduerger")
 
 
 def test_entry_label_falls_back_to_the_object_name():

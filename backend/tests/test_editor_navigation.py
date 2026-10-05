@@ -95,7 +95,7 @@ def title(client, pid):
 def test_immediate_navigation_saves_to_the_original_project(editor, destination):
     page, field, client, (a, b) = editor
     # Reproduce the original cross-project bug with the destination's load delayed.
-    page.evaluate("""() => {
+    page.evaluate(r"""() => {
         const original = window.fetch;
         window.fetch = async (...args) => {
             if (/\/Browser%20B\/legend(\?.*)?$/.test(String(args[0])) && (!args[1]?.method || args[1].method === 'GET'))
@@ -151,7 +151,7 @@ def test_failed_save_keeps_the_editor_open_and_can_be_retried(editor, destinatio
 
 def test_navigation_waits_for_an_inflight_autosave_and_then_saves_the_latest_edit(editor):
     page, field, client, (a, b) = editor
-    page.evaluate("""() => {
+    page.evaluate(r"""() => {
         const original = window.fetch;
         window.legendWrites = [];
         window.fetch = async (...args) => {
@@ -210,7 +210,7 @@ def test_several_legends_are_edited_and_saved_separately(editor):
     page.get_by_label("Name", exact=True).fill("Brandmelder")
     page.get_by_role("radio", name="Leer", exact=True).check()
     page.get_by_role("button", name="Anlegen", exact=True).click()
-    playwright.expect(page.get_by_label("Legende wählen")).to_have_value(/.+/)
+    playwright.expect(page.get_by_label("Legende wählen").locator("option", has_text="Brandmelder")).to_have_count(1)
     page.get_by_role("button", name="T Titel", exact=True).click()
     playwright.expect(field).to_have_value("Brandmelder")
     field.fill("Brandmelder EG")
