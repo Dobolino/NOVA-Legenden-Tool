@@ -63,7 +63,7 @@ export default function HelpPage({ notify }: { notify: (text: string, error?: bo
           </ul>
         </div>
 
-        <div className="card">
+        <div className="card help-report">
           <h3>Prüfbericht</h3>
           <p className="desc">Zum Einfügen in ein Sprachmodell.</p>
           <ul className="help-list">
