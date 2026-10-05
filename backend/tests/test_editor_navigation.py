@@ -288,8 +288,17 @@ def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypat
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(f"http://127.0.0.1:{port}")
             page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_role("heading", name="Legende Allgemein", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_role("heading", name="Admin", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_text("Zeilen der Legende Allgemein", exact=True)).to_be_visible()
+            playwright.expect(page.get_by_text("Windows-Name dieses Computers", exact=False)).to_be_visible()
+            assert page.get_by_text("Legende der Firma", exact=True).count() == 0
+            assert page.get_by_text("NovaFirma12").count() == 0
+            playwright.expect(page.locator(".card", has=page.get_by_role("heading", name="Benutzerschablonen")).locator(".stencil-read")).to_be_visible()
             playwright.expect(page.get_by_text("Offen für alle", exact=True)).to_be_visible()
             playwright.expect(page.get_by_text("jeder darf ändern", exact=False)).to_be_visible()
+            page.locator(".card", has=page.get_by_role("heading", name="Legende Allgemein", exact=True)).screenshot(
+                path=str(shots / "legende-allgemein.png"))
             page.locator(".admin-box").screenshot(path=str(shots / "admin-offen.png"))
             assert client.put("/api/company/legend", json={"admins": [me, "marco"]}).status_code == 200
             page.reload()

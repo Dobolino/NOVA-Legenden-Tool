@@ -469,7 +469,8 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
                     "ax": round(box["ax"], 4), "ay": round(box["ay"], 4), "mirror": bool(item.get("mirror")),
                     "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
                     "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
-                    "hatch_off": fills_off[0], "fill_off": fills_off[1], "color": st.get("symbol") or "#000000"})
+                    "hatch_off": fills_off[0], "fill_off": fills_off[1],
+                    "color": item.get("color") or st.get("symbol") or "#000000"})
     elif kind == "line":
         out.append({"t": "line", "dash": dash_array(item["line_style"], box["left"] + box["right"]),
                     "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),

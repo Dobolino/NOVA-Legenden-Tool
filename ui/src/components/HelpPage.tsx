@@ -56,7 +56,7 @@ export default function HelpPage({ notify }: { notify: (text: string, error?: bo
             <li><b>Unbekannt.</b> Das Symbol steht in keinem geladenen Datensatz oder die Zuordnung fehlt. In der Bibliothek zuordnen.</li>
             <li>
               <b>Allgemeinteil.</b>
-              <br />Eine DXF- oder DWG-Datei, verknüpft in den Firmeneinstellungen.
+              <br />Eine DXF- oder DWG-Datei, verknüpft unter Legende Allgemein.
               <br />Sie bleibt eine gesperrte Zeichnung.
               <br />Kachelgrösse und Abstand gelten für die erzeugte Legende, nicht für diese Datei.
             </li>

@@ -94,7 +94,9 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-DEFAULT_PROJECTS_FOLDER = r"T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
+# No firm path is shipped. Each company types its own folder in the settings.
+# Empty means: projects stay on this computer, in the local data folder.
+DEFAULT_PROJECTS_FOLDER = ""
 COMPANY_DB_NAME = "edeco ag-Legenden-firma.sqlite"
 LEGACY_COMPANY_DB_NAME = "firma.sqlite"
 
@@ -116,8 +118,9 @@ def resolve_company_db(folder: Path) -> Path:
     return current
 
 
-# Nova keeps the user stencils per user and per Nova version ({nova} = 19, 20 ...)
-DEFAULT_STENCIL_FOLDER = r"%USERPROFILE%\OneDrive - edeco AG\Dokumente\Trimble\nova{nova}\Stencils"
+# Nova's stencil folder of this Windows user, per Nova version ({nova} = 19, 20 ...).
+# A path of one company (for example an OneDrive folder) is not the default.
+DEFAULT_STENCIL_FOLDER = r"%USERPROFILE%\Documents\Trimble\nova{nova}\Stencils"
 
 
 @dataclass

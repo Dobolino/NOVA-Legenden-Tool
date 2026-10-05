@@ -254,6 +254,9 @@ def _item(it, uid) -> dict | None:
             # hidden: the general part already shows it (hidden, not deleted); keep: shown on purpose
             "hidden": bool(it.get("hidden")), "keep": bool(it.get("keep")),
             "mirror": bool(it.get("mirror"))}       # mirrored left-right before turning
+    own = it.get("color") or ""
+    if isinstance(own, str) and _HEX.match(own) and own.lower() != "#ffffff":
+        item["color"] = own.lower()
     if kind == "symbol" and not item["symbol_key"]:
         return None
     return item
@@ -261,14 +264,63 @@ def _item(it, uid) -> dict | None:
 
 # -- proposal from the project -------------------------------------------------
 
+def _plan_hex(value) -> str:
+    text = value if isinstance(value, str) else ""
+    return text.lower() if _HEX.match(text) and text.lower() != "#ffffff" else ""
+
+
+def color_shares(row: dict, category_id: str | None, layer_categories: dict[str, str] | None,
+                 layer_colors: dict[str, str] | None) -> list[tuple[str, int]]:
+    """(plan colour, count) of this symbol, most used first.
+
+    Layers that belong to another category are left out, so each section only
+    shows the colours of its own layers. Two colours become two legend rows.
+    """
+    if not layer_colors:
+        return []
+    totals: dict[str, int] = {}
+    for name, amount in (row.get("layers") or {}).items():
+        mapped = (layer_categories or {}).get(name)
+        if category_id and mapped and mapped != category_id:
+            continue
+        color = _plan_hex(layer_colors.get(name))
+        if not color:
+            continue
+        totals[color] = totals.get(color, 0) + int(amount or 0)
+    return sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def apply_plan_section_colors(doc: dict, colors: dict[str, str]) -> dict:
+    """Replace a still-grey section with the plan colour of its category.
+
+    A colour someone chose (anything other than the grey default) stays.
+    """
+    for block in doc.get("blocks") or []:
+        color = _plan_hex((colors or {}).get(block.get("category_id") or ""))
+        if not color:
+            continue
+        style = block.get("style") or {}
+        header = (style.get("header") or "").lower()
+        symbol = (style.get("symbol") or "").lower()
+        if header == "#6b7280" and symbol in ("#000000", "#6b7280"):
+            fresh = section_style(color)
+            style.update(header=fresh["header"], header_text=fresh["header_text"],
+                         background=fresh["background"], border=fresh["border"], symbol=fresh["symbol"])
+    return doc
+
+
 def propose(rows: list[dict], categories: list[dict], by_category: bool,
             descriptions: dict[str, str], title: str, style: dict | None = None,
             colors: dict[str, str] | None = None, covered: set[str] | None = None,
-            ap_covered: bool = False, layer_categories: dict[str, str] | None = None) -> dict:
+            ap_covered: bool = False, layer_categories: dict[str, str] | None = None,
+            layer_colors: dict[str, str] | None = None) -> dict:
     """New legend with every apparatus in use, grouped by the first visible category.
 
     A symbol that sits on plan layers of two or more categories is entered in
     each of those categories, so each copy keeps that category's layer colour.
+    A symbol that sits on two colours inside one category is shown twice, once
+    in each colour. The section bar uses the category colour, or, when that
+    layer has none, the colour that occurs most often.
 
     ``covered`` holds the family keys the general part already shows; they are
     left out. ``ap_covered`` leaves out the AP note when the general part has it.
@@ -282,6 +334,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
     cats = {c["id"]: c for c in categories}
     order = {c["id"]: i for i, c in enumerate(categories)}
     blocks: dict[str, dict] = {}
+    votes: dict[str, dict[str, int]] = {}
 
     def block_for(cid: str | None) -> dict:
         key = cid if by_category else "_all"
@@ -291,7 +344,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
                            "title": cat["title"] if cat else ("Ohne Kategorie" if by_category else "Legende"),
                            "layer": (cat.get("layer") or "") if cat else "", "collapsed": False,
                            "title_scale": 1.0,
-                           "style": section_style(colors.get(cid) if cat else None), "items": []}
+                           "style": section_style(_plan_hex(colors.get(cid)) if cat else ""), "items": []}
         return blocks[key]
 
     has_ap = False
@@ -314,11 +367,30 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             continue    # the general part already shows it
         has_ap = has_ap or any(m in ("AP", "NAP") for m in (row.get("mountings") or {}))
         for cid in targets:
-            block_for(cid)["items"].append({
-                "id": new_id(), "kind": "symbol", "family_key": row["family_key"],
-                "symbol_key": row["symbol_key"],
-                "text": descriptions.get(row["family_key"]) or row.get("title") or "",
-                "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0, **ITEM_EXTRA})
+            shares = color_shares(row, cid if by_category else None, layer_categories, layer_colors)
+            # one colour, or none: a single row. several colours: one row each
+            chosen = shares if len(shares) >= 2 else (shares[:1] or [("", 0)])
+            block = block_for(cid)
+            key = cid if by_category else "_all"
+            for color, count in chosen:
+                item = {"id": new_id(), "kind": "symbol", "family_key": row["family_key"],
+                        "symbol_key": row["symbol_key"],
+                        "text": descriptions.get(row["family_key"]) or row.get("title") or "",
+                        "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0,
+                        **ITEM_EXTRA}
+                if color:
+                    item["color"] = color
+                    votes.setdefault(key, {})
+                    votes[key][color] = votes[key].get(color, 0) + count
+                block["items"].append(item)
+    for key, block in blocks.items():
+        cid = block.get("category_id")
+        if _plan_hex(colors.get(cid)):
+            continue
+        bag = votes.get(key) or {}
+        if bag:
+            best = max(bag.items(), key=lambda kv: (kv[1], kv[0]))[0]
+            block["style"] = section_style(best)
     doc["blocks"] = sorted(blocks.values(), key=lambda b: order.get(b["category_id"], 999))
     if has_ap and doc["blocks"] and not ap_covered:
         first = next((b for b in doc["blocks"] if b["category_id"] == "allgemein"), doc["blocks"][0])

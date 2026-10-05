@@ -4,7 +4,7 @@ import type { CompanyGeneral, FamilyItem, GeneralRow } from "../api";
 
 /** Settings: the rows of the general part. The drawing on the server stays the source;
  *  text changes, hidden rows and linked symbols are kept beside it for the whole company. */
-export default function GeneralPartEditor({ notify }: { notify: (text: string, error?: boolean) => void }) {
+export default function GeneralPartEditor({ notify, reloadKey = 0 }: { notify: (text: string, error?: boolean) => void; reloadKey?: number }) {
   const [data, setData] = useState<CompanyGeneral | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [linking, setLinking] = useState<string | null>(null);
@@ -14,7 +14,7 @@ export default function GeneralPartEditor({ notify }: { notify: (text: string, e
 
   useEffect(() => {
     api.companyGeneral().then(setData).catch((e) => notify((e as Error).message, true));
-  }, [notify]);
+  }, [notify, reloadKey]);
 
   useEffect(() => {
     if (!linking || query.trim().length < 2) {
@@ -80,13 +80,12 @@ export default function GeneralPartEditor({ notify }: { notify: (text: string, e
 
   const stamp = data.file_time ? new Date(data.file_time * 1000).toLocaleString("de-CH") : "";
   return (
-    <div className="card">
-      <h3>Allgemeinteil bearbeiten</h3>
+    <div className="general-editor">
+      <h4>Zeilen der Legende Allgemein</h4>
       <p className="desc">
-        Die Zeichnung auf dem Server bleibt die Quelle (Einstellungen → Legende der Firma). Hier änderst du Texte, blendest Zeilen
-        aus und verknüpfst Zeilen mit Symbolen: Verknüpfte Symbole erscheinen in den Projektabschnitten nicht noch einmal. Neue
-        Symbole und die Reihenfolge änderst du in der DWG, dann «Neu laden». Im Legendeneditor ordnet sich der Allgemeinteil
-        selbst in 2 oder 3 Spalten.
+        Die Zeichnung oben bleibt die Quelle. Hier änderst du Texte, blendest Zeilen aus und verknüpfst Zeilen mit Symbolen:
+        Verknüpfte Symbole erscheinen in den Projektabschnitten nicht noch einmal. Neue Symbole und die Reihenfolge änderst du
+        in der DWG, dann «Neu laden». Im Legendeneditor ordnet sich die Legende Allgemein selbst in 2 oder 3 Spalten.
       </p>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
         <span className="hint" style={{ flex: 1, wordBreak: "break-all" }}>

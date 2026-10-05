@@ -21,6 +21,7 @@ export interface LegendItem {
   mirror?: boolean; // mirrored left-right before turning
   hidden: boolean; // the general part already shows it: hidden, not deleted
   keep: boolean; // shown again on purpose, not hidden a second time
+  color?: string; // plan colour of this entry, when it differs from the section
 }
 
 export interface SectionStyle {
@@ -396,8 +397,11 @@ export function rotateItem(doc: LegendDoc, blockId: string, itemId: string, step
 
 // -- duplicates and the general part --------------------------------------------------------
 
-function symbolIdentity(it: { family_key: string | null; symbol_key: string | null }): string | null {
-  return it.family_key ? `f:${it.family_key}` : it.symbol_key ? `s:${it.symbol_key}` : null;
+function symbolIdentity(it: { family_key: string | null; symbol_key: string | null; color?: string | null }): string | null {
+  const base = it.family_key ? `f:${it.family_key}` : it.symbol_key ? `s:${it.symbol_key}` : null;
+  if (!base) return null;
+  const color = (it.color || "").toLowerCase();
+  return color ? `${base}|${color}` : base;
 }
 
 /** Second and later entries of the same symbol in the same section. The same symbol

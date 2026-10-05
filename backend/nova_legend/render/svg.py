@@ -72,10 +72,31 @@ LAYER_FILL = "var(--sym-layer, #b9c0c9)"   # layer colour next to explicit black
 BACKGROUND = "var(--sym-bg, #ffffff)"      # white masking areas
 
 
+def is_layer_grey(color: str | None) -> bool:
+    """A neutral grey in the Nova drawing. It follows the plan layer, like a part
+    without its own colour. Black stays black, white stays a mask, a real hue stays."""
+    if not color or len(color) != 7 or not color.startswith("#"):
+        return False
+    try:
+        r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        return False
+    if max(r, g, b) - min(r, g, b) > 24:
+        return False
+    if max(r, g, b) <= 48 or min(r, g, b) >= 242:
+        return False
+    return True
+
+
+def _explicit(color: str | None) -> bool:
+    """A colour the symbol chose itself. Grey and empty follow the plan layer."""
+    return bool(color) and not is_layer_grey(color)
+
+
 def is_soft(p, mixed: bool) -> bool:
     """A soft fill: a hatch, or an area without own colour next to coloured lines
     (drawn as a light tone). Everything else that is filled is a solid fill."""
-    return p.kind == "hatch" or (bool(p.filled) and mixed and not p.color)
+    return p.kind == "hatch" or (bool(p.filled) and mixed and not _explicit(p.color))
 
 
 def has_fill(geo: SymbolGeometry) -> bool:
@@ -115,18 +136,18 @@ def _tint(color: str, share: float) -> str:
 def own_paint(color: str | None, mixed: bool, filled: bool, layer: str = OWN_BLACK) -> str:
     """Hex colour of a primitive in the legend (DXF export).
 
-    An explicit colour stays. A part without own colour takes ``layer``; an area
-    without own colour in a symbol that also has explicitly coloured parts (black
-    lines on a layer coloured area) takes a lighter tone of it, so the lines on it
-    stay visible.
+    An explicit colour stays. A part without own colour, and a neutral grey,
+    take ``layer``; an area without own colour in a symbol that also has
+    explicitly coloured parts (black lines on a layer coloured area) takes a
+    lighter tone of it, so the lines on it stay visible.
     """
-    if color:
-        return color
+    if _explicit(color):
+        return color or layer
     return _tint(layer, LAYER_TINT) if (mixed and filled) else layer
 
 
 def is_mixed(geo: SymbolGeometry) -> bool:
-    return any(p.color for p in geo.primitives) and any(p.color is None for p in geo.primitives)
+    return any(_explicit(p.color) for p in geo.primitives) and any(not _explicit(p.color) for p in geo.primitives)
 
 
 def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
@@ -150,7 +171,7 @@ def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool 
         if own_colors:
             # explicit colours as hex; parts without own colour follow the page:
             # currentColor = section colour, --sym-layer = its lighter tone
-            if p.color:
+            if _explicit(p.color):
                 paint = line = p.color
             else:
                 line = "currentColor"

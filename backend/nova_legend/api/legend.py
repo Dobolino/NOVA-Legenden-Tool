@@ -24,7 +24,8 @@ from ..library.families import family_title
 from ..parser.stencil import read_stencil_file, stencil_folder
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
-from ..legend.model import AP_NOTE, AP_NOTE_KEY, GRIDS, MARGIN, MAX_SHEET_WIDTH, normalize, normalize_style, propose, template_texts
+from ..legend.model import (AP_NOTE, AP_NOTE_KEY, GRIDS, MARGIN, MAX_SHEET_WIDTH, apply_plan_section_colors,
+                             normalize, normalize_style, propose, template_texts)
 from ..projects.review import build_review
 from ..projects.store import Project, safe_folder_name
 from ..render.engine import engine_geometry
@@ -528,11 +529,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         # legend text: company text, else the name of your stencil, else the catalogue name
         texts = {**stencil_names(ev, project_nova(p)), **descriptions}
         gen = load_general()
+        layer_colors = {layer["name"]: layer.get("color") or "" for layer in p.layers()}
         doc = propose(result["rows"], ev.categories, bool(st.company.options().get("legend_by_category", True)),
                       texts, title.strip(), style=style or project_style(p), colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
                       ap_covered=bool({norm_text(AP_NOTE), norm_text(descriptions.get(AP_NOTE_KEY) or AP_NOTE)} & set(gen.texts)),
-                      layer_categories=layer_categories)
+                      layer_categories=layer_categories, layer_colors=layer_colors)
         if categories:
             wanted = set(categories)
             doc["blocks"] = [b for b in doc["blocks"] if b.get("category_id") in wanted]
@@ -587,11 +589,23 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
     def get_legend(project_id: str, legend: int | None = None) -> dict:
         p = project(project_id)
         stored = stored_legend(p, legend)
-        if stored:
-            stored = {**stored, "doc": normalize(stored["doc"])}
+        doc = normalize(stored["doc"]) if stored else None
         gen = load_general()
         descriptions = st.company.descriptions()
-        rows = evaluator().evaluate(p)["rows"] if gen.kind else []
+        rows: list = []
+        if stored or gen.kind:
+            try:
+                ev = evaluator()
+                result = ev.evaluate(p)
+                if gen.kind:
+                    rows = result["rows"]
+                if doc is not None:
+                    picked = {c["id"]: c.get("color") or "" for c in category_colors(p, ev, result)}
+                    doc = apply_plan_section_colors(doc, picked)
+            except Exception:  # noqa: BLE001 - a colour refresh must not block the editor
+                rows = []
+        if stored and doc is not None:
+            stored = {**stored, "doc": doc}
         in_general = {**gen.contents(), "covered": sorted(covered_families(gen, rows, descriptions))}
         return {"legend": stored, "legends": p.legends(),
                 "template_texts": template_texts(), "descriptions": descriptions,

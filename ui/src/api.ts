@@ -515,7 +515,7 @@ const qs = (params: Record<string, string | boolean | number>) =>
 
 export const api = {
   status: () => request<Status>("GET", "/api/status"),
-  projects: () => request<{ folder: string; folder_exists: boolean; items: ProjectSummary[] }>("GET", "/api/projects"),
+  projects: () => request<{ folder: string; folder_exists: boolean; shared?: boolean; items: ProjectSummary[] }>("GET", "/api/projects"),
   createProject: (name: string, nova_version: string, template: string | null, projectNumber = "") =>
     request<ProjectDetail>("POST", "/api/projects", { name, nova_version, template, project_number: projectNumber }),
   project: (id: string) => request<ProjectDetail>("GET", `/api/projects/${encodeURIComponent(id)}`),

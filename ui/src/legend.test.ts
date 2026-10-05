@@ -141,6 +141,12 @@ test("drag and drop: move in front of an entry, into another section, insert new
   assert.equal(rotateItem(doc(), "a", "i1", 45).blocks[0].items[0].rotation, 45);
 });
 
+test("the same symbol in two plan colours is not a duplicate", () => {
+  const blue = addItem(doc(), "b", { kind: "symbol", family_key: "dose", symbol_key: "s:dose", text: "Dose", color: "#0000ff" });
+  const both = addItem(blue.doc, "b", { kind: "symbol", family_key: "dose", symbol_key: "s:dose", text: "Dose", color: "#ff0000" });
+  assert.deepEqual([...duplicateItems(both.doc)], []);
+});
+
 test("duplicates in one section are marked, the first one and other sections are not", () => {
   const r = insertItem(doc(), "a", { kind: "symbol", family_key: "lampe", symbol_key: "s:lampe", text: "Lampe 2" }, null);
   assert.deepEqual([...duplicateItems(r.doc)], [r.id]);

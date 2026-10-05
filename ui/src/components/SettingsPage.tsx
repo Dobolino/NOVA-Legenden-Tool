@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import CompanyLegendCard from "./CompanyLegendCard";
 import CompanyTextsCard from "./CompanyTextsCard";
-import GeneralPartEditor from "./GeneralPartEditor";
 import { api, DATASET_LABEL, StencilData, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
 import InfoTip from "./InfoTip";
@@ -289,13 +288,13 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           <h3>Projektordner</h3>
           <p className="desc">
             Hier legt das Programm pro Projekt einen Ordner an (Projektdatei, importierte Pläne, später die Legenden).
-            Alle Mitarbeitenden tragen denselben Ordner ein.
+            Alle Mitarbeitenden tragen denselben Ordner ein. Der Ordner ist nicht fest im Programm: jede Firma trägt ihren eigenen ein.
           </p>
           <div className="row">
             <input
               className="input"
               style={{ flex: 1, minWidth: 260 }}
-              placeholder="T:\_CAD\NovaDat\NovaFirma12\Makro\Legenden"
+              placeholder="\\\\Server\\CAD\\Legenden\\Projekte"
               value={projectsFolder}
               title={projectsFolder}
               aria-label="Projektordner"
@@ -319,22 +318,25 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
               disabled={busy || projectsFolder === status.settings.projects_folder}
               onClick={() => save({ projects_folder: cleanPath(projectsFolder) }, "Projektordner gespeichert")}
             >
-              Speichern
-            </button>
-          </div>
+            Speichern
+          </button>
         </div>
+        {!projectsFolder.trim() && (
+          <p className="hint">Ohne Eintrag liegen die Projekte nur auf diesem Computer. Für die Firma denselben Ordner eintragen und speichern.</p>
+        )}
+      </div>
 
-        <div className="card">
-          <h3>Firmenordner</h3>
-          <p className="desc">
-            Hier liegen die gemeinsamen Kategorien und Zuordnungen (Datei edeco ag-Legenden-firma.sqlite). Alle Mitarbeitenden tragen
-            denselben Ordner ein, zum Beispiel T:\_CAD\NOVA-Legenden. Ohne Eintrag speichert das Programm nur lokal.
-          </p>
+      <div className="card">
+        <h3>Firmenordner</h3>
+        <p className="desc">
+            Hier liegen die gemeinsamen Kategorien, Zuordnungen und Firmentexte. Alle Mitarbeitenden tragen denselben Ordner ein.
+            Ohne Eintrag speichert das Programm nur auf diesem Computer. Der Ordner ist nicht fest im Programm.
+        </p>
           <div className="row">
             <input
               className="input"
               style={{ flex: 1, minWidth: 260 }}
-              placeholder="T:\_CAD\NOVA-Legenden"
+              placeholder="\\\\Server\\CAD\\Legenden\\Firma"
               value={company}
               title={company}
               aria-label="Firmenordner"
@@ -375,24 +377,17 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           </p>
           <div className="row">
             <input className="input" style={{ flex: 1, minWidth: 260 }} value={stencilFolder} title={stencilFolder}
+              placeholder="%USERPROFILE%\\Documents\\Trimble\\nova{nova}\\Stencils"
               aria-label="Ordner der Benutzerschablonen" onChange={(e) => setStencilFolder(e.target.value)} />
             <button className="btn primary" disabled={busy || stencilFolder === (status.settings.stencil_folder ?? "")}
               onClick={() => save({ stencil_folder: cleanPath(stencilFolder) }, "Ordner der Benutzerschablonen gespeichert")}>
               Speichern
             </button>
           </div>
-          {stencilInfo && (
-            <p className="hint" style={{ wordBreak: "break-all" }}>
-              Nova {stencilInfo.nova}: {stencilInfo.folder} ·{" "}
-              {!stencilInfo.found ? "Ordner nicht gefunden"
-                : stencilInfo.files.length ? `${stencilInfo.files.join(", ")} (${stencilInfo.sets.length} Schablonen-Sätze)` : "keine .n5q-Datei im Ordner"}
-            </p>
-          )}
+          {stencilInfo && <StencilRead info={stencilInfo} />}
         </div>
 
         <CompanyLegendCard canPick={canPick} choose={choose} notify={notify} />
-
-        <GeneralPartEditor notify={notify} />
 
         <CompanyTextsCard notify={notify} />
 
@@ -461,5 +456,26 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         </div>
       </div>
     </div>
+  );
+}
+
+/** What the stencil folder gave us, and how much of it the library already knows. */
+function StencilRead({ info }: { info: StencilData }) {
+  const entries = info.sets.flatMap((s) => s.tabs.flatMap((t) => t.entries));
+  const linked = entries.filter((e) => e.symbol_key).length;
+  if (!info.found) {
+    return <p className="warn-text stencil-read">Ordner nicht gefunden: {info.folder}. Die Schablonen wurden nicht gelesen und sind nicht in der Bibliothek.</p>;
+  }
+  if (!info.files.length) {
+    return <p className="warn-text stencil-read">Ordner gelesen, keine .n5q-Datei darin: {info.folder}</p>;
+  }
+  const missing = entries.length - linked;
+  return (
+    <p className="hint stencil-read ok">
+      Gelesen: {info.files.join(", ")}. {info.sets.length} Schablonen-Sätze, {entries.length} Einträge.
+      {" "}{linked} davon sind in der Bibliothek und im Legenden-Editor unter «Benutzerschablone».
+      {missing > 0 ? ` ${missing} Einträge haben kein passendes Symbol in den geladenen Datensätzen.` : ""}
+      {info.errors?.length ? ` ${info.errors.join(" ")}` : ""}
+    </p>
   );
 }

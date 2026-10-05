@@ -88,7 +88,7 @@ export default function CompanyTextsCard({ notify }: { notify: (text: string, er
       <h3>Firmentexte</h3>
       <p className="desc">
         Ein Firmentext ersetzt in jeder neuen Legende den Namen aus der Schablone. Er gilt für die ganze Symbolfamilie, egal ob das Programm
-        den Apparat über den Katalogcode oder den Namen erkennt. Gespeichert im Firmenordner, in derselben Datei wie Kategorien und Zuordnungen.
+        den Apparat über den Katalogcode oder den Namen erkennt. Die Datei liegt im Firmenordner, den du oben einträgst, zusammen mit den Kategorien und Zuordnungen.
       </p>
       {file && <p className="hint" style={{ wordBreak: "break-all" }}>Datei: {file}</p>}
       <div className="row" style={{ gap: 8, margin: "8px 0" }}>

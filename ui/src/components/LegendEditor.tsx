@@ -898,7 +898,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                     {...dragProps({ type: "move", block: b.id, item: it.id })}
                     {...dropProps({ block: b.id, before: it.id })}
                   >
-                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={b.style.symbol} /> : null}
+                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={it.color || b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
                     <span className="outline-text">{it.text || "(ohne Text)"}</span>
                     {companyKey(it) && descriptions[companyKey(it)!] === it.text.trim() && (
@@ -1842,7 +1842,7 @@ function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: str
     <>
       <h4>
         Allgemeinteil (gesperrt)
-        <InfoTip text={"Steht zuoberst. Verknüpfte DXF- oder DWG-Datei, nur an die Blattbreite angepasst.\nSchrift, Kachel und Abstand gelten für die erzeugte Legende. Einträge darin lassen sich nicht ziehen. N4D wird nicht gelesen.\nPfad: Einstellungen, Legende der Firma, nur Admins."} />
+        <InfoTip text={"Steht zuoberst. Verknüpfte DXF- oder DWG-Datei, nur an die Blattbreite angepasst.\nSchrift, Kachel und Abstand gelten für die erzeugte Legende. Einträge darin lassen sich nicht ziehen. N4D wird nicht gelesen.\nPfad: Einstellungen, Legende Allgemein, nur Admins."} />
       </h4>
       <dl className="kv">
         <dt>Quelle</dt>

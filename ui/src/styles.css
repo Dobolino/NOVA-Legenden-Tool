@@ -190,7 +190,12 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .admin-badge { font-size: 12px; font-weight: 650; letter-spacing: 0.2px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .admin-badge.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .admin-box { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel-2); }
-.admin-box h4 { margin: 0 0 4px; font-size: 14px; }
+.card.admin-box { margin-top: 0; padding: var(--space-5); background: var(--panel); border-color: var(--line-strong); }
+.admin-box h4 { margin: 16px 0 4px; font-size: 14px; }
+.general-editor { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.general-editor h4 { margin: 0 0 6px; font-size: 14px; }
+.stencil-read { margin: 8px 0 0; word-break: break-all; }
+.stencil-read.ok { color: var(--ok); }
 .admin-list { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; padding: 0; }
 .admin-list li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; }
 .admin-list li.me { border-color: var(--ok); }

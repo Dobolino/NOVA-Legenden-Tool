@@ -250,6 +250,10 @@ def test_category_layer_matches_tail_not_a_different_light_layer():
     assert leitung["layer"] == "E_Leitung_Licht"
     missing = pick_category_layer("E_Licht", [layers[2]], {}, None)
     assert missing["color"] == "" and "E_Licht" in missing["reason"]
+    # no name match: the colour the symbols of this category use most often
+    frequent = pick_category_layer("E_Telefon", layers, {"E_233_Leuchten": 8, "E_232.5_Licht": 1}, None)
+    assert frequent["layer"] == "E_233_Leuchten" and frequent["color"] == "#00ff00"
+    assert "häufigste" in frequent["reason"]
     chosen = pick_category_layer("E_Licht", layers, {}, "E_233_Leuchten")
     assert chosen["manual"] and chosen["layer"] == "E_233_Leuchten" and chosen["color"] == "#00ff00"
 

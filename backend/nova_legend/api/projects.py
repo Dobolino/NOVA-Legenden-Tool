@@ -99,8 +99,10 @@ class MappingIn(BaseModel):
 
 def register(app: FastAPI, st) -> None:
     def manager() -> ProjectManager:
-        folder = st.settings.projects_folder or config.DEFAULT_PROJECTS_FOLDER
-        return ProjectManager(Path(folder))
+        # A shared folder is whatever the firm typed in. Empty: this computer only.
+        folder = (st.settings.projects_folder or "").strip()
+        root = Path(folder) if folder else config.local_home() / "Projekte"
+        return ProjectManager(root)
 
     def project(project_id: str):
         try:
@@ -164,7 +166,8 @@ def register(app: FastAPI, st) -> None:
     @app.get("/api/projects")
     def list_projects() -> dict:
         m = manager()
-        return {"folder": str(m.root), "folder_exists": m.root.is_dir(), "items": m.list()}
+        return {"folder": str(m.root), "folder_exists": m.root.is_dir(),
+                "shared": bool((st.settings.projects_folder or "").strip()), "items": m.list()}
 
     @app.post("/api/projects")
     def create_project(body: ProjectIn) -> dict:

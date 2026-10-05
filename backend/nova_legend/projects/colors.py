@@ -13,6 +13,14 @@ import re
 _BKP = re.compile(r"^E_\d+(?:\.\d+)?_(.+)$")
 
 
+def _legend_color(color: str | None) -> str:
+    """A plan colour that can colour a legend section. White and empty do not."""
+    text = (color or "").strip()
+    if len(text) == 7 and text.startswith("#") and text.lower() != "#ffffff":
+        return text
+    return ""
+
+
 def layer_tail(name: str) -> str:
     """Part of a layer name after E_ and an optional BKP number."""
     match = _BKP.match(name or "")
@@ -45,6 +53,14 @@ def pick_category_layer(category_layer: str, layers: list[dict], usage: dict[str
     want = layer_tail(category_layer)
     candidates = [layer for layer in layers if want and layer_tail(layer["name"]) == want]
     if not candidates:
+        # The category layer is not on the plan. Use the colour the symbols of
+        # this category actually use most often, instead of leaving the section grey.
+        used = [layer for layer in layers
+                if usage.get(layer["name"], 0) > 0 and _legend_color(layer.get("color"))]
+        if used:
+            best = max(used, key=lambda layer: (usage.get(layer["name"], 0), layer["name"]))
+            return {"color": best.get("color") or "", "layer": best["name"],
+                    "reason": f"häufigste Farbe im Plan ({best['name']})", "manual": False}
         if category_layer:
             reason = f"keine passende Ebene, {category_layer} ist im Plan nicht vorhanden"
         else:

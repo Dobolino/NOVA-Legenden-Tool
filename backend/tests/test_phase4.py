@@ -688,6 +688,57 @@ def test_linear_symbol_keeps_its_proportion():
     assert sym["w"] > sym["h"] * 2
 
 
+def test_proposal_shows_each_plan_colour_and_colours_a_grey_section():
+    sample = row("dose", ["schalter"], total=6)
+    sample["layers"] = {"E_Blau": 4, "E_Rot": 2}
+    doc = propose([sample], CATS, True, {}, "L", colors={},
+                  layer_colors={"E_Blau": "#0000ff", "E_Rot": "#ff0000"})
+    block = next(b for b in doc["blocks"] if b["category_id"] == "schalter")
+    items = [i for i in block["items"] if i["kind"] == "symbol"]
+    assert [i["color"] for i in items] == ["#0000ff", "#ff0000"]
+    assert block["style"]["header"] == "#0000ff" and block["style"]["symbol"] == "#0000ff"
+    kept = propose([sample], CATS, True, {}, "L", colors={"schalter": "#00aa00"},
+                   layer_colors={"E_Blau": "#0000ff", "E_Rot": "#ff0000"})
+    head = next(b for b in kept["blocks"] if b["category_id"] == "schalter")
+    assert head["style"]["header"] == "#00aa00"
+    assert sorted(i["color"] for i in head["items"]) == ["#0000ff", "#ff0000"]
+
+
+def test_a_grey_section_takes_a_known_plan_colour():
+    from nova_legend.legend.model import apply_plan_section_colors
+
+    doc = normalize({"version": 4, "blocks": [{"id": "b", "title": "Licht", "category_id": "licht",
+                                               "style": section_style(None), "items": []}]})
+    assert doc["blocks"][0]["style"]["header"] == "#6b7280"
+    out = apply_plan_section_colors(doc, {"licht": "#0000ff"})
+    assert out["blocks"][0]["style"]["header"] == "#0000ff"
+    assert out["blocks"][0]["style"]["symbol"] == "#0000ff"
+    chosen = normalize({"version": 4, "blocks": [{"id": "b", "title": "Licht", "category_id": "licht",
+                                                  "style": section_style("#123456"), "items": []}]})
+    assert apply_plan_section_colors(chosen, {"licht": "#0000ff"})["blocks"][0]["style"]["header"] == "#123456"
+
+
+def test_grey_parts_follow_the_section_colour():
+    from nova_legend.parser.geometry import Primitive, SymbolGeometry
+    from nova_legend.render.svg import render_svg
+
+    square = {"points": [(-0.002, -0.002), (0.002, -0.002), (0.002, 0.002), (-0.002, 0.002)],
+              "closed": True, "segments": []}
+    geo = SymbolGeometry(primitives=[
+        Primitive("line", "X", False, {"start": (0, 0), "end": (0.004, 0)}, color="#808080"),
+        Primitive("polygon", "X", True, square, color="#ff0000"),
+    ])
+    svg = render_svg(geo, None, show_points=False, own_colors=True)
+    assert 'stroke="currentColor"' in svg and 'fill="#ff0000"' in svg and "#808080" not in svg
+
+
+def test_shipped_defaults_name_no_company_path_and_no_person():
+    assert config.DEFAULT_PROJECTS_FOLDER == ""
+    low = config.DEFAULT_STENCIL_FOLDER.lower()
+    assert "edeco" not in low and "novafirma" not in low and "aduerger" not in low
+    assert config.Settings().projects_folder == ""
+
+
 def test_symbol_on_two_layers_is_proposed_in_both_categories():
     sample = row("leuchte", ["schalter"])
     sample["layers"] = {"E_Licht": 2, "E_Starkstrom": 1}
