@@ -231,7 +231,9 @@ def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
     doc["style"]["columns"] = 3
     doc["blocks"] = [{"id": "blk", "title": "Test", "items": entries}]
     assert client.put(f"/api/projects/{a}/legend", json={"doc": doc}).status_code == 200
-    page.get_by_role("tab", name="Legende", exact=True).click()       # reload the legend
+    # The open editor still shows the previous document. Leave and return so it
+    # loads the legend just written; the legend switcher is a dropdown, not a tab.
+    playwright.expect(page.get_by_label("Legende wählen")).to_be_visible()
     page.get_by_role("button", name="Gesamtliste", exact=False).click()
     page.get_by_role("button", name="Legende", exact=True).click()
     first = page.locator('[data-hit="item"][data-id="e0"]')
