@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import math
 
+from .model import DEFAULT_TITLE_MM
+
 LINE_FACTOR = 1.3            # line height relative to the text size
 _NARROW = set("il.,;:|!'`Iíìj()[]/\\ ")
 _WIDE = set("MWmw@%")
@@ -233,7 +235,8 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     text = str(title.get("text", "")).strip()
     if text and not only_block:
         own = float(title.get("size_mm") or 0)
-        tts = own if own > 0 else ts * float(title.get("scale") or 1.0)
+        # 0 means the legend never chose a title height
+        tts = own if own > 0 else DEFAULT_TITLE_MM
         framed = bool(title.get("border_on"))
         pad = 1.5 if framed else 0.0          # room between the title and its border
         top = y

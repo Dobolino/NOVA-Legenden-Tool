@@ -32,6 +32,7 @@ GRIDS = {
 }
 DEFAULT_TEXT_SIZE = 2.5
 DEFAULT_SYMBOL_SCALE = 1.0
+DEFAULT_TITLE_MM = 5.0      # legend title height, until a legend sets its own
 
 ITEM_KINDS = ("symbol", "line", "note", "text", "gap")   # gap: an empty cell kept free on purpose
 ROTATIONS = (0, 45, 90, 135, 180, 225, 270, 315)
@@ -122,7 +123,7 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
 
 def empty_doc(title: str = "", style: dict | None = None) -> dict:
     return {"version": DOC_VERSION, "style": style or default_style(),
-            "title": {"text": title, "scale": 1.0, "size_mm": 0.0, "font": "Arial",
+            "title": {"text": title, "scale": 1.0, "size_mm": DEFAULT_TITLE_MM, "font": "Arial",
                       "color": "#000000", "border_on": False, "border": "#000000"},
             "blocks": []}
 
@@ -188,7 +189,7 @@ def normalize(doc: dict | None) -> dict:
     old = int(_num(doc.get("version"), 1))
     out = {"version": DOC_VERSION, "style": style,
            "title": {"text": str(title.get("text", ""))[:200], "scale": _scale(title.get("scale")),
-                     "size_mm": _num(title.get("size_mm"), 0, 0, 20),
+                     "size_mm": _num(title.get("size_mm", DEFAULT_TITLE_MM), DEFAULT_TITLE_MM, 0, 20),
                      "font": str(title.get("font") or "Arial")[:40],
                      "color": _hex(title.get("color"), "#000000"),
                      "border_on": bool(title.get("border_on")), "border": _hex(title.get("border"), "#000000")},

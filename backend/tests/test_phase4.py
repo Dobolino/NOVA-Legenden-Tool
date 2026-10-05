@@ -402,6 +402,7 @@ def test_empty_doc_defaults():
     doc = empty_doc()
     assert doc["style"]["width"] == 200 and doc["style"]["grid"] == "standard"
     assert doc["style"]["row"] == 4.55 and doc["style"]["text_offset"] == 9.75 and doc["style"]["columns"] == 2
+    assert doc["title"]["size_mm"] == 5
 
 
 # -- symbol colours, general part contents, export details ---------------------------------
@@ -566,7 +567,13 @@ def test_title_size_and_border_and_a_frame_round_the_legend():
                      "style": {"frame_on": True}, "blocks": [block("A", 2)]})
     lay = layout(doc)
     title = next(p for p in lay["prims"] if p["t"] == "text" and p["text"] == "Legende 1424")
-    assert title["size"] == 4.0
+    assert title["size"] == 5.0
+    doc["title"]["size_mm"] = 0
+    untouched = next(p for p in layout(doc)["prims"] if p["t"] == "text" and p["text"] == "Legende 1424")
+    assert untouched["size"] == 5.0
+    doc["title"]["size_mm"] = 4
+    sized = next(p for p in layout(doc)["prims"] if p["t"] == "text" and p["text"] == "Legende 1424")
+    assert sized["size"] == 4
     frame = next(p for p in lay["prims"] if p.get("block") == "title" and p["t"] == "rect")
     assert frame["y"] <= title["y"] - title["size"] and title["y"] <= frame["y"] + frame["h"]
     hit = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")

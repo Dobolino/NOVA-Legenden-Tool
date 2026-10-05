@@ -822,10 +822,6 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         }} title="Die Ansicht an die verfügbare Breite anpassen. Ändert nur den Zoom.">An Breite anpassen</button>
         </div>
         <div className="legend-status">
-          <span className="legend-project" title={`${data.meta.project_number ? `${data.meta.project_number} · ` : ""}${data.meta.name}`}>
-            {data.meta.project_number && <span className="number">{data.meta.project_number}</span>}
-            <span className="name">{data.meta.name}</span>
-          </span>
           <button
             className={`btn small ${showGrid ? "is-on" : ""}`}
             aria-pressed={showGrid}
@@ -1790,7 +1786,7 @@ function BlockProps({
 function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; change: (d: LegendDoc) => void }) {
   const t = doc.title;
   const set = (patch: Partial<LegendDoc["title"]>) => change({ ...doc, title: { ...t, ...patch } });
-  const mm = t.size_mm > 0 ? t.size_mm : Math.round(doc.style.text_size * (t.scale ?? 1) * 100) / 100;
+  const mm = t.size_mm > 0 ? t.size_mm : 5;
   return (
     <>
       <h4>Titel <InfoTip text="Grösse, Farbe und Schriftart gelten nur für den Titel." /></h4>

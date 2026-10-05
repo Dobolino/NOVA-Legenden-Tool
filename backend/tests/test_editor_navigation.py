@@ -74,6 +74,8 @@ def editor(env):
             page.get_by_role("button", name="T Titel", exact=True).click()
             field = page.get_by_label("Text", exact=True)
             playwright.expect(field).to_have_value("Browser A")
+            playwright.expect(page.get_by_label("Textgrösse Titel", exact=True)).to_have_value("5")
+            assert page.locator(".legend-project").count() == 0
             yield page, field, client, ids
             assert not errors
             browser.close()
