@@ -56,8 +56,9 @@ export default function CompanyLegendCard({
       <div className="card">
         <h3>Legende Allgemein</h3>
         <p className="desc">
-          Die Zeichnung steht in jeder Legende zuoberst. Den Pfad trägt die Firma selbst ein, er ist nicht fest im Programm.
-          Nur Admins ändern Pfad und Zeilen.
+          Die Zeichnung steht unter dem Titel, in demselben Raster wie der Rest der Legende: dieselbe Schriftgrösse,
+          dieselbe Symbolgrösse, dieselben Abstände und dieselbe Spaltenzahl. Die stellst du im Legendeneditor ein.
+          Den Pfad trägt die Firma selbst ein. Nur Admins ändern Pfad und Zeilen.
         </p>
 
         <label className="field">

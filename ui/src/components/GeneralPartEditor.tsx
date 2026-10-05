@@ -84,8 +84,9 @@ export default function GeneralPartEditor({ notify, reloadKey = 0 }: { notify: (
       <h4>Zeilen der Legende Allgemein</h4>
       <p className="desc">
         Die Zeichnung oben bleibt die Quelle. Hier änderst du Texte, blendest Zeilen aus und verknüpfst Zeilen mit Symbolen:
-        Verknüpfte Symbole erscheinen in den Projektabschnitten nicht noch einmal. Neue Symbole und die Reihenfolge änderst du
-        in der DWG, dann «Neu laden». Im Legendeneditor ordnet sich die Legende Allgemein selbst in 2 oder 3 Spalten.
+        Verknüpfte Symbole erscheinen in den Projektabschnitten nicht noch einmal. Schriftgrösse, Symbolgrösse, Abstand und
+        Spalten übernimmt der Allgemeinteil vom Legendeneditor, damit er wie der Rest der Legende aussieht. Neue Symbole und
+        die Reihenfolge änderst du in der DWG, dann «Neu laden».
       </p>
       <div className="row" style={{ gap: 8, alignItems: "center" }}>
         <span className="hint" style={{ flex: 1, wordBreak: "break-all" }}>

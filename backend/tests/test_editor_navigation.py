@@ -93,6 +93,18 @@ def title(client, pid):
     return client.get(f"/api/projects/{pid}/legend").json()["legend"]["doc"]["title"]["text"]
 
 
+def test_the_grid_starts_on_and_stays_off_once_switched(editor):
+    page, _field, _client, _ids = editor
+    grid = page.get_by_role("button", name="Raster anzeigen")
+    playwright.expect(grid).to_have_attribute("aria-pressed", "true")
+    grid.click()
+    playwright.expect(grid).to_have_attribute("aria-pressed", "false")
+    page.reload()
+    page.get_by_text("Browser A", exact=True).click()
+    page.get_by_role("button", name="Legende", exact=True).click()
+    playwright.expect(page.get_by_role("button", name="Raster anzeigen")).to_have_attribute("aria-pressed", "false")
+
+
 @pytest.mark.parametrize("destination", ["global_tab", "project_tab", "back", "project"])
 def test_immediate_navigation_saves_to_the_original_project(editor, destination):
     page, field, client, (a, b) = editor

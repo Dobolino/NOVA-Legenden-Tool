@@ -208,66 +208,81 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
 
 def _general_rows(general: dict, prims: list, x0: float, top: float, inner: float, cols: int,
                   style: dict) -> float:
-    """Place the rows of the general part column by column; return the bottom edge.
-    The graphics keep their position relative to the text column of the drawing and
-    shrink only when the symbol area would take more than 45 % of a column."""
-    ts = style["text_size"]
+    """Place the general part on the same grid as the legend: one tile, the same
+    text size, the same gap. A heading is only text. Returns the bottom edge."""
+    ts = float(style["text_size"])
     lh = ts * LINE_FACTOR
     colw = inner / cols
-    area = max(float(general.get("symbol_area") or 0.0), 1.0)
-    k = min(1.0, colw * 0.45 / area)
-    text_dx = area * k + 1.5                 # text column right of the symbol area
+    tile = min(symbol_tile(style), colw * 0.46)
+    slot = entry_slot(style, tile)
+    gap = max(0.0, float(style.get("entry_gap") or 0.0))
+    cap = _line_cap(style)
+    axis = tile / 2 + 0.4
+    text_x = axis + tile / 2 + 1.5
+    side = tile * TILE_FILL
     rows = []
     for r in general["rows"]:
-        size = ts * (1.15 if r.get("heading") else 1.0)
-        lines = wrap(r["text"], size, colw - (0 if r.get("heading") else text_dx) - 0.8, bool(r.get("heading")))
-        text_h = max(1, len(lines)) * lh + TEXT_CLEARANCE
-        h = max(text_h, (r.get("gh") or 0.0) * k + 1.0)
-        if r.get("heading"):
-            h += 2.0                          # room above a heading
-        rows.append((r, lines, size, h))
-    total = sum(h for *_x, h in rows)
+        heading = bool(r.get("heading"))
+        width = colw - 1.6 if heading else colw - text_x - 0.8
+        lines = wrap(r["text"], ts, width, heading)
+        if cap and not heading:
+            lines = lines[:cap] or [""]
+            h = slot
+        else:
+            h = max(slot if not heading else ts * LINE_FACTOR + 1.2, len(lines) * lh + TEXT_CLEARANCE)
+        rows.append((r, lines, h))
+    total = sum(h for *_x, h in rows) + gap * max(0, len(rows) - cols)
     target = total / cols
     columns: list[list] = [[]]
     used = 0.0
     for i, item in enumerate(rows):
         nxt = rows[i + 1] if i + 1 < len(rows) else None
-        h = item[3]
-        # a new column when this one is full; a heading never stays alone at the bottom
+        h = item[2]
         full = used + h > target + 0.01 and columns[-1] and len(columns) < cols
-        heading_last = item[0].get("heading") and nxt and used + h + nxt[3] > target + 0.01 and len(columns) < cols
+        heading_last = item[0].get("heading") and nxt and used + h + nxt[2] > target + 0.01 and len(columns) < cols
         if (full or heading_last) and columns[-1]:
             columns.append([])
             used = 0.0
         columns[-1].append(item)
-        used += h
+        used += h + gap
     bottom = top
     for c, chunk in enumerate(columns):
         cx = x0 + c * colw
         cy = top
-        for r, lines, size, h in chunk:
+        for i, (r, lines, h) in enumerate(chunk):
             mid = cy + h / 2
+            shown = lines or [r["text"]]
             if r.get("heading"):
-                shown = lines or [r["text"]]
-                base = mid + 1.0 - (len(shown) - 1) * lh / 2 + size * 0.32
+                base = mid - (len(shown) - 1) * lh / 2 + ts * 0.32
                 for j, line in enumerate(shown):
-                    prims.append({"t": "text", "x": round(cx, 3), "y": round(base + j * lh, 3),
-                                  "size": round(size, 3), "text": line, "bold": True, "color": "#000000"})
+                    prims.append({"t": "text", "x": round(cx + 0.4, 3), "y": round(base + j * lh, 3),
+                                  "size": round(ts, 3), "text": line, "bold": True, "color": "#000000"})
             else:
-                if r.get("gw") is not None:
-                    gx = cx + area * k + r["gx"] * k
-                    prims.append({"t": "grow", "row": r["id"], "x": round(gx, 3), "y": round(mid - r["gh"] * k / 2, 3),
-                                  "w": round(r["gw"] * k, 3), "h": round(r["gh"] * k, 3), "k": round(k, 5)})
-                base = mid - (len(lines) - 1) * lh / 2 + size * 0.32
-                for j, line in enumerate(lines):
-                    prims.append({"t": "text", "x": round(cx + text_dx, 3), "y": round(base + j * lh, 3),
-                                  "size": round(size, 3), "text": line, "bold": False, "color": "#000000"})
+                gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
+                if r.get("gw") is not None and (gw > 0 or gh > 0):
+                    # a line has no height of its own; give it the stroke so it still sits in the tile
+                    gw, gh = gw or 0.35, gh or 0.35
+                    scale = side / max(gw, gh, 1e-6)
+                    w, hgt = gw * scale, gh * scale
+                    prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
+                                  "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
+                                  "k": round(scale, 5)})
+                base = mid - (len(shown) - 1) * lh / 2 + ts * 0.32
+                for j, line in enumerate(shown):
+                    prims.append({"t": "text", "x": round(cx + text_x, 3), "y": round(base + j * lh, 3),
+                                  "size": round(ts, 3), "text": line, "bold": False, "color": "#000000"})
             cy += h
+            if gap and i < len(chunk) - 1:
+                cy += gap
         bottom = max(bottom, cy)
-    prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": bottom - top, "fill": None, "stroke": None,
-                  "role": "general", "fit": round(k, 5), "rows": True})
+    height = bottom - top
+    prims.append({"t": "grid", "block": "general", "x": x0, "y": top, "slot": slot, "gap": gap,
+                  "tile": tile, "w": inner, "h": height, "row": slot + gap, "cols": cols, "colw": colw,
+                  "axis": axis, "text": text_x})
+    prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": height, "fill": None, "stroke": None,
+                  "role": "general", "fit": 1.0, "rows": True})
     prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
-                  "x": x0, "y": top, "w": inner, "h": bottom - top})
+                  "x": x0, "y": top, "w": inner, "h": height})
     return bottom
 
 
@@ -286,19 +301,6 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     cols = 3 if style["columns"] >= 3 else 2
     prims: list[dict] = []
     y = margin
-
-    if general and include_general and general.get("rows"):
-        # a general part made of rows flows into the columns of the legend (2 or 3)
-        y = _general_rows(general, prims, margin, y, inner, cols, style) + row
-    elif general and include_general and general.get("h"):
-        # the general part shrinks with a narrower sheet, keeping its proportions
-        fit = min(1.0, inner / general["w"]) if general.get("w") else 1.0
-        gw, gh = general["w"] * fit, general["h"] * fit
-        prims.append({"t": "rect", "x": margin, "y": y, "w": gw, "h": gh, "fill": None, "stroke": None,
-                      "role": "general", "fit": round(fit, 5)})
-        prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
-                      "x": margin, "y": y, "w": gw, "h": gh})
-        y += gh + row
 
     title = doc.get("title") or {}
     text = str(title.get("text", "")).strip()
@@ -322,6 +324,19 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
         prims.append({"t": "hit", "kind": "title", "block": None, "id": "title",
                       "x": margin, "y": top, "w": inner, "h": y - top})
         y += row * 0.5
+
+    if general and include_general and general.get("rows"):
+        # same text size, tile and gap as the sections below
+        y = _general_rows(general, prims, margin, y, inner, cols, style) + row * 0.5
+    elif general and include_general and general.get("h"):
+        # no readable text column: the drawing stays whole and only shrinks with the sheet
+        fit = min(1.0, inner / general["w"]) if general.get("w") else 1.0
+        gw, gh = general["w"] * fit, general["h"] * fit
+        prims.append({"t": "rect", "x": margin, "y": y, "w": gw, "h": gh, "fill": None, "stroke": None,
+                      "role": "general", "fit": round(fit, 5)})
+        prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
+                      "x": margin, "y": y, "w": gw, "h": gh})
+        y += gh + row * 0.5
 
     first = True
     for block in doc["blocks"]:

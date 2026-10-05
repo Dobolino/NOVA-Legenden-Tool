@@ -106,6 +106,11 @@ def test_height_grows_with_the_number_of_symbols_and_general_part_is_on_top():
     first_block = boxes(lay, "block")[0]
     assert gen["y"] == 5 and first_block["y"] >= gen["y"] + gen["h"]
     assert lay["height"] > small["height"] + 30
+    titled = normalize({"title": {"text": "Legende 0000 Test", "size_mm": 5}, "blocks": [block("A", 1)]})
+    lay = layout(titled, general={"w": 190, "h": 30})
+    title = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")
+    gen = next(p for p in lay["prims"] if p.get("role") == "general")
+    assert title["y"] < gen["y"] < boxes(lay, "block")[0]["y"]
 
 
 def test_sections_by_default_have_only_a_header_bar_on_white_paper():
@@ -324,8 +329,10 @@ def test_general_part_from_dxf_is_on_top_and_n4d_is_refused(env, monkeypatch, tm
     pid = _project(client, tmp)
     doc = client.post(f"/api/projects/{pid}/legend/propose").json()["doc"]
     lay = client.post(f"/api/projects/{pid}/legend/layout", json={"doc": doc}).json()
+    title = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")
     gen = next(p for p in lay["prims"] if p.get("role") == "general")
-    assert gen["y"] == 5 and min(p["y"] for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "block") > 30
+    assert title["y"] < gen["y"]
+    assert min(p["y"] for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "block") > gen["y"] + gen["h"] - 0.1
     assert client.get(f"/api/projects/{pid}/legend/general").json()["svg"].startswith("<svg")
     n4d = tmp_path / "Legende.n4d"
     n4d.write_bytes(b"x")
@@ -716,6 +723,42 @@ def test_a_grey_section_takes_a_known_plan_colour():
     chosen = normalize({"version": 4, "blocks": [{"id": "b", "title": "Licht", "category_id": "licht",
                                                   "style": section_style("#123456"), "items": []}]})
     assert apply_plan_section_colors(chosen, {"licht": "#0000ff"})["blocks"][0]["style"]["header"] == "#123456"
+
+
+def test_general_rows_share_the_legend_text_size_and_tile():
+    general = {"rows": [
+        {"id": "g0", "text": "Steigleitung, von unten", "gw": 8, "gh": 4},
+        {"id": "g1", "text": "Steigleitung, von oben", "gw": 8, "gh": 4},
+    ], "symbol_area": 12}
+    doc = normalize({"style": {"text_size": 3, "columns": 2}, "title": {"text": "Legende"},
+                     "blocks": [{"id": "A", "title": "Leitungen", "items": [
+                         {"id": "a0", "kind": "note", "text": "Leitung, nach unten"}]}]})
+    lay = layout(doc, {}, general)
+    sizes = {p["text"]: p["size"] for p in lay["prims"] if p["t"] == "text"}
+    assert sizes["Steigleitung, von unten"] == sizes["Leitung, nach unten"] == 3
+    title = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")
+    gen = next(p for p in lay["prims"] if p.get("role") == "general")
+    assert title["y"] < gen["y"]
+
+
+def test_a_black_or_grey_symbol_takes_the_section_colour_a_hue_stays():
+    from nova_legend.parser.geometry import Primitive, SymbolGeometry
+    from nova_legend.render.svg import render_svg
+
+    square = {"points": [(-0.002, -0.002), (0.002, -0.002), (0.002, 0.002), (-0.002, 0.002)],
+              "closed": True, "segments": []}
+    grey = SymbolGeometry(primitives=[
+        Primitive("line", "X", False, {"start": (0, 0), "end": (0.004, 0)}, color="#000000"),
+        Primitive("polygon", "X", True, square, color="#808080"),
+    ])
+    svg = render_svg(grey, None, show_points=False, own_colors=True)
+    assert "currentColor" in svg and "#000000" not in svg and "#808080" not in svg
+    mixed = SymbolGeometry(primitives=[
+        Primitive("line", "X", False, {"start": (0, 0), "end": (0.004, 0)}, color="#000000"),
+        Primitive("polygon", "X", True, square, color="#ff0000"),
+    ])
+    svg = render_svg(mixed, None, show_points=False, own_colors=True)
+    assert "#ff0000" in svg and "#000000" in svg
 
 
 def test_grey_parts_follow_the_section_colour():

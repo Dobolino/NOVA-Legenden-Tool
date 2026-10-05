@@ -1,9 +1,9 @@
 """Write a placed legend as DXF (R2013, AC1027) and, with the ODA converter, as DWG.
 
 Colours are true colours: header bar, background, border, lines and texts.
-Every symbol becomes a block whose entities keep the colours of the Nova
-drawing (black where the symbol has no own colour); the section colour does
-not recolour symbols. Layers: symbols and
+Every symbol becomes a block. A symbol without a hue of its own takes the
+section colour; a real colour stays, and black lines on a coloured area stay
+black. Layers: symbols and
 lines on the legend layer of their category, texts on X_Text, frames and bars
 on X_Geometrie (layer names of the existing edeco legend).
 """
@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 from ..parser.geometry import flex_points, sample_arc, sample_ellipse, sample_spline
-from ..render.svg import geometry_bounds, is_mixed, is_soft, own_paint
+from ..render.svg import _hue, geometry_bounds, is_mixed, is_soft, own_paint
 from .general import GeneralPart
 from .linetypes import (DXF_NAMES, LINE_WEIGHT, PATTERNS, ensure_linetypes, pattern_scale, simplify_linetypes,
                         tune_entities)
@@ -225,6 +225,7 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
     name = f"{base}_{len(cache) + 1}"
     blk = doc.blocks.new(name)
     mixed = is_mixed(geo)
+    monochrome = not any(_hue(p.color) for p in geo.primitives)
 
     def colored(entity, color: str):
         entity.rgb = _rgb(color)
@@ -234,8 +235,8 @@ def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
         d = p.data
         pts: list = []
         closed = False
-        line = own_paint(p.color, mixed, False, layer_color)
-        fill = own_paint(p.color, mixed, True, layer_color)
+        line = own_paint(p.color, mixed, False, layer_color, monochrome)
+        fill = own_paint(p.color, mixed, True, layer_color, monochrome)
         if p.kind == "hatch":
             fill = tint(fill, 0.65)       # the preview shows hatches at 35 % opacity
         # a hidden fill: hatches vanish, filled outlines keep their line

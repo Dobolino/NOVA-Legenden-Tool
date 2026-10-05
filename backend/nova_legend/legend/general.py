@@ -296,7 +296,9 @@ def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
         return [], 0.0, 0.0
     text_x = Counter(round(t[0].dxf.insert.x, 1) for t in big).most_common(1)[0][0]
     rows: list[dict] = []
-    in_column = [t for t in big if abs(t[0].dxf.insert.x - text_x) < 0.6]
+    # a few millimetres of jitter still count as the same text column
+    tol = max(3.0 / max(to_mm, 1e-6), 1.5)
+    in_column = [t for t in big if abs(t[0].dxf.insert.x - text_x) < tol]
     for e, raw, height in in_column:
         rows.append({"text": raw, "heading": False, "y": e.dxf.insert.y + height * 0.36,
                      "text_h": round(height * to_mm, 3), "ents": [], "names": []})

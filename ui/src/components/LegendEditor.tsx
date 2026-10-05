@@ -77,9 +77,10 @@ const DROP_ID = "__drop__";
 
 function readGridPref(): boolean {
   try {
-    return window.localStorage.getItem(GRID_KEY) === "1";
+    // on, until this computer switches it off
+    return window.localStorage.getItem(GRID_KEY) !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -686,6 +687,9 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const generalBox = general?.kind ? (
     <p className="info-line">
       Allgemeinteil: {general.kind === "dxf" ? "DXF/DWG" : "Vorlagen-Projekt"} vom Server, gesperrt.
+      {general.rows?.length
+        ? " Schrift, Symbolgrösse, Abstand und Spalten sind dieselben wie in dieser Legende. Der Titel steht darüber."
+        : " Die Vorlage hat keine Textspalte und bleibt eine Zeichnung. Der Titel steht darüber."}
     </p>
   ) : general?.error ? (
     <p className="info-line company">Allgemeinteil: {general.error}</p>
@@ -2015,7 +2019,7 @@ function DocProps({
           />
           Allgemeinteil einschliessen
         </label>
-        <InfoTip text="Verknüpfte DXF- oder DWG-Datei. Schrift, Kachel und Abstand ändern die erzeugte Legende. Die Zeichnung bleibt gesperrt. N4D wird nicht gelesen." />
+        <InfoTip text="Verknüpfte DXF- oder DWG-Datei unter dem Titel. Hat sie eine Textspalte, nutzt sie Schriftgrösse, Symbolgrösse, Abstand und Spalten dieser Legende. Die Zeichnung bleibt gesperrt. N4D wird nicht gelesen." />
       </div>
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn small" disabled={exporting} onClick={() => onExport("dxf", exportBlock, exportGeneral && hasGeneral)}>
