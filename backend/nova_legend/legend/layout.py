@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import math
 
+from .linetypes import dash_array
 from .model import DEFAULT_TITLE_MM
 
 LINE_FACTOR = 1.3            # line height relative to the text size
@@ -467,7 +468,8 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
                     "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
                     "hatch_off": fills_off[0], "fill_off": fills_off[1], "color": st.get("symbol") or "#000000"})
     elif kind == "line":
-        out.append({"t": "line", "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
+        out.append({"t": "line", "dash": dash_array(item["line_style"], box["left"] + box["right"]),
+                    "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
                     "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
                     "layer": block.get("layer") or "", "item": item["id"]})
     elif kind == "note":

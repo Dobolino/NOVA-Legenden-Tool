@@ -21,9 +21,10 @@ from pathlib import Path
 from ..parser.geometry import flex_points, sample_arc, sample_ellipse, sample_spline
 from ..render.svg import geometry_bounds, is_mixed, is_soft, own_paint
 from .general import GeneralPart
+from .linetypes import (DXF_NAMES, LINE_WEIGHT, PATTERNS, ensure_linetypes, pattern_scale, simplify_linetypes,
+                        tune_entities)
 from .model import tint
 
-LINETYPES = {"solid": "CONTINUOUS", "dashed": "DASHED", "dotted": "DOT", "dashdot": "DASHDOT"}
 FONT_FILES = {"Arial": "arial.ttf", "Arial Bold": "arialbd.ttf", "Calibri": "calibri.ttf", "Verdana": "verdana.ttf"}
 TEXT_LAYER = "X_Text"
 CAP_HEIGHT = 0.716           # Arial: capital letter height / font size
@@ -63,6 +64,7 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
     if "Arial Bold" not in doc.styles:
         doc.styles.add("Arial Bold", font="arialbd.ttf")
     msp = doc.modelspace()
+    ensure_linetypes(doc)
     height = lay["height"]
     blocks: dict[str, str] = {}
 
@@ -97,9 +99,12 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                 txt.set_placement((p["x"] + dx, Y(p["y"] + dy)))
                 txt.rgb = _rgb(p["color"])
             elif t == "line":
+                # own line types with patterns in mm, scaled so the type reads on the short sample
+                style = p["style"] if p.get("style") in PATTERNS else "solid"
+                length = abs(p["x2"] - p["x1"])
                 ln = msp.add_line((p["x1"] + dx, Y(p["y1"] + dy)), (p["x2"] + dx, Y(p["y2"] + dy)), dxfattribs={
-                    "layer": _layer(doc, p.get("layer") or FRAME_LAYER), "linetype": LINETYPES.get(p["style"], "CONTINUOUS"),
-                    "ltscale": 0.25, "lineweight": 35})
+                    "layer": _layer(doc, p.get("layer") or FRAME_LAYER), "linetype": DXF_NAMES[style],
+                    "ltscale": round(pattern_scale(PATTERNS[style], length), 5), "lineweight": int(LINE_WEIGHT * 100)})
                 ln.rgb = _rgb(p["color"])
             elif t == "half":
                 cx, cy, r = p["cx"] + dx, Y(p["cy"] + dy), p["r"]
@@ -194,6 +199,12 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
         imp.import_entities(ents, target_layout=blk)
         names[r["id"]] = name
     imp.finalize()
+    # line types of the rows: plain dash patterns, readable at the size the layout gives them
+    simplify_linetypes(doc)
+    k = next((p["k"] for p in grows), 1.0)
+    seen: set = set()
+    for name in names.values():
+        tune_entities(doc, list(doc.blocks.get(name)), general.to_mm * k, seen)
     for p in grows:
         r = rows.get(p["row"])
         if not r or r["id"] not in names:

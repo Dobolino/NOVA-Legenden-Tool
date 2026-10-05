@@ -245,6 +245,12 @@ def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
         item = {"id": f"g{i}", "text": r["text"], "heading": r["heading"], "text_h": r["text_h"],
                 "names": sorted(set(r["names"]))}
         if r["ents"]:
+            # patterned lines (dashed, dash-dot ...) keep a readable rhythm at 1:1 on paper
+            from .linetypes import simplify_linetypes, tune_entities
+            if not getattr(doc, "_nl_simple_lt", False):
+                simplify_linetypes(doc)
+                doc._nl_simple_lt = True
+            tune_entities(doc, [e for e, _b in r["ents"]], to_mm)
             x0 = min(b.extmin.x for _e, b in r["ents"])
             y0 = min(b.extmin.y for _e, b in r["ents"])
             x1 = max(b.extmax.x for _e, b in r["ents"])

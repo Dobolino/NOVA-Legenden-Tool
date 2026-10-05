@@ -1016,3 +1016,38 @@ def test_general_part_symbols_hide_their_families_in_the_sections(tmp_path):
     rows = [{"family_key": "steigleitung, nach oben", "title": "Steigleitung, nach oben"},
             {"family_key": "schalter", "title": "Schalter"}]
     assert covered_families(part, rows, {}) == {"steigleitung, nach oben"}
+
+
+def test_line_types_stay_readable_on_short_samples():
+    from nova_legend.legend.linetypes import MIN_DASH, MIN_GAP, PATTERNS, dash_array, pattern_scale
+
+    for style in ("dashed", "dotted", "dashdot"):
+        for length in (4.0, 6.75, 12.0):
+            k = pattern_scale(PATTERNS[style], length)
+            dashes = [v * k for v in PATTERNS[style] if v > 0]
+            gaps = [-v * k for v in PATTERNS[style] if v < 0]
+            assert all(d >= MIN_DASH - 1e-9 for d in dashes) and all(g >= MIN_GAP - 1e-9 for g in gaps)
+            period = sum(abs(v) for v in PATTERNS[style]) * k
+            assert length / period >= 1.0                       # the rhythm is visible
+    assert dash_array("solid", 8) == [] and len(dash_array("dashdot", 8)) == 4
+    # a CAD template pattern (19 mm) on a 7.8 mm sample: dashes of at least 0.8 mm, 2.5 repeats
+    k = pattern_scale([12.7, -6.35], 7.85)
+    assert 12.7 * k >= MIN_DASH and 7.85 / (19.05 * k) == pytest.approx(2.5)
+
+
+def test_dwg_line_types_with_empty_shape_flags_become_plain_patterns(tmp_path):
+    import ezdxf as _ezdxf
+    from nova_legend.legend.linetypes import simplify_linetypes, tune_entities
+
+    d = _ezdxf.new("R2013")
+    d.linetypes.add("STRICHLINIE", pattern=[19.05, 12.7, -6.35])
+    lt = d.linetypes.get("STRICHLINIE")
+    # as a DWG converter writes it: shape flag 4 without a shape
+    tags = [(72, 65), (73, 2), (40, 19.05), (49, 12.7), (74, 4), (75, 0), (49, -6.35), (74, 4), (75, 0)]
+    from ezdxf.lldxf.tags import Tags
+    from ezdxf.lldxf.types import DXFTag
+    lt.pattern_tags.tags = Tags(DXFTag(c, v) for c, v in tags)
+    sp = d.modelspace().add_spline([(0, 0), (3, 2), (8, 2)], dxfattribs={"linetype": "STRICHLINIE", "ltscale": 0.035})
+    assert simplify_linetypes(d) == 1
+    assert [v for c, v in d.linetypes.get("STRICHLINIE").pattern_tags.tags if c == 74] in ([], [0, 0])
+    assert tune_entities(d, [sp], 1.0) == 1 and sp.dxf.ltscale > 0.035 * 2

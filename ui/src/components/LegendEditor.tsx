@@ -1191,7 +1191,9 @@ function Prim({
         </text>
       );
     case "line":
-      return <line x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.color} strokeWidth={0.35} strokeDasharray={DASH[p.style as LineStyle] || undefined} strokeLinecap="round" pointerEvents="none" />;
+      // the pattern comes from the layout (same rule as the DXF): it stays readable at any size
+      return <line x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.color} strokeWidth={0.35}
+        strokeDasharray={(p.dash?.length ? p.dash.join(" ") : DASH[p.style as LineStyle]) || undefined} strokeLinecap="round" pointerEvents="none" />;
     case "half":
       return (
         <g pointerEvents="none">
