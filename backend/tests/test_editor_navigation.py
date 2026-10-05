@@ -93,6 +93,21 @@ def title(client, pid):
     return client.get(f"/api/projects/{pid}/legend").json()["legend"]["doc"]["title"]["text"]
 
 
+def test_the_wide_view_button_sits_on_the_settings_row(editor):
+    page, _field, _client, _ids = editor
+    floating = page.get_by_role("button", name="Einstellungen schwebend")
+    playwright.expect(floating).to_be_visible()
+    page.get_by_role("button", name=re.compile(r"Grossansicht$")).click()
+    close = page.locator("button.btn", has_text="Grossansicht beenden")
+    playwright.expect(close).to_be_visible()
+    same_row = page.evaluate("""() => {
+        const a = document.querySelector('[aria-label="Ansicht"]')?.getBoundingClientRect();
+        const b = [...document.querySelectorAll("button")].find((el) => el.textContent.includes("Grossansicht beenden"))?.getBoundingClientRect();
+        return Boolean(a && b && Math.abs(a.top - b.top) < 8);
+    }""")
+    assert same_row
+
+
 def test_the_grid_starts_on_and_stays_off_once_switched(editor):
     page, _field, _client, _ids = editor
     grid = page.get_by_role("button", name="Raster anzeigen")
@@ -307,6 +322,7 @@ def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypat
             assert page.get_by_text("Legende der Firma", exact=True).count() == 0
             assert page.get_by_text("NovaFirma12").count() == 0
             playwright.expect(page.locator(".card", has=page.get_by_role("heading", name="Benutzerschablonen")).locator(".stencil-read")).to_be_visible()
+            playwright.expect(page.get_by_label("Update-Kanal")).to_be_visible()
             playwright.expect(page.get_by_text("Offen für alle", exact=True)).to_be_visible()
             playwright.expect(page.get_by_text("jeder darf ändern", exact=False)).to_be_visible()
             page.locator(".card", has=page.get_by_role("heading", name="Legende Allgemein", exact=True)).screenshot(
@@ -315,6 +331,7 @@ def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypat
             assert client.put("/api/company/legend", json={"admins": [me, "marco"]}).status_code == 200
             page.reload()
             page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_label("Update-Kanal")).to_be_visible()
             playwright.expect(page.get_by_text("Du bist Admin", exact=True)).to_be_visible()
             playwright.expect(page.get_by_text("Nur Admins können weitere Namen", exact=False)).to_be_visible()
             playwright.expect(page.locator(".admin-list")).to_contain_text(me)
@@ -324,6 +341,7 @@ def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypat
             monkeypatch.setattr(config, "current_user", lambda: "gast")
             page.reload()
             page.get_by_role("button", name="Einstellungen", exact=True).click()
+            playwright.expect(page.get_by_label("Update-Kanal")).to_have_count(0)
             playwright.expect(page.get_by_text("Nicht Admin", exact=True)).to_be_visible()
             playwright.expect(page.get_by_text("Die Liste ist gesperrt", exact=False)).to_be_visible()
             playwright.expect(page.get_by_label("Admin-Liste")).to_be_disabled()

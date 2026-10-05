@@ -37,6 +37,8 @@ class GeneralRowIn(BaseModel):
     text: str | None = None
     hidden: bool | None = None
     links: list[str] | None = None
+    text_scale: float | None = None
+    symbol_factor: float | None = None
 
 
 class LegendIn(BaseModel):
@@ -156,7 +158,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         return {"general_path": s["legend_general_path"], "admins": admins,
                 "text_size": s["legend_text_size"], "symbol_scale": s["legend_symbol_scale"],
                 "hatch_off": bool(s["legend_hatch_off"]), "fill_off": bool(s["legend_fill_off"]),
-                "user": user, "is_admin": (not admins) or user.lower() in {a.lower() for a in admins},
+                "user": user, "is_admin": st.company.is_legend_admin(user),
                 "bootstrap": not admins}
 
     def require_admin() -> None:
@@ -326,8 +328,14 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             o["hidden"] = body.hidden
         if body.links is not None:
             o["links"] = sorted({x for x in body.links if x})
+        if body.text_scale is not None:
+            o["text_scale"] = max(0.5, min(3.0, float(body.text_scale)))
+        if body.symbol_factor is not None:
+            o["symbol_factor"] = max(0.3, min(4.0, float(body.symbol_factor)))
         o.update(by=config.current_user(), at=datetime.now().isoformat(timespec="seconds"))
-        if not o.get("text") and not o.get("hidden") and not o.get("links"):
+        plain = (not o.get("text") and not o.get("hidden") and not o.get("links")
+                 and float(o.get("text_scale") or 1) == 1 and float(o.get("symbol_factor") or 1) == 1)
+        if plain:
             overrides.pop(body.key, None)          # back to the drawing as it is
         else:
             overrides[body.key] = o

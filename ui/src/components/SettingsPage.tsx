@@ -152,25 +152,27 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
             </p>
           )}
           <div className="update-row">
-            <label className="field">
-              <span>
-                Welche Versionen
-                <InfoTip text="Freigegebene Versionen kommen aus dem Hauptstand. Testversionen entstehen in der Entwicklung und können unfertig sein. Gilt nur für diesen Computer." />
-              </span>
-              <select
-                className="select"
-                value={status.settings.update_channel ?? "stable"}
-                disabled={busy || updating}
-                onChange={async (e) => {
-                  await save({ update_channel: e.target.value as "stable" | "test" }, "Update-Kanal gespeichert");
-                  checkUpdate();
-                }}
-                aria-label="Update-Kanal"
-              >
-                <option value="stable">Freigegebene Versionen</option>
-                <option value="test">Auch Testversionen</option>
-              </select>
-            </label>
+            {status.is_admin && (
+              <label className="field">
+                <span>
+                  Welche Versionen
+                  <InfoTip text="Freigegebene Versionen kommen aus dem Hauptstand. Testversionen entstehen in der Entwicklung und können unfertig sein. Nur Admins sehen diese Auswahl. Sie gilt für diesen Computer." />
+                </span>
+                <select
+                  className="select"
+                  value={status.settings.update_channel ?? "stable"}
+                  disabled={busy || updating}
+                  onChange={async (e) => {
+                    await save({ update_channel: e.target.value as "stable" | "test" }, "Update-Kanal gespeichert");
+                    checkUpdate();
+                  }}
+                  aria-label="Update-Kanal"
+                >
+                  <option value="stable">Freigegebene Versionen</option>
+                  <option value="test">Auch Testversionen</option>
+                </select>
+              </label>
+            )}
             <div className="update-actions">
               {update && !update.available && update.message && <span className="hint">{update.message}</span>}
               {update?.available && !update.can_install && <span className="warn-text">{update.message}</span>}

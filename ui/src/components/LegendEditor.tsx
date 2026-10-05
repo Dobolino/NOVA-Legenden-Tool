@@ -19,6 +19,7 @@ import {
   insertItem,
   isCurrentSave,
   LegendBlock,
+  GeneralSection,
   LegendDoc,
   LegendItem,
   LineStyle,
@@ -104,7 +105,8 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const [general, setGeneral] = useState<(GeneralInfo & { svg: string; prims: LegendPrim[] }) | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [savedInfo, setSavedInfo] = useState("");
-  const [sel, setSel] = useState<Selection | { type: "general" }>(null);
+  const [sel, setSel] = useState<Selection>(null);
+  const [generalRev, setGeneralRev] = useState(0);
   const [zoom, setZoom] = useState(4);
   const [symbols, setSymbols] = useState<Record<string, SymbolRender>>({});
   const [busy, setBusy] = useState(false);
@@ -268,7 +270,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       window.clearTimeout(handle);
       ctrl.abort();
     };
-  }, [doc, projectId]);
+  }, [doc, projectId, generalRev]);
 
   // symbol drawings for the placed symbols (and those of a general part from a template project),
   // plus the small icons of the lists on the left (same drawing, without length)
@@ -733,13 +735,19 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     )}
     <div className={`legend-editor ${windowed ? "windowed" : ""}`}>
       <div className="legend-head">
-        <div className="legend-head-info">{generalBox}</div>
         <div className="tool-group" role="group" aria-label="Ansicht">
         <button className={`btn small ${detached ? "is-on" : ""}`} aria-pressed={detached} onClick={() => setDetached((v) => !v)}
           title={detached ? "Die Einstellungen wieder rechts neben der Legende zeigen" : "Die Einstellungen als schwebendes Feld über der Legende zeigen. Mehr Platz für das Blatt."}>
           {detached ? "⇥ Einstellungen andocken" : "⧉ Einstellungen schwebend"}
         </button>
-        {!windowed && (
+        </div>
+        <div className="legend-head-info">{generalBox}</div>
+        <div className="legend-head-actions">
+        {windowed ? (
+          <button className="btn small primary" onClick={() => setWindowed(false)} title="Grossansicht schliessen. Esc geht auch.">
+            ✕ Grossansicht beenden
+          </button>
+        ) : (
           <button className="btn small" onClick={() => setWindowed(true)}
             title="Den Editor über das ganze Programmfenster öffnen. Esc oder «Grossansicht beenden» schliesst sie.">
             ⤢ Grossansicht
@@ -850,7 +858,6 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       {windowed && (
         <div className="legend-window-bar">
           <span><span className="le-badge small" aria-hidden>✎</span> <strong>Legendeneditor</strong> · {info?.legend?.name || "Legende"} · Grossansicht, Esc kehrt zurück.</span>
-          <button className="btn small primary" onClick={() => setWindowed(false)}>✕ Grossansicht beenden</button>
         </div>
       )}
 
@@ -869,9 +876,24 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             Abschnitte
           </div>
           {general?.kind && (
-            <button className={`outline-item ${sel?.type === "general" ? "active" : ""}`} style={{ paddingLeft: 6 }} onClick={() => setSel({ type: "general" })}>
-              🔒 Allgemeinteil (gesperrt)
-            </button>
+            <div className="outline-block">
+              <div className={`outline-row ${sel?.type === "general" ? "active" : ""}`}>
+                <span className="swatch" style={{ background: doc.general_section?.header || "#1c7ed6", width: 12, height: 12 }} />
+                <button className="outline-title" onClick={() => setSel({ type: "general" })} title="Kategorie des Allgemeinteils">
+                  {doc.general_section?.title || "Allgemein"} <span className="hint">{general.rows?.length ?? ""}</span>
+                </button>
+              </div>
+              {general.rows?.map((row) => (
+                <button
+                  key={row.id}
+                  className={`outline-item ${sel?.type === "general-row" && sel.id === row.id ? "active" : ""}`}
+                  onClick={() => setSel({ type: "general-row", id: row.id })}
+                  title={row.heading ? "Zwischenüberschrift" : row.text}
+                >
+                  {row.heading ? "T " : ""}{row.text}
+                </button>
+              ))}
+            </div>
           )}
           {doc.title.text.trim() && (
             <button className={`outline-item ${sel?.type === "title" ? "active" : ""}`} style={{ paddingLeft: 6 }} onClick={() => setSel({ type: "title" })} title={doc.title.text}>
@@ -1096,7 +1118,21 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         </button>
         </div>
           {sel?.type === "general" ? (
-            <GeneralProps general={general} company={info.company} />
+            <GeneralProps doc={doc} general={general} company={info.company} change={change} />
+          ) : sel?.type === "general-row" ? (
+            <GeneralRowProps
+              row={general?.rows?.find((r) => r.id === sel.id) ?? null}
+              admin={info.company.is_admin}
+              onSave={async (patch) => {
+                const row = general?.rows?.find((r) => r.id === sel.id);
+                if (!row?.key) return;
+                await api.saveGeneralRow({ key: row.key, ...patch });
+                const g = await api.legendGeneral(projectId);
+                setGeneral(g);
+                setGeneralRev((n) => n + 1);
+              }}
+              notify={notify}
+            />
           ) : sel?.type === "title" ? (
             <TitleProps doc={doc} field={field} change={change} />
           ) : selItem && selBlock ? (
@@ -1164,10 +1200,10 @@ function Prim({
   p: LegendPrim;
   symbols: Record<string, SymbolRender>;
   general: (GeneralInfo & { svg: string; prims: LegendPrim[] }) | null;
-  sel: Selection | { type: "general" };
+  sel: Selection;
   stale: Set<string>;
   dups?: Set<string>;
-  onSelect: (s: Selection | { type: "general" }) => void;
+  onSelect: (s: Selection) => void;
   onDragStart?: (e: ReactPointerEvent, block: string, item: string) => void;
   inert?: boolean;
 }) {
@@ -1245,6 +1281,7 @@ function Prim({
         (p.kind === "item" && sel?.type === "item" && sel.item === p.id) ||
         (p.kind === "block" && sel?.type === "block" && sel.block === p.id) ||
         (p.kind === "general" && sel?.type === "general") ||
+        (p.kind === "general-row" && sel?.type === "general-row" && sel.id === p.id) ||
         (p.kind === "title" && sel?.type === "title");
       const isStale = p.kind === "item" && stale.has(p.id);
       const isDup = p.kind === "item" && Boolean(dups?.has(p.id));
@@ -1286,16 +1323,20 @@ function Prim({
                 ? { type: "item", block: p.block, item: p.id }
                 : p.kind === "block"
                   ? { type: "block", block: p.block }
-                  : p.kind === "title"
-                    ? { type: "title" }
-                    : { type: "general" },
+                  : p.kind === "general-row"
+                    ? { type: "general-row", id: p.id }
+                    : p.kind === "title"
+                      ? { type: "title" }
+                      : { type: "general" },
             );
           }}
         >
           <title>
             {p.kind === "general"
-              ? "Allgemeinteil (gesperrt)"
-              : isDup
+              ? "Kategorie des Allgemeinteils"
+              : p.kind === "general-row"
+                ? "Anklicken zum Bearbeiten"
+                : isDup
                 ? "doppelt: Dieses Symbol steht schon weiter oben in der Legende"
                 : isStale
                   ? "Kommt in den aktuellen Importen nicht vor"
@@ -1458,6 +1499,7 @@ function NumberInput({
   label,
   min,
   max,
+  disabled,
   onCommit,
 }: {
   value: number | null;
@@ -1466,6 +1508,7 @@ function NumberInput({
   label?: string;
   min?: number;
   max?: number;
+  disabled?: boolean;
   onCommit: (v: number) => void;
 }) {
   const [text, setText] = useState(value == null ? "" : String(value));
@@ -1488,9 +1531,10 @@ function NumberInput({
       value={text}
       step={step}
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(e) => setText(e.target.value)}
-      onBlur={done}
-      onKeyDown={(e) => e.key === "Enter" && done()}
+      onBlur={() => { if (!disabled) done(); }}
+      onKeyDown={(e) => e.key === "Enter" && !disabled && done()}
     />
   );
 }
@@ -1841,18 +1885,50 @@ function TitleProps({ doc, field, change }: { doc: LegendDoc; field: FieldFn; ch
   );
 }
 
-function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: string }) | null; company: LegendInfo["company"] }) {
+function generalSectionOf(doc: LegendDoc): GeneralSection {
+  return doc.general_section ?? { title: "Allgemein", header: "#1c7ed6", header_text: "#ffffff", title_scale: 1 };
+}
+
+function GeneralProps({
+  doc,
+  general,
+  company,
+  change,
+}: {
+  doc: LegendDoc;
+  general: (GeneralInfo & { svg: string }) | null;
+  company: LegendInfo["company"];
+  change: (d: LegendDoc) => void;
+}) {
+  const section = generalSectionOf(doc);
+  const set = (patch: Partial<GeneralSection>) => change({ ...doc, general_section: { ...section, ...patch } });
   return (
     <>
       <h4>
-        Allgemeinteil (gesperrt)
-        <InfoTip text={"Steht zuoberst. Verknüpfte DXF- oder DWG-Datei, nur an die Blattbreite angepasst.\nSchrift, Kachel und Abstand gelten für die erzeugte Legende. Einträge darin lassen sich nicht ziehen. N4D wird nicht gelesen.\nPfad: Einstellungen, Legende Allgemein, nur Admins."} />
+        Allgemein
+        <InfoTip text={"Kategorie über dem Allgemeinteil, wie die anderen Abschnitte.\nEine Zeile anklicken, um Text und Grösse zu ändern. Eine Zwischenüberschrift wie «Farbcodes» sitzt unten auf der Rasterlinie.\nDie Zeichnung selbst bleibt die Firmenvorlage. N4D wird nicht gelesen."} />
       </h4>
+      <label className="field">
+        <span>Kategorientitel</span>
+        <input className="input" aria-label="Kategorientitel Allgemeinteil" value={section.title} onChange={(e) => set({ title: e.target.value })} />
+      </label>
+      <div className="color-grid">
+        <label className="color-field">
+          <input type="color" value={section.header} onChange={(e) => set({ header: e.target.value })} aria-label="Farbe Kopfleiste Allgemeinteil" />
+          <span>Kopfleiste</span>
+        </label>
+        <label className="color-field">
+          <input type="color" value={section.header_text} onChange={(e) => set({ header_text: e.target.value })} aria-label="Schriftfarbe Kopfleiste Allgemeinteil" />
+          <span>Schrift</span>
+        </label>
+      </div>
+      <label className="field">
+        <span>Textgrösse Überschrift (Faktor)</span>
+        <NumberInput value={section.title_scale} step={0.1} onCommit={(v) => set({ title_scale: Math.max(0.5, Math.min(3, v)) })} />
+      </label>
       <dl className="kv">
         <dt>Quelle</dt>
         <dd style={{ wordBreak: "break-all" }}>{general?.source || "–"}</dd>
-        <dt>Grösse</dt>
-        <dd>{general ? `${general.w} × ${general.h} mm` : "–"}</dd>
         <dt>Admins</dt>
         <dd>
           {company.is_admin && company.admins.length > 0 && <span className="admin-badge on">Du bist Admin</span>}
@@ -1861,6 +1937,64 @@ function GeneralProps({ general, company }: { general: (GeneralInfo & { svg: str
           )) : "noch keine"}
         </dd>
       </dl>
+    </>
+  );
+}
+
+function GeneralRowProps({
+  row,
+  admin,
+  onSave,
+  notify,
+}: {
+  row: { id: string; key?: string; text: string; heading: boolean; text_scale?: number; symbol_factor?: number } | null;
+  admin: boolean;
+  onSave: (patch: { text?: string; text_scale?: number; symbol_factor?: number }) => Promise<void>;
+  notify: (text: string, error?: boolean) => void;
+}) {
+  const [text, setText] = useState(row?.text ?? "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setText(row?.text ?? ""); }, [row?.id, row?.text]);
+  if (!row) return <p className="hint">Zeile nicht gefunden.</p>;
+  async function save(patch: { text?: string; text_scale?: number; symbol_factor?: number }) {
+    setBusy(true);
+    try {
+      await onSave(patch);
+      notify("Zeile gespeichert. Gilt in allen Legenden.");
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <h4>{row.heading ? "Zwischenüberschrift" : "Zeile im Allgemeinteil"}</h4>
+      <p className="hint">
+        {row.heading
+          ? "Sitzt unten auf der Rasterlinie der Zelle, ohne Symbol. Zum Beispiel «Farbcodes»."
+          : "Text und Grösse wie bei den anderen Einträgen. Die Grafik kommt aus der Firmenvorlage."}
+        {admin ? " Die Änderung gilt in allen Projekten." : " Nur Admins können das ändern."}
+      </p>
+      <label className="field">
+        <span>Text</span>
+        <input className="input" aria-label="Text der Allgemeinteil-Zeile" value={text} disabled={!admin || busy} onChange={(e) => setText(e.target.value)}
+          onBlur={() => { if (admin && text.trim() && text !== row.text) save({ text }); }} />
+      </label>
+      <div className="form two">
+        <label className="field">
+          <span>Textgrösse (Faktor)</span>
+          <NumberInput label="Textgrösse Faktor Allgemeinteil" value={row.text_scale ?? 1} step={0.1} disabled={!admin}
+            onCommit={(v) => save({ text_scale: Math.max(0.5, Math.min(3, v)) })} />
+        </label>
+        {!row.heading && (
+          <label className="field">
+            <span>Symbolgrösse (Faktor)</span>
+            <NumberInput label="Symbolgrösse Faktor Allgemeinteil" value={row.symbol_factor ?? 1} step={0.1} disabled={!admin}
+              onCommit={(v) => save({ symbol_factor: Math.max(0.3, Math.min(4, v)) })} />
+          </label>
+        )}
+      </div>
     </>
   );
 }

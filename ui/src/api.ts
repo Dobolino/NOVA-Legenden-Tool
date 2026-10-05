@@ -103,6 +103,7 @@ export interface Status {
   oda: string;
   local_home: string;
   dialogs?: boolean;
+  is_admin?: boolean;
 }
 
 export interface SymbolDetail {
@@ -281,7 +282,7 @@ export interface GeneralInfo {
   h: number;
   file?: string;
   /** a DXF / DWG split into rows (graphic + text): they flow into the legend columns */
-  rows?: { id: string; text: string; heading: boolean; names: string[] }[];
+  rows?: { id: string; key?: string; text: string; heading: boolean; names: string[]; text_scale?: number; symbol_factor?: number }[];
   /** drawing of every row graphic (preview), by row id */
   row_svgs?: Record<string, { vb: string; svg: string }>;
 }
@@ -631,7 +632,7 @@ export const api = {
     request<CompanyLegend>("POST", `/api/projects/${encodeURIComponent(id)}/legend/remember`, { doc }),
   companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),
   companyGeneral: () => request<CompanyGeneral>("GET", "/api/company/general"),
-  saveGeneralRow: (row: { key: string; text?: string; hidden?: boolean; links?: string[] }) =>
+  saveGeneralRow: (row: { key: string; text?: string; hidden?: boolean; links?: string[]; text_scale?: number; symbol_factor?: number }) =>
     request<CompanyGeneral>("PUT", "/api/company/general/row", row),
   reloadGeneral: () => request<CompanyGeneral>("POST", "/api/company/general/reload"),
   saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number; hatch_off?: boolean; fill_off?: boolean }) =>

@@ -68,14 +68,29 @@ export interface LegendStyle {
   frame: string;
 }
 
+export interface GeneralSection {
+  title: string;
+  header: string;
+  header_text: string;
+  title_scale: number;
+}
+
 export interface LegendDoc {
   version: number;
   style: LegendStyle;
   title: { text: string; scale: number; size_mm: number; font: string; color: string; border_on: boolean; border: string };
+  general_section?: GeneralSection;
   blocks: LegendBlock[];
 }
 
-export type Selection = { type: "item"; block: string; item: string } | { type: "block"; block: string } | { type: "legend" } | { type: "title" } | null;
+export type Selection =
+  | { type: "item"; block: string; item: string }
+  | { type: "block"; block: string }
+  | { type: "legend" }
+  | { type: "title" }
+  | { type: "general" }
+  | { type: "general-row"; id: string }
+  | null;
 
 // -- undo / redo ---------------------------------------------------------------
 

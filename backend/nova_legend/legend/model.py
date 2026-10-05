@@ -121,10 +121,20 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
             "frame_on": False, "frame": "#000000"}
 
 
+def _general_section(value) -> dict:
+    """The category bar above the general part. Same idea as a section header."""
+    v = value if isinstance(value, dict) else {}
+    title = str(v.get("title") or "Allgemein").strip()[:200] or "Allgemein"
+    return {"title": title, "header": _hex(v.get("header"), "#1c7ed6"),
+            "header_text": _hex(v.get("header_text"), "#ffffff"),
+            "title_scale": _scale(v.get("title_scale"))}
+
+
 def empty_doc(title: str = "", style: dict | None = None) -> dict:
     return {"version": DOC_VERSION, "style": style or default_style(),
             "title": {"text": title, "scale": 1.0, "size_mm": DEFAULT_TITLE_MM, "font": "Arial",
                       "color": "#000000", "border_on": False, "border": "#000000"},
+            "general_section": _general_section(None),
             "blocks": []}
 
 
@@ -193,6 +203,7 @@ def normalize(doc: dict | None) -> dict:
                      "font": str(title.get("font") or "Arial")[:40],
                      "color": _hex(title.get("color"), "#000000"),
                      "border_on": bool(title.get("border_on")), "border": _hex(title.get("border"), "#000000")},
+           "general_section": _general_section(doc.get("general_section")),
            "blocks": []}
     seen: set[str] = set()
 

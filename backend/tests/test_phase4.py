@@ -103,8 +103,9 @@ def test_height_grows_with_the_number_of_symbols_and_general_part_is_on_top():
     assert big["height"] > small["height"] + 40
     lay = layout(normalize({"blocks": [block("A", 2)]}), general={"w": 190, "h": 30})
     gen = next(p for p in lay["prims"] if p.get("role") == "general")
+    bar = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "general")
     first_block = boxes(lay, "block")[0]
-    assert gen["y"] == 5 and first_block["y"] >= gen["y"] + gen["h"]
+    assert bar["y"] == 5 and bar["y"] < gen["y"] and first_block["y"] >= gen["y"] + gen["h"]
     assert lay["height"] > small["height"] + 30
     titled = normalize({"title": {"text": "Legende 0000 Test", "size_mm": 5}, "blocks": [block("A", 1)]})
     lay = layout(titled, general={"w": 190, "h": 30})
@@ -331,7 +332,8 @@ def test_general_part_from_dxf_is_on_top_and_n4d_is_refused(env, monkeypatch, tm
     lay = client.post(f"/api/projects/{pid}/legend/layout", json={"doc": doc}).json()
     title = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "title")
     gen = next(p for p in lay["prims"] if p.get("role") == "general")
-    assert title["y"] < gen["y"]
+    bar = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "general")
+    assert title["y"] < bar["y"] <= gen["y"]
     assert min(p["y"] for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "block") > gen["y"] + gen["h"] - 0.1
     assert client.get(f"/api/projects/{pid}/legend/general").json()["svg"].startswith("<svg")
     n4d = tmp_path / "Legende.n4d"
@@ -723,6 +725,23 @@ def test_a_grey_section_takes_a_known_plan_colour():
     chosen = normalize({"version": 4, "blocks": [{"id": "b", "title": "Licht", "category_id": "licht",
                                                   "style": section_style("#123456"), "items": []}]})
     assert apply_plan_section_colors(chosen, {"licht": "#0000ff"})["blocks"][0]["style"]["header"] == "#123456"
+
+
+def test_a_general_heading_sits_on_the_bottom_of_its_grid_cell():
+    general = {"rows": [
+        {"id": "g0", "text": "Farbcodes", "heading": True},
+        {"id": "g1", "text": "Lichtinstallation", "gw": 8, "gh": 2},
+    ], "symbol_area": 12}
+    lay = layout(normalize({"blocks": []}), {}, general)
+    bar = next(p for p in lay["prims"] if p["t"] == "text" and p["text"] == "Allgemein")
+    assert bar["bold"] and bar["color"] == "#ffffff"
+    farb = next(p for p in lay["prims"] if p["t"] == "text" and p["text"] == "Farbcodes")
+    cell = next(p for p in lay["prims"] if p["t"] == "hit" and p["kind"] == "general-row" and p["id"] == "g0")
+    assert farb["y"] > cell["y"] + cell["h"] * 0.55
+    doc = normalize({"general_section": {"title": "Legende allgemein", "header": "#e03131"}})
+    lay = layout(doc, {}, general)
+    assert any(p["t"] == "text" and p["text"] == "Legende allgemein" for p in lay["prims"])
+    assert any(p.get("role") == "header" and p.get("fill") == "#e03131" for p in lay["prims"])
 
 
 def test_general_rows_share_the_legend_text_size_and_tile():
@@ -1128,7 +1147,7 @@ def test_a_long_general_heading_keeps_every_line():
     text = "Farbcodes der Installationszonen und Leitungsführungen im ganzen Gebäude"
     general = {"rows": [{"id": "g0", "text": text, "heading": True, "text_h": 2.0}], "symbol_area": 12}
     doc = normalize({"style": {"columns": 3, "width": 80, "text_size": 2.5}, "blocks": []})
-    texts = [p["text"] for p in layout(doc, {}, general)["prims"] if p["t"] == "text"]
+    texts = [p["text"] for p in layout(doc, {}, general)["prims"] if p["t"] == "text" and p["text"] != "Allgemein"]
     assert len(texts) > 1 and "".join(texts).replace(" ", "") == text.replace(" ", "")
 
 

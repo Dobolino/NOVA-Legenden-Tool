@@ -191,6 +191,13 @@ class CompanyStore:
         out["legend_admins"] = [str(a) for a in out["legend_admins"] if str(a).strip()]
         return out
 
+    def is_legend_admin(self, user: str) -> bool:
+        """Empty list: still open, everyone may change company settings. Afterwards only the named users."""
+        admins = self.legend_settings()["legend_admins"]
+        if not admins:
+            return True
+        return user.lower() in {a.lower() for a in admins}
+
     def set_legend_settings(self, values: dict) -> dict:
         with self._tx() as con:
             for key, value in values.items():

@@ -159,6 +159,7 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
             "oda": st.settings.oda_path or config.find_oda_converter(),
             "local_home": str(config.local_home()),
             "dialogs": dialogs.available(),
+            "is_admin": st.company.is_legend_admin(config.current_user()),
         }
 
     @app.post("/api/dialog/{kind}")
@@ -176,6 +177,8 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
 
     @app.put("/api/settings")
     def put_settings(body: SettingsIn) -> dict:
+        if body.update_channel is not None and not st.company.is_legend_admin(config.current_user()):
+            raise HTTPException(403, "Nur Admins dürfen den Update-Kanal ändern.")
         st.apply_settings(body.model_dump())
         return status()
 
@@ -203,13 +206,19 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
 
     # -- program update ------------------------------------------------------------
 
+    def update_channel() -> str:
+        """Test builds only for an admin. Everyone else stays on released versions."""
+        if st.settings.update_channel == "test" and st.company.is_legend_admin(config.current_user()):
+            return "test"
+        return "stable"
+
     @app.get("/api/update/check")
     def update_check() -> dict:
-        return updater.check(channel=st.settings.update_channel).to_dict()
+        return updater.check(channel=update_channel()).to_dict()
 
     @app.post("/api/update/install")
     def update_install() -> dict:
-        info = updater.check(channel=st.settings.update_channel)
+        info = updater.check(channel=update_channel())
         if not info.available:
             raise HTTPException(400, info.message or "Kein Update verfügbar")
         if not info.can_install:

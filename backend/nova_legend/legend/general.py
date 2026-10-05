@@ -238,6 +238,16 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     return part
 
 
+def _row_factor(value, lo: float, hi: float) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if n != n:  # NaN
+        return 1.0
+    return max(lo, min(hi, n))
+
+
 def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
     """The general part with the company's row changes: another text, a hidden row,
     symbol families the row stands for. Returns a copy; the cached part stays as read."""
@@ -256,7 +266,9 @@ def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
             hidden_texts.add(key)
             continue
         families.update(o.get("links") or [])
-        rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"]})
+        rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"],
+                     "text_scale": _row_factor(o.get("text_scale"), 0.5, 3.0),
+                     "symbol_factor": _row_factor(o.get("symbol_factor"), 0.3, 4.0)})
     texts = (set(part.texts) - hidden_texts) | {norm_text(r["text"]) for r in rows}
     names = sorted({n for r in rows for n in (r.get("names") or [])})
     return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts), symbol_names=names)

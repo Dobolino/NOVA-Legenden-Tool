@@ -206,12 +206,30 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
     return box(0.0, 0.0, 0.0, 0.0)
 
 
+def _general_header(prims: list, x: float, y: float, inner: float, ts: float, section: dict) -> float:
+    """Category bar of the general part, like the header of a legend section."""
+    title = str(section.get("title") or "Allgemein").strip() or "Allgemein"
+    hts = ts * float(section.get("title_scale") or 1.0)
+    head_h = max(hts * LINE_FACTOR + 1.6, hts * 2.0)
+    prims.append({"t": "rect", "x": x, "y": y, "w": inner, "h": head_h,
+                  "fill": section.get("header") or "#1c7ed6", "stroke": None,
+                  "role": "header", "block": "general"})
+    line = wrap(title, hts, inner - 2, True)[:1]
+    prims.append({"t": "text", "x": round(x + 0.8, 3), "y": round(y + head_h / 2 + hts * 0.36, 3),
+                  "size": round(hts, 3), "text": line[0] if line else title, "bold": True,
+                  "color": section.get("header_text") or "#ffffff"})
+    prims.append({"t": "hit", "kind": "general", "block": "general", "id": "general",
+                  "x": x, "y": y, "w": inner, "h": head_h})
+    return y + head_h
+
+
 def _general_rows(general: dict, prims: list, x0: float, top: float, inner: float, cols: int,
-                  style: dict) -> float:
+                  style: dict, section: dict | None = None) -> float:
     """Place the general part on the same grid as the legend: one tile, the same
-    text size, the same gap. A heading is only text. Returns the bottom edge."""
+    text size, the same gap. A heading is only text and sits on the bottom line of
+    its grid cell. Returns the bottom edge."""
     ts = float(style["text_size"])
-    lh = ts * LINE_FACTOR
+    top = _general_header(prims, x0, top, inner, ts, section or {})
     colw = inner / cols
     tile = min(symbol_tile(style), colw * 0.46)
     slot = entry_slot(style, tile)
@@ -223,23 +241,24 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
     rows = []
     for r in general["rows"]:
         heading = bool(r.get("heading"))
+        size = ts * max(0.5, min(3.0, float(r.get("text_scale") or 1.0)))
         width = colw - 1.6 if heading else colw - text_x - 0.8
-        lines = wrap(r["text"], ts, width, heading)
+        lines = wrap(r["text"], size, width, heading)
         if cap and not heading:
             lines = lines[:cap] or [""]
             h = slot
         else:
-            h = max(slot if not heading else ts * LINE_FACTOR + 1.2, len(lines) * lh + TEXT_CLEARANCE)
-        rows.append((r, lines, h))
-    total = sum(h for *_x, h in rows) + gap * max(0, len(rows) - cols)
+            h = max(slot, len(lines) * size * LINE_FACTOR + TEXT_CLEARANCE)
+        rows.append((r, lines, size, h))
+    total = sum(h for *_a, h in rows) + gap * max(0, len(rows) - cols)
     target = total / cols
     columns: list[list] = [[]]
     used = 0.0
     for i, item in enumerate(rows):
         nxt = rows[i + 1] if i + 1 < len(rows) else None
-        h = item[2]
+        h = item[3]
         full = used + h > target + 0.01 and columns[-1] and len(columns) < cols
-        heading_last = item[0].get("heading") and nxt and used + h + nxt[2] > target + 0.01 and len(columns) < cols
+        heading_last = item[0].get("heading") and nxt and used + h + nxt[3] > target + 0.01 and len(columns) < cols
         if (full or heading_last) and columns[-1]:
             columns.append([])
             used = 0.0
@@ -249,28 +268,33 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
     for c, chunk in enumerate(columns):
         cx = x0 + c * colw
         cy = top
-        for i, (r, lines, h) in enumerate(chunk):
+        for i, (r, lines, size, h) in enumerate(chunk):
             mid = cy + h / 2
             shown = lines or [r["text"]]
+            row_lh = size * LINE_FACTOR
             if r.get("heading"):
-                base = mid - (len(shown) - 1) * lh / 2 + ts * 0.32
+                # a heading such as «Farbcodes» sits on the bottom line of its grid cell
+                base = cy + h - 0.7 - (len(shown) - 1) * row_lh
                 for j, line in enumerate(shown):
-                    prims.append({"t": "text", "x": round(cx + 0.4, 3), "y": round(base + j * lh, 3),
-                                  "size": round(ts, 3), "text": line, "bold": True, "color": "#000000"})
+                    prims.append({"t": "text", "x": round(cx + 0.8, 3), "y": round(base + j * row_lh, 3),
+                                  "size": round(size, 3), "text": line, "bold": True, "color": "#000000"})
             else:
+                factor = max(0.3, min(4.0, float(r.get("symbol_factor") or 1.0)))
                 gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
                 if r.get("gw") is not None and (gw > 0 or gh > 0):
                     # a line has no height of its own; give it the stroke so it still sits in the tile
                     gw, gh = gw or 0.35, gh or 0.35
-                    scale = side / max(gw, gh, 1e-6)
+                    scale = side / max(gw, gh, 1e-6) * factor
                     w, hgt = gw * scale, gh * scale
                     prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
                                   "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
                                   "k": round(scale, 5)})
-                base = mid - (len(shown) - 1) * lh / 2 + ts * 0.32
+                base = mid - (len(shown) - 1) * row_lh / 2 + size * 0.32
                 for j, line in enumerate(shown):
-                    prims.append({"t": "text", "x": round(cx + text_x, 3), "y": round(base + j * lh, 3),
-                                  "size": round(ts, 3), "text": line, "bold": False, "color": "#000000"})
+                    prims.append({"t": "text", "x": round(cx + text_x, 3), "y": round(base + j * row_lh, 3),
+                                  "size": round(size, 3), "text": line, "bold": False, "color": "#000000"})
+            prims.append({"t": "hit", "kind": "general-row", "block": "general", "id": r["id"],
+                          "x": round(cx, 3), "y": round(cy, 3), "w": round(colw, 3), "h": round(h, 3)})
             cy += h
             if gap and i < len(chunk) - 1:
                 cy += gap
@@ -281,8 +305,6 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                   "axis": axis, "text": text_x})
     prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": height, "fill": None, "stroke": None,
                   "role": "general", "fit": 1.0, "rows": True})
-    prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
-                  "x": x0, "y": top, "w": inner, "h": height})
     return bottom
 
 
@@ -325,16 +347,18 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
                       "x": margin, "y": top, "w": inner, "h": y - top})
         y += row * 0.5
 
+    section = doc.get("general_section") or {}
     if general and include_general and general.get("rows"):
-        # same text size, tile and gap as the sections below
-        y = _general_rows(general, prims, margin, y, inner, cols, style) + row * 0.5
+        # same text size, tile and gap as the sections below, under its own category bar
+        y = _general_rows(general, prims, margin, y, inner, cols, style, section) + row * 0.5
     elif general and include_general and general.get("h"):
-        # no readable text column: the drawing stays whole and only shrinks with the sheet
+        # no readable text column: the drawing stays whole, under the category bar
+        y = _general_header(prims, margin, y, inner, ts, section)
         fit = min(1.0, inner / general["w"]) if general.get("w") else 1.0
         gw, gh = general["w"] * fit, general["h"] * fit
         prims.append({"t": "rect", "x": margin, "y": y, "w": gw, "h": gh, "fill": None, "stroke": None,
                       "role": "general", "fit": round(fit, 5)})
-        prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
+        prims.append({"t": "hit", "kind": "general", "block": "general", "id": "general",
                       "x": margin, "y": y, "w": gw, "h": gh})
         y += gh + row * 0.5
 
