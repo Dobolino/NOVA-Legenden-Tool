@@ -285,6 +285,28 @@ export interface GeneralInfo {
   row_svgs?: Record<string, { vb: string; svg: string }>;
 }
 
+/** One row of the general part as the settings editor shows it. */
+export interface GeneralRow {
+  id: string;
+  key: string;
+  original: string;
+  text: string;
+  hidden: boolean;
+  links: string[];
+  heading: boolean;
+  names: string[];
+  vb: string;
+  svg: string;
+  by: string;
+  at: string;
+}
+
+export interface CompanyGeneral extends GeneralInfo {
+  file_time: number | null;
+  rows: GeneralRow[];
+  company: CompanyLegend;
+}
+
 export interface CompanyLegend {
   general_path: string;
   admins: string[];
@@ -607,6 +629,10 @@ export const api = {
   rememberLegend: (id: string, doc: LegendDoc) =>
     request<CompanyLegend>("POST", `/api/projects/${encodeURIComponent(id)}/legend/remember`, { doc }),
   companyLegend: () => request<CompanyLegend & { general: GeneralInfo }>("GET", "/api/company/legend"),
+  companyGeneral: () => request<CompanyGeneral>("GET", "/api/company/general"),
+  saveGeneralRow: (row: { key: string; text?: string; hidden?: boolean; links?: string[] }) =>
+    request<CompanyGeneral>("PUT", "/api/company/general/row", row),
+  reloadGeneral: () => request<CompanyGeneral>("POST", "/api/company/general/reload"),
   saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number; hatch_off?: boolean; fill_off?: boolean }) =>
     request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
   legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[], fills: { hatch_off: boolean; fill_off: boolean } = { hatch_off: false, fill_off: false }) =>

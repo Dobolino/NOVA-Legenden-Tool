@@ -81,6 +81,21 @@ Pro Abschnitt (Kategorie) einstellbar: Farbe Kopfleiste, Schrift Kopfleiste, Tex
 
 Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster wie ein Eintrag, in einem Abschnitt, und nutzt die gemeinsame Schriftgrösse. Ohne gewählten Abschnitt entsteht ein Abschnitt «Zusatztext». Entfernen über das Mülleimer-Symbol («Text entfernen»). Alte freie Texte (Version 1) wandern beim Öffnen in einen Abschnitt «Zusatztext».
 
+## Allgemeinteil in Zeilen (DWG/DXF)
+
+- Die Servervorlage (DWG oder DXF) bleibt die Quelle. Das Programm zerlegt sie beim Lesen in Zeilen: Symbolgrafik links, Text in der Textspalte. Ein Text ohne Grafik ausserhalb der Spalte ist eine Überschrift (z. B. «Farbcodes»).
+- Die Zeilen fliessen in die Spalten der Legende. Beim Wechsel von 2 auf 3 Spalten ordnet sich der Allgemeinteil sofort neu. Die Texte haben die Schriftgrösse der Legende und umbrechen in ihrer Spalte.
+- Im DXF-Export ist jede Zeilengrafik ein eigener Block (`Allgemeinteil_g0` …), die Texte sind normale Texte auf X_Text.
+- Symbole in der Zeichnung (Nova-Blocknamen, z. B. «Steigleitung_ nach oben») blenden ihre Familien in den Projektabschnitten aus. Im Allgemeinteil bleiben sie sichtbar.
+- Einstellungen → Allgemeinteil bearbeiten (nur Admins): Text ändern, Zeile ausblenden, Zeile mit weiteren Symbolen verknüpfen. Diese Änderungen liegen in der Firmendatenbank neben der Zeichnung, die DWG bleibt unverändert. Neue Symbole und Reihenfolge: DWG in Nova anpassen, dann «Neu laden». Das Programm liest die Datei auch von selbst neu, wenn sie sich ändert.
+- Eine Zeichnung ohne klare Textspalte bleibt eine gesperrte Zeichnung wie bisher.
+
+## Linientypen
+
+- Musterlinien in der Legende sind kurz (5 bis 12 mm). Regel: mindestens 2,5 Wiederholungen des Musters, Striche mindestens 0,8 mm, Lücken mindestens 0,45 mm auf Papier.
+- Linien in Abschnitten nutzen eigene Linientypen mit Muster in mm (NL_STRICH, NL_PUNKT, NL_STRICHPUNKT) und 0,35 mm Strichstärke. Editor, DXF und PDF rechnen gleich.
+- Im Allgemeinteil berechnet das Programm den Linientypfaktor jeder gemusterten Linie neu, auch in Blöcken. Linientypen mit leeren Formflags werden zu einfachen Strichmustern. So unterscheiden sich UP-Decke, -Hohldecke, -Wand und -Boden.
+
 ## Allgemeinteil und Admins
 
 - Einstellungen → Legende der Firma → Pfad auf die Servervorlage: DXF, DWG (mit ODA File Converter) oder Ordner eines Vorlagen-Projekts mit Legende.

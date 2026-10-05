@@ -172,6 +172,26 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     return part
 
 
+def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
+    """The general part with the company's row changes: another text, a hidden row,
+    symbol families the row stands for. Returns a copy; the cached part stays as read."""
+    from dataclasses import replace
+
+    if not part.rows:
+        return part
+    rows = []
+    families = set(part.family_keys)
+    for r in part.rows:
+        key = norm_text(r["text"])
+        o = overrides.get(key) or {}
+        families.update(o.get("links") or [])
+        if o.get("hidden"):
+            continue
+        rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"]})
+    texts = set(part.texts) | {norm_text(r["text"]) for r in rows}
+    return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts))
+
+
 # -- rows of a DXF general part -----------------------------------------------------------
 
 _SUFFIX = re.compile(r"_[A-Z0-9]{8,12}$")       # Nova appends an id to every block name

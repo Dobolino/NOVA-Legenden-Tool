@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import CompanyLegendCard from "./CompanyLegendCard";
 import CompanyTextsCard from "./CompanyTextsCard";
+import GeneralPartEditor from "./GeneralPartEditor";
 import { api, DATASET_LABEL, StencilData, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
 import InfoTip from "./InfoTip";
@@ -390,6 +391,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         </div>
 
         <CompanyLegendCard canPick={canPick} choose={choose} notify={notify} />
+
+        <GeneralPartEditor notify={notify} />
 
         <CompanyTextsCard notify={notify} />
 

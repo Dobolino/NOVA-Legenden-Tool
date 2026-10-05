@@ -31,6 +31,13 @@ from ..render.engine import engine_geometry
 from ..render.svg import geometry_bounds, render_svg
 
 
+class GeneralRowIn(BaseModel):
+    key: str
+    text: str | None = None
+    hidden: bool | None = None
+    links: list[str] | None = None
+
+
 class LegendIn(BaseModel):
     doc: dict
 
@@ -276,10 +283,61 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                     out[it["id"]] = (x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000, engine)
         return out
 
-    def load_general() -> general_part.GeneralPart:
-        path = st.company.legend_settings()["legend_general_path"]
-        return general_part.load(path, MAX_SHEET_WIDTH - 2 * MARGIN, st.settings.oda_path or config.find_oda_converter(),
-                                 project_layout=template_layout)
+    def load_general(raw: bool = False) -> general_part.GeneralPart:
+        settings = st.company.legend_settings()
+        part = general_part.load(settings["legend_general_path"], MAX_SHEET_WIDTH - 2 * MARGIN,
+                                 st.settings.oda_path or config.find_oda_converter(), project_layout=template_layout)
+        return part if raw else general_part.apply_overrides(part, settings.get("legend_general_rows") or {})
+
+    @app.get("/api/company/general")
+    def company_general() -> dict:
+        """The general part as the editor in the settings shows it: every row of the
+        server drawing with the company's changes beside it."""
+        settings = st.company.legend_settings()
+        part = load_general(raw=True)
+        overrides = settings.get("legend_general_rows") or {}
+        path = Path(settings["legend_general_path"] or "")
+        try:
+            stamp = path.stat().st_mtime if path.is_file() else None
+        except OSError:
+            stamp = None
+        rows = []
+        for r in part.rows:
+            key = general_part.norm_text(r["text"])
+            o = overrides.get(key) or {}
+            rows.append({"id": r["id"], "key": key, "original": r["text"], "text": o.get("text") or "",
+                         "hidden": bool(o.get("hidden")), "links": o.get("links") or [], "heading": r["heading"],
+                         "names": r.get("names", []), "vb": r.get("vb", ""), "svg": r.get("svg", ""),
+                         "by": o.get("by", ""), "at": o.get("at", "")})
+        return {**part.info(), "file_time": stamp, "rows": rows, "company": company_legend()}
+
+    @app.put("/api/company/general/row")
+    def put_general_row(body: GeneralRowIn) -> dict:
+        """Change one row of the general part (admins). The server drawing is not touched."""
+        require_admin()
+        from datetime import datetime
+
+        overrides = dict(st.company.legend_settings().get("legend_general_rows") or {})
+        o = dict(overrides.get(body.key) or {})
+        if body.text is not None:
+            o["text"] = body.text.strip()
+        if body.hidden is not None:
+            o["hidden"] = body.hidden
+        if body.links is not None:
+            o["links"] = sorted({x for x in body.links if x})
+        o.update(by=config.current_user(), at=datetime.now().isoformat(timespec="seconds"))
+        if not o.get("text") and not o.get("hidden") and not o.get("links"):
+            overrides.pop(body.key, None)          # back to the drawing as it is
+        else:
+            overrides[body.key] = o
+        st.company.set_legend_settings({"legend_general_rows": overrides})
+        return company_general()
+
+    @app.post("/api/company/general/reload")
+    def reload_general() -> dict:
+        """Read the server drawing again now (it is also read again whenever it changed)."""
+        general_part._cache.clear()
+        return company_general()
 
     def template_layout(folder: Path):
         try:

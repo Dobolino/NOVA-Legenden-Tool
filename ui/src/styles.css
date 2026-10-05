@@ -795,3 +795,14 @@ img.sym-icon { object-fit: contain; }
 .le-badge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 18px; flex: none; }
 .le-badge.small { width: 20px; height: 20px; border-radius: 6px; font-size: 12px; vertical-align: middle; }
 .legend-editor.windowed { border-top: 4px solid var(--accent); }
+
+/* settings: general part rows */
+.gp-table td { vertical-align: middle; }
+.gp-table .input { width: 100%; min-width: 200px; }
+.gp-icon { width: 92px; }
+.gp-icon svg { width: 84px; height: 28px; background: #fff; border-radius: 4px; display: block; }
+.gp-hidden td { opacity: 0.5; }
+.gp-links { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gp-search { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gp-search .input { min-width: 160px; width: 180px; }
+.chip-x { border: 0; background: none; cursor: pointer; color: inherit; padding: 0 0 0 4px; }

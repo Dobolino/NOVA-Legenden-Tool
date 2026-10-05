@@ -1051,3 +1051,29 @@ def test_dwg_line_types_with_empty_shape_flags_become_plain_patterns(tmp_path):
     assert simplify_linetypes(d) == 1
     assert [v for c, v in d.linetypes.get("STRICHLINIE").pattern_tags.tags if c == 74] in ([], [0, 0])
     assert tune_entities(d, [sp], 1.0) == 1 and sp.dxf.ltscale > 0.035 * 2
+
+
+def test_general_part_rows_can_be_changed_in_the_settings(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    client.put("/api/company/legend", json={"admins": ["chef"], "general_path": str(_rows_dxf(tmp_path / "g.dxf"))})
+    data = client.get("/api/company/general").json()
+    assert [r["original"] for r in data["rows"]][:2] == ["Leitung von/nach OBEN", "UP-Abzweigdose Decke / Wand"]
+    assert data["rows"][0]["svg"] and data["file_time"]
+    key = data["rows"][1]["key"]
+    data = client.put("/api/company/general/row", json={"key": key, "text": "Abzweigdose UP Decke / Wand"}).json()
+    assert data["rows"][1]["text"] == "Abzweigdose UP Decke / Wand" and data["rows"][1]["by"] == "chef"
+    verteilung = data["rows"][2]["key"]
+    client.put("/api/company/general/row", json={"key": verteilung, "hidden": True})
+    client.put("/api/company/general/row", json={"key": data["rows"][0]["key"], "links": ["steigleitung, von oben"]})
+    pid = _project(client, tmp)
+    general = client.get(f"/api/projects/{pid}/legend/general").json()
+    texts = [r["text"] for r in general["rows"]]
+    assert "Abzweigdose UP Decke / Wand" in texts and "Verteilung" not in texts
+    assert "steigleitung, von oben" in client.get(f"/api/projects/{pid}/legend").json()["in_general"]["family_keys"]
+    # back to the drawing: an empty change removes the entry
+    client.put("/api/company/general/row", json={"key": key, "text": ""})
+    assert client.get("/api/company/general").json()["rows"][1]["text"] == ""
+    # only admins
+    monkeypatch.setattr(config, "current_user", lambda: "gast")
+    assert client.put("/api/company/general/row", json={"key": key, "hidden": True}).status_code == 403

@@ -62,6 +62,9 @@ LEGEND_DEFAULTS = {
     "legend_symbol_scale": 1.0,    # one scale for all symbols
     "legend_hatch_off": False,     # new legends: no hatches and light areas in symbols
     "legend_fill_off": False,      # new legends: no solid fills in symbols
+    # changes to the rows of the general part, by normalised row text: the drawing on the
+    # server stays the source, these are kept beside it ({text, hidden, links, by, at})
+    "legend_general_rows": {},
 }
 
 # Bump when default categories gain number ranges; existing company files
