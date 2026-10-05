@@ -246,6 +246,19 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     }
   }, [notify, saveSession]);
 
+  const saveLegend = useCallback(async () => {
+    if (!saveSession.dirty) {
+      notify("Die Legende ist bereits gespeichert.");
+      return;
+    }
+    try {
+      await saveNow();
+      notify("Legende gespeichert.");
+    } catch {
+      /* saveNow already reported the error */
+    }
+  }, [notify, saveNow, saveSession]);
+
   useEffect(() => register({ flush: saveNow, dirty: () => saveSession.dirty }), [register, saveNow, saveSession]);
 
   useEffect(() => {
@@ -802,19 +815,40 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             className="select"
             value={style.grid}
             onChange={(e) => {
+              if (e.target.value === "custom") {
+                setStyle({ grid: "custom" });
+                return;
+              }
               // row and text step change at once, so the grid lines follow without a reload
               const g = info.grids.find((x) => x.id === e.target.value);
               if (g) setStyle({ grid: g.id, row: g.row, text_offset: g.text_offset });
             }}
             aria-label="Rastermass"
+            title="Standard behält das Kachelmass aus der Schriftgrösse. Die anderen Stufen setzen Zeilenhöhe und Textabstand. Benutzerdefiniert übernimmt die beiden Millimeterfelder."
           >
             {info.grids.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.id === "standard" ? "★ " : ""}
-                {g.label} · Zeile {String(g.row).replace(".", ",")} mm · Text {String(g.text_offset).replace(".", ",")} mm
+                {g.id === "standard"
+                  ? "★ Standard · Kachel aus der Schrift"
+                  : `${g.label} · Zeile ${String(g.row).replace(".", ",")} mm · Text ${String(g.text_offset).replace(".", ",")} mm`}
               </option>
             ))}
+            <option value="custom">Benutzerdefiniert</option>
           </select>
+        </label>
+        <label className="filter-label">
+          Zeile
+          <span className="grid-mm">
+            <NumberInput label="Zeilenhöhe in mm" value={style.row} step={0.5} min={3} max={30}
+              onCommit={(v) => setStyle({ grid: "custom", row: Math.round(v * 100) / 100 })} />
+          </span>
+        </label>
+        <label className="filter-label">
+          Text
+          <span className="grid-mm">
+            <NumberInput label="Textabstand in mm" value={style.text_offset} step={0.5} min={5} max={45}
+              onCommit={(v) => setStyle({ grid: "custom", text_offset: Math.round(v * 100) / 100 })} />
+          </span>
         </label>
         <label className="filter-label">
           Spalten
@@ -1119,6 +1153,17 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
 
         <aside className={`legend-props ${detached ? "floating" : ""}`}>
         <div className="props-export">
+        <button className="btn small" disabled={busy || saveState === "saving"} onClick={() => { void saveLegend(); }}
+          title="Die Legende jetzt speichern. Änderungen werden sonst kurz danach von selbst gespeichert.">
+          {saveState === "saving" ? "Speichert …" : "Legende speichern"}
+        </button>
+        <p className={`hint props-save-state ${saveState === "error" ? "dirty" : ""}`} role="status">
+          {saveState === "error"
+            ? "Nicht gespeichert"
+            : savedInfo
+              ? `Gespeichert ${savedInfo}`
+              : "Wird auch automatisch gespeichert."}
+        </p>
         <button className="btn small primary" disabled={busy || exporting} onClick={() => exportFile("dxf", exportBlock, exportGeneral && Boolean(general?.kind))}
           title={exportBlock ? "Den in den Exportoptionen gewählten Abschnitt als DXF herunterladen" : "Die ganze Legende als DXF herunterladen"}>
           <Icon name="download" size={16} /> {exporting ? "Exportiert …" : "DXF herunterladen"}

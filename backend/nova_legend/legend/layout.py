@@ -121,6 +121,27 @@ def entry_slot(style: dict, tile: float) -> float:
     return max(tile, cap * ts * LINE_FACTOR + TEXT_CLEARANCE)
 
 
+def tile_frame(style: dict, colw: float) -> tuple[float, float, float, float]:
+    """(tile, slot, axis, text_x) for equal tiles.
+
+    Standard keeps the tile that follows the text size. Every other raster uses
+    the chosen row height and the distance to the text, so the steps show on
+    the sheet. The text stays clear of the symbol and keeps room in the column.
+    """
+    natural = min(symbol_tile(style), colw * 0.46)
+    if style.get("grid", "standard") == "standard":
+        tile = natural
+        axis = tile / 2 + 0.4
+        return tile, entry_slot(style, tile), axis, axis + tile / 2 + 1.5
+    row = float(style["row"])
+    tile = min(natural, max(2.4, row - 1.2))
+    axis = tile / 2 + 0.4
+    floor = axis + tile / 2 + 0.8
+    ceiling = max(floor, colw - max(14.0, float(style.get("text_size") or 2.5) * 5))
+    text_x = min(max(float(style["text_offset"]), floor), ceiling)
+    return tile, max(entry_slot(style, tile), row), axis, text_x
+
+
 def _anchor(size) -> tuple[float, float, float, float, float, float, bool]:
     """(x0, y0, x1, y1, ax, ay, engine) of a drawing in mm, Nova axes (y up).
 
@@ -250,12 +271,9 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
     ts = float(style["text_size"])
     top = _general_header(prims, x0, top, inner, ts, section or {})
     colw = inner / cols
-    tile = min(symbol_tile(style), colw * 0.46)
-    slot = entry_slot(style, tile)
+    tile, slot, axis, text_x = tile_frame(style, colw)
     gap = max(0.0, float(style.get("entry_gap") or 0.0))
     cap = _line_cap(style)
-    axis = tile / 2 + 0.4
-    text_x = axis + tile / 2 + 1.5
     side = tile * TILE_FILL
     rows = []
     for r in general["rows"]:
@@ -466,12 +484,10 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
         text_x = max([off] + [axis + boxes[it["id"]]["right"] + 1.2 for it in items])
         fixed = None
     else:
-        # equal tiles: every drawing fills one tile sized from the text
-        tile = min(symbol_tile(style), colw * 0.46)
+        # equal tiles: every drawing fills one tile sized from the text.
+        # a raster other than Standard uses the chosen row height and text distance
+        tile, fixed, axis, text_x = tile_frame(style, colw)
         boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, tile) for it in items}
-        fixed = entry_slot(style, tile)
-        axis = tile / 2 + 0.4
-        text_x = axis + tile / 2 + 1.5
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     # every place of the grid is a cell (also the empty ones): the editor drops entries

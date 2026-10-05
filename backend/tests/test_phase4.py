@@ -437,6 +437,36 @@ def test_empty_doc_defaults():
     assert doc["title"]["size_mm"] == 5
 
 
+def test_grid_steps_are_far_apart_and_a_custom_grid_keeps_its_millimetres():
+    items = [{"id": "s0", "kind": "symbol", "symbol_key": "k", "text": "Lampe"}]
+    block = {"id": "S", "title": "Licht", "items": items}
+
+    def row_h(grid, **extra):
+        doc = normalize({"style": {"grid": grid, **extra}, "blocks": [block]})
+        lay = layout(doc, {"s0": (4.0, 4.0, False)})
+        hit = next(p for p in lay["prims"] if p["t"] == "hit" and p.get("kind") == "item")
+        text = next(p for p in lay["prims"] if p["t"] == "text" and p.get("item") == "s0")
+        return hit["h"], text["x"]
+
+    standard_h, standard_x = row_h("standard")
+    tight_h, tight_x = row_h("dicht")
+    wide_h, wide_x = row_h("gross")
+    assert tight_h < standard_h - 1
+    assert wide_h >= 18 and wide_h > standard_h + 6
+    assert wide_x > standard_x + 8 and tight_x < standard_x
+
+    custom = normalize({"style": {"grid": "custom", "row": 15.5, "text_offset": 22}})
+    assert custom["style"]["grid"] == "custom"
+    assert custom["style"]["row"] == 15.5 and custom["style"]["text_offset"] == 22
+    clamped = normalize({"style": {"grid": "custom", "row": 80, "text_offset": 1}})
+    assert clamped["style"]["row"] == 30 and clamped["style"]["text_offset"] == 5
+    # the old tight name keeps a tight step
+    assert normalize({"style": {"grid": "kompakt"}})["style"]["grid"] == "dicht"
+    # a named step does not keep a typed row
+    named = normalize({"style": {"grid": "weit", "row": 3, "text_offset": 5}})
+    assert named["style"]["row"] == 12 and named["style"]["text_offset"] == 18
+
+
 # -- symbol colours, general part contents, export details ---------------------------------
 
 def _coloured_symbol():

@@ -23,13 +23,21 @@ MAX_SHEET_WIDTH = 210.0      # widest sheet the user may choose
 MIN_SHEET_WIDTH = 80.0
 MARGIN = 5.0
 
-# Grid presets. "standard" follows the existing edeco legend.
+# Grid presets. "standard" follows the existing edeco legend and, with equal
+# tiles, keeps the row that grows from the text size. The other steps are far
+# enough apart to read on the sheet. "custom" keeps the millimetres the user typed.
 GRIDS = {
     "standard": {"label": "Standard", "row": 4.55, "text_offset": 9.75},
-    "kompakt": {"label": "Kompakt", "row": 4.0, "text_offset": 8.5},
-    "weit": {"label": "Weit", "row": 5.0, "text_offset": 10.5},
-    "gross": {"label": "Gross", "row": 6.0, "text_offset": 12.0},
+    "dicht": {"label": "Dicht", "row": 6.0, "text_offset": 8.0},
+    "weit": {"label": "Weit", "row": 12.0, "text_offset": 18.0},
+    "gross": {"label": "Gross", "row": 18.0, "text_offset": 26.0},
+    "extrem": {"label": "Extrem", "row": 24.0, "text_offset": 34.0},
 }
+GRID_CUSTOM = "custom"
+# older name of the tight step
+_GRID_ALIAS = {"kompakt": "dicht"}
+ROW_MIN, ROW_MAX = 3.0, 30.0
+TEXT_OFFSET_MIN, TEXT_OFFSET_MAX = 5.0, 45.0
 DEFAULT_TEXT_SIZE = 2.5
 DEFAULT_SYMBOL_SCALE = 1.0
 DEFAULT_TITLE_MM = 5.0      # legend title height, until a legend sets its own
@@ -154,13 +162,19 @@ def _num(value, default: float, lo: float | None = None, hi: float | None = None
 
 def normalize_style(value) -> dict:
     v = value if isinstance(value, dict) else {}
-    grid = v.get("grid") if v.get("grid") in GRIDS else "standard"
+    named = _GRID_ALIAS.get(v.get("grid"), v.get("grid"))
+    grid = GRID_CUSTOM if named == GRID_CUSTOM else named if named in GRIDS else "standard"
     style = default_style(_num(v.get("text_size"), DEFAULT_TEXT_SIZE, 1.0, 10.0),
                           _num(v.get("symbol_scale"), DEFAULT_SYMBOL_SCALE, 0.2, 5.0),
                           3 if int(_num(v.get("columns"), 2)) >= 3 else 2)
     style["grid"] = grid
-    style["row"] = GRIDS[grid]["row"]
-    style["text_offset"] = GRIDS[grid]["text_offset"]
+    if grid == GRID_CUSTOM:
+        style["row"] = round(_num(v.get("row"), GRIDS["standard"]["row"], ROW_MIN, ROW_MAX), 2)
+        style["text_offset"] = round(_num(v.get("text_offset"), GRIDS["standard"]["text_offset"],
+                                           TEXT_OFFSET_MIN, TEXT_OFFSET_MAX), 2)
+    else:
+        style["row"] = GRIDS[grid]["row"]
+        style["text_offset"] = GRIDS[grid]["text_offset"]
     style["plan_scale"] = _num(v.get("plan_scale"), 50, 1, 1000)
     style["font"] = str(v.get("font") or "Arial")[:40]
     style["section_gap"] = _num(v.get("section_gap"), 0.0, 0, 50)
