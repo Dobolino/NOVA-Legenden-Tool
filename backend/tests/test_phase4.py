@@ -1077,3 +1077,20 @@ def test_general_part_rows_can_be_changed_in_the_settings(env, monkeypatch, tmp_
     # only admins
     monkeypatch.setattr(config, "current_user", lambda: "gast")
     assert client.put("/api/company/general/row", json={"key": key, "hidden": True}).status_code == 403
+
+
+def test_general_part_export_in_two_and_three_columns(env, monkeypatch, tmp_path):  # noqa: F811
+    client, tmp = env
+    monkeypatch.setattr(config, "current_user", lambda: "chef")
+    client.put("/api/company/legend", json={"admins": ["chef"], "general_path": str(_rows_dxf(tmp_path / "g.dxf"))})
+    for cols in (2, 3):
+        res = client.get("/api/company/general/export/x.dxf", params={"cols": cols})
+        assert res.status_code == 200
+        (tmp_path / f"o{cols}.dxf").write_bytes(res.content)
+        out = ezdxf.readfile(tmp_path / f"o{cols}.dxf")
+        assert len([e for e in out.modelspace().query("INSERT") if e.dxf.name.startswith("Allgemeinteil_")]) == 4
+        assert "Farbcodes" in {e.dxf.text for e in out.modelspace().query("TEXT")}
+    pdf = client.get("/api/company/general/export/x.pdf", params={"cols": 3, "format": "pdf"})
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    client.put("/api/company/legend", json={"general_path": ""})
+    assert client.get("/api/company/general/export/x.dxf").status_code == 400

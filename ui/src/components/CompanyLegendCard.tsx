@@ -86,6 +86,11 @@ export default function CompanyLegendCard({
           </button>
         </div>
       </label>
+      <p className="hint">
+        Empfehlung: die einspaltige Legende einmal als DXF direkt aus Nova speichern und hier eintragen. Eine DXF braucht keinen
+        ODA File Converter, eine DWG schon (auf jedem Arbeitsplatz). Das Programm ordnet sie selbst in 2 oder 3 Spalten. Änderst du
+        die Datei auf dem Server, liest das Programm sie beim nächsten Öffnen der Legende neu.
+      </p>
       {info.general.kind ? (
         <p className="hint">
           Gelesen: {info.general.kind === "dxf" ? "DXF/DWG" : "Vorlagen-Projekt"}, {info.general.w} × {info.general.h} mm.

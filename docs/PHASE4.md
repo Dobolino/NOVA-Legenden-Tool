@@ -89,6 +89,8 @@ Freier Text ist ein Zusatztext in der Legende, kein Apparat. Er sitzt im Raster 
 - Symbole in der Zeichnung (Nova-Blocknamen, z. B. «Steigleitung_ nach oben») blenden ihre Familien in den Projektabschnitten aus. Im Allgemeinteil bleiben sie sichtbar.
 - Einstellungen → Allgemeinteil bearbeiten (nur Admins): Text ändern, Zeile ausblenden, Zeile mit weiteren Symbolen verknüpfen. Diese Änderungen liegen in der Firmendatenbank neben der Zeichnung, die DWG bleibt unverändert. Neue Symbole und Reihenfolge: DWG in Nova anpassen, dann «Neu laden». Das Programm liest die Datei auch von selbst neu, wenn sie sich ändert.
 - Eine Zeichnung ohne klare Textspalte bleibt eine gesperrte Zeichnung wie bisher.
+- Empfehlung: Die einspaltige Legende einmal als DXF direkt aus Nova speichern und als Servervorlage eintragen. Eine DXF braucht keinen ODA File Converter.
+- Einstellungen → Allgemeinteil bearbeiten → «2 Spalten DXF» / «3 Spalten DXF» (und PDF): der Allgemeinteil allein, 200 mm breit, so angeordnet wie im Editor. Für den Gebrauch ausserhalb des Programms, z. B. als Nova-Makro. Als Servervorlage gehört weiter die einspaltige Datei.
 
 ## Linientypen
 

@@ -333,6 +333,35 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         st.company.set_legend_settings({"legend_general_rows": overrides})
         return company_general()
 
+    @app.get("/api/company/general/export/{file_name}")
+    def export_general(file_name: str = "", cols: int = 2, format: str = "dxf"):  # noqa: A002
+        """The general part alone, arranged in 2 or 3 columns, as DXF or PDF: for use outside
+        the program (a Nova macro, a plan). The server drawing stays as it is."""
+        gen = load_general()
+        if gen.kind != "dxf" or not gen.rows:
+            raise HTTPException(400, "Der Allgemeinteil ist keine DXF/DWG mit Textspalte. Nichts zu exportieren.")
+        cols = 3 if cols >= 3 else 2
+        doc = normalize({"style": {**project_style_default(), "columns": cols}, "title": {"text": ""}, "blocks": []})
+        lay = place(doc, {}, gen.info())
+        g = next(p for p in lay["prims"] if p.get("role") == "general")
+        lay["height"] = round(g["y"] + g["h"] + doc["style"]["margin"], 2)
+        lay["prims"] = [p for p in lay["prims"] if p.get("t") != "hit"]
+        dxf = build_dxf(lay, gen, lambda prim: None, doc["style"]["font"])
+        stem = safe_folder_name(f"edeco ag-Allgemeinteil-{cols}-spaltig")
+        if format.lower() == "pdf":
+            data = build_pdf(dxf, lay["width"], lay["height"], stem)
+            return Response(data, media_type="application/pdf",
+                            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(stem + '.pdf')}"})
+        tmp = Path(tempfile.mkdtemp(prefix="nl_general_export_"))
+        out = tmp / f"{stem}.dxf"
+        dxf.saveas(out)
+        return FileResponse(out, filename=out.name, media_type="application/octet-stream",
+                            background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True))
+
+    def project_style_default() -> dict:
+        c = company_legend()
+        return normalize_style({"text_size": c["text_size"], "symbol_scale": c["symbol_scale"]})
+
     @app.post("/api/company/general/reload")
     def reload_general() -> dict:
         """Read the server drawing again now (it is also read again whenever it changed)."""

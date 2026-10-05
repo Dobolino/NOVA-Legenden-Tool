@@ -48,6 +48,24 @@ export default function GeneralPartEditor({ notify }: { notify: (text: string, e
     }
   }
 
+  async function download(cols: number, format: "dxf" | "pdf") {
+    const name = `edeco ag-Allgemeinteil-${cols}-spaltig.${format}`;
+    try {
+      const blob = await api.legendExportFile(`/api/company/general/export/${encodeURIComponent(name)}?cols=${cols}&format=${format}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      notify(`${name} exportiert`);
+    } catch (e) {
+      notify((e as Error).message, true);
+    }
+  }
+
   async function reload() {
     setBusy(true);
     try {
@@ -79,6 +97,17 @@ export default function GeneralPartEditor({ notify }: { notify: (text: string, e
           Neu laden
         </button>
       </div>
+      {data.rows.length > 0 && (
+        <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center", margin: "6px 0" }}>
+          <span className="hint">Exportieren, z. B. für ein Nova-Makro:</span>
+          {[2, 3].map((cols) => (
+            <span key={cols} className="row" style={{ gap: 4 }}>
+              <button className="btn small" disabled={busy} onClick={() => download(cols, "dxf")}>{cols} Spalten DXF</button>
+              <button className="btn small" disabled={busy} onClick={() => download(cols, "pdf")}>PDF</button>
+            </span>
+          ))}
+        </div>
+      )}
       {!data.rows.length && data.source && !data.error && (
         <p className="hint">Die Zeichnung hat keine klare Textspalte. Sie wird als Ganzes gezeigt und lässt sich hier nicht in Zeilen bearbeiten.</p>
       )}
