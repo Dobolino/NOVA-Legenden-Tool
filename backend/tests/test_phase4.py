@@ -796,6 +796,77 @@ def test_a_wide_general_symbol_fills_the_tile_and_the_stroke_is_cut():
     assert 0 <= g["fx"] < 0.5
 
 
+def test_clipping_cuts_a_fill_a_thick_stroke_and_drops_text_outside_the_window():
+    from nova_legend.legend.export import _clip_block
+
+    d = ezdxf.new("R2013")
+    blk = d.blocks.new("Zeile")
+    blk.add_solid([(0, 0), (100, 0), (100, 4), (0, 4)], dxfattribs={"true_color": 0xFFCC00})
+    hatch = blk.add_hatch(dxfattribs={"true_color": 0x2255FF})
+    hatch.paths.add_polyline_path([(0, 0), (100, 0), (100, 4), (0, 4)], is_closed=True)
+    blk.add_lwpolyline([(0, 2), (100, 2)], dxfattribs={"const_width": 1.2, "true_color": 0xE03131})
+    blk.add_line((0, 2), (100, 2))
+    blk.add_circle((6, 2), 1.2)
+    blk.add_text("90°", height=2.5, rotation=90).set_placement((80, 0.4))
+    blk.add_text("L3", height=1.2).set_placement((5.4, 1.5))
+    _clip_block(blk, (0, 0, 100, 4), (2, 0, 12, 4))
+    from ezdxf import bbox as ezbbox
+
+    ext = ezbbox.extents(list(blk), fast=False)
+    assert ext.has_data
+    assert ext.extmin.x >= 2 - 0.05 and ext.extmax.x <= 12 + 0.05
+    assert ext.extmin.y >= 0 - 0.05 and ext.extmax.y <= 4 + 0.05
+    assert any(e.dxftype() == "CIRCLE" for e in blk)
+    colours = {e.dxf.true_color for e in blk.query("HATCH") if e.dxf.hasattr("true_color")}
+    assert 0xFFCC00 in colours and 0x2255FF in colours and 0xE03131 in colours
+    texts = [e.dxf.text for e in blk.query("TEXT")]
+    assert texts == ["L3"]
+
+
+def test_a_wide_general_fill_stays_inside_its_tile_on_export(tmp_path):
+    """A colour bar and a symbol note must not run across the description in the DXF."""
+    from ezdxf import bbox as ezbbox
+
+    from nova_legend.legend.export import build_dxf
+    from nova_legend.legend.general import load
+
+    d = ezdxf.new("R2013", units=4)
+    d.header["$INSUNITS"] = 4
+    msp = d.modelspace()
+    labels = [("Farbcode", 24), ("Kanal", 12), ("Leitung", 0)]
+    for text, y in labels:
+        msp.add_text(text, height=2.5).set_placement((100, y))
+    # colour bars across the whole symbol column
+    msp.add_solid([(0, 23.2), (70, 23.2), (70, 27.2), (0, 27.2)], dxfattribs={"true_color": 0xFFCC00})
+    bar = msp.add_hatch(dxfattribs={"true_color": 0x2255FF})
+    bar.paths.add_polyline_path([(0, 11.2), (70, 11.2), (70, 15.2), (0, 15.2)], is_closed=True)
+    # a symbol on the left, a note that belongs to the drawing and would cover the description
+    msp.add_hatch(dxfattribs={"true_color": 0x111111}).paths.add_polyline_path(
+        [(0, -2), (12, -2), (12, 8), (0, 8)], is_closed=True)
+    msp.add_line((0, 1), (78, 1))
+    msp.add_text("90°", height=2.4, rotation=90).set_placement((62, -1))
+    path = tmp_path / "allgemein.dxf"
+    d.saveas(path)
+    part = load(str(path), 180, None)
+    assert len(part.rows) >= 3
+    doc = normalize({"style": {"text_size": 2.5}, "blocks": []})
+    lay = layout(doc, {}, part.info())
+    grows = [p for p in lay["prims"] if p["t"] == "grow"]
+    assert grows and any(p.get("full_w", 0) > p["w"] + 1 for p in grows)
+    out = build_dxf(lay, part, lambda prim: None)
+    names = {e.dxf.text for e in out.modelspace().query("TEXT")}
+    assert {"Farbcode", "Kanal", "Leitung"} <= names and "90°" not in names
+    height = lay["height"]
+    for g in grows:
+        ins = next(e for e in out.modelspace().query("INSERT") if e.dxf.name == f"Allgemeinteil_{g['row']}")
+        ext = ezbbox.extents([ins], fast=False)
+        assert ext.has_data
+        assert ext.extmin.x >= g["x"] - 0.4
+        assert ext.extmax.x <= g["x"] + g["w"] + 0.4
+        assert ext.extmin.y >= height - (g["y"] + g["h"]) - 0.4
+        assert ext.extmax.y <= height - g["y"] + 0.4
+
+
 def test_a_chosen_symbol_colour_replaces_the_drawing_colour():
     doc = normalize({"blocks": [{"id": "A", "title": "Dosen", "style": section_style("#1c7ed6"), "items": [
         {"id": "s0", "kind": "symbol", "symbol_key": "k", "text": "Dose", "color": "#ff0000"},

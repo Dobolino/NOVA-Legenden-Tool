@@ -305,22 +305,46 @@ def _line_segments(entity):
     return None
 
 
-def _bbox_hits(entity, box) -> bool:
+def _entity_box(entity):
     from ezdxf import bbox
 
     ext = bbox.extents([entity], fast=True)
     if not ext.has_data:
+        return None
+    return ext.extmin.x, ext.extmin.y, ext.extmax.x, ext.extmax.y
+
+
+def _bbox_hits(entity, box) -> bool:
+    ext = _entity_box(entity)
+    if ext is None:
         return True
     x0, y0, x1, y1 = box
-    return not (ext.extmax.x < x0 or ext.extmin.x > x1 or ext.extmax.y < y0 or ext.extmin.y > y1)
+    a, b, c, d = ext
+    return not (c < x0 or a > x1 or d < y0 or b > y1)
 
 
-def _replace_with_lines(block, entity, segments):
+def _bbox_inside(entity, box) -> bool:
+    """True when the whole drawing sits in the window the layout actually shows."""
+    ext = _entity_box(entity)
+    if ext is None:
+        return True
+    x0, y0, x1, y1 = box
+    a, b, c, d = ext
+    pad = 1e-4
+    return a >= x0 - pad and b >= y0 - pad and c <= x1 + pad and d <= y1 + pad
+
+
+def _dxf_attribs(entity) -> tuple[dict, int | None]:
     attribs = {}
     for key in ("layer", "color", "linetype", "lineweight", "ltscale"):
         if entity.dxf.hasattr(key):
             attribs[key] = entity.dxf.get(key)
     true_color = entity.dxf.true_color if entity.dxf.hasattr("true_color") else None
+    return attribs, true_color
+
+
+def _replace_with_lines(block, entity, segments):
+    attribs, true_color = _dxf_attribs(entity)
     block.delete_entity(entity)
     for a, b in segments:
         if abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9:
@@ -330,36 +354,330 @@ def _replace_with_lines(block, entity, segments):
             ln.dxf.true_color = true_color
 
 
-def _clip_one(block, entity, win):
-    if entity.dxftype() == "INSERT":
+def _dedupe(pts, tol=1e-9):
+    out = []
+    for x, y in pts:
+        if out and abs(x - out[-1][0]) <= tol and abs(y - out[-1][1]) <= tol:
+            continue
+        out.append((x, y))
+    if len(out) > 1 and abs(out[0][0] - out[-1][0]) <= tol and abs(out[0][1] - out[-1][1]) <= tol:
+        out.pop()
+    return out
+
+
+def _clip_poly(pts, box):
+    """Sutherland–Hodgman. The window is an axis-aligned rectangle."""
+    pts = _dedupe((float(x), float(y)) for x, y in pts)
+    if len(pts) < 3:
+        return []
+    x0, y0, x1, y1 = box
+
+    def clip(points, inside, cross):
+        if not points:
+            return []
+        out = []
+        prev = points[-1]
+        prev_in = inside(prev)
+        for cur in points:
+            cur_in = inside(cur)
+            if cur_in:
+                if not prev_in:
+                    out.append(cross(prev, cur))
+                out.append(cur)
+            elif prev_in:
+                out.append(cross(prev, cur))
+            prev, prev_in = cur, cur_in
+        return _dedupe(out)
+
+    def on_x(a, b, x):
+        dx = b[0] - a[0]
+        t = 0.0 if abs(dx) < 1e-15 else (x - a[0]) / dx
+        return (x, a[1] + (b[1] - a[1]) * t)
+
+    def on_y(a, b, y):
+        dy = b[1] - a[1]
+        t = 0.0 if abs(dy) < 1e-15 else (y - a[1]) / dy
+        return (a[0] + (b[0] - a[0]) * t, y)
+
+    pts = clip(pts, lambda p: p[0] >= x0, lambda a, b: on_x(a, b, x0))
+    pts = clip(pts, lambda p: p[0] <= x1, lambda a, b: on_x(a, b, x1))
+    pts = clip(pts, lambda p: p[1] >= y0, lambda a, b: on_y(a, b, y0))
+    pts = clip(pts, lambda p: p[1] <= y1, lambda a, b: on_y(a, b, y1))
+    if len(pts) < 3 or _poly_area(pts) < 1e-8:
+        return []
+    return pts
+
+
+def _poly_area(pts) -> float:
+    area = 0.0
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]):
+        area += x0 * y1 - x1 * y0
+    return abs(area) * 0.5
+
+
+def _flat_distance(win) -> float:
+    x0, y0, x1, y1 = win
+    return max(x1 - x0, y1 - y0, 1e-6) / 32
+
+
+def _replace_with_hatch(block, entity, loops, flags):
+    attribs, true_color = _dxf_attribs(entity)
+    pattern = None
+    if entity.dxftype() in ("HATCH", "MPOLYGON") and entity.dxf.hasattr("pattern_name"):
+        name = str(entity.dxf.pattern_name or "")
+        if name and name.upper() != "SOLID":
+            pattern = (name, float(entity.dxf.pattern_scale or 1), float(entity.dxf.pattern_angle or 0))
+    block.delete_entity(entity)
+    if not loops:
+        return
+    hatch = block.add_hatch(dxfattribs=attribs)
+    if true_color is not None:
+        hatch.dxf.true_color = true_color
+    if pattern:
+        try:
+            hatch.set_pattern_fill(pattern[0], scale=pattern[1], angle=pattern[2])
+        except Exception:  # noqa: BLE001 - a solid fill of the same colour still shows the swatch
+            pass
+    for loop, flag in zip(loops, flags):
+        hatch.paths.add_polyline_path([(round(x, 6), round(y, 6)) for x, y in loop], is_closed=True, flags=flag)
+
+
+def _boundary_loops(hatch, boundary, win):
+    from ezdxf.path import from_hatch_boundary_path
+
+    elev = hatch.dxf.elevation
+    z = float(elev.z) if hasattr(elev, "z") else 0.0
+    path = from_hatch_boundary_path(boundary, hatch.ocs(), elevation=z)
+    parts = list(path.sub_paths()) if path.has_sub_paths else [path]
+    dist = _flat_distance(win)
+    loops = []
+    for part in parts:
+        pts = _dedupe((float(v.x), float(v.y)) for v in part.flattening(distance=dist))
+        if len(pts) >= 3:
+            loops.append(pts)
+    return loops
+
+
+def _loop_flags(boundaries) -> list[int]:
+    raws = [int(getattr(b, "path_type_flags", 1) or 0) for b in boundaries]
+    any_ext = any(raw & 17 for raw in raws)
+    flags = []
+    for i, raw in enumerate(raws):
+        if raw & 16:
+            flags.append(16)
+        elif raw & 1 or (not any_ext and i == 0):
+            flags.append(1)
+        else:
+            flags.append(0)
+    return flags
+
+
+def _clip_hatch(block, entity, win):
+    loops, flags = [], []
+    try:
+        boundaries = list(entity.paths)
+        for boundary, flag in zip(boundaries, _loop_flags(boundaries)):
+            for pts in _boundary_loops(entity, boundary, win):
+                clipped = _clip_poly(pts, win)
+                if clipped:
+                    loops.append(clipped)
+                    flags.append(flag)
+    except Exception:  # noqa: BLE001 - an unreadable fill must not stay and cover the text
+        loops, flags = [], []
+    _replace_with_hatch(block, entity, loops, flags)
+
+
+def _clip_solid(block, entity, win):
+    """Clip a SOLID / TRACE. DXF stores the last two corners swapped; some files do not,
+    so both orders are tried and the one that fills more of the window is kept."""
+    candidates = []
+    try:
+        candidates.append([(float(v.x), float(v.y)) for v in entity.vertices(close=False)])
+    except Exception:  # noqa: BLE001
+        pass
+    stored = []
+    for i in range(4):
+        if not entity.dxf.hasattr(f"vtx{i}"):
+            break
+        v = entity.dxf.get(f"vtx{i}")
+        stored.append((float(v.x), float(v.y)))
+    if len(stored) >= 3:
+        candidates.append(stored)
+    best, best_area = [], 0.0
+    for pts in candidates:
+        clipped = _clip_poly(pts, win)
+        area = _poly_area(clipped) if clipped else 0.0
+        if area > best_area:
+            best, best_area = clipped, area
+    if not best and not candidates:
+        block.delete_entity(entity)
+        return
+    _replace_with_hatch(block, entity, [best] if best else [], [1])
+
+
+def _max_width(entity) -> float:
+    const = float(entity.dxf.const_width) if entity.dxf.hasattr("const_width") else 0.0
+    best = const
+    try:
+        for p in entity.get_points("xyseb"):
+            best = max(best, float(p[3]), float(p[4]))
+    except Exception:  # noqa: BLE001
+        pass
+    return best
+
+
+def _has_bulge(entity) -> bool:
+    if entity.dxftype() != "LWPOLYLINE":
+        return False
+    try:
+        return any(abs(float(p[2])) > 1e-8 for p in entity.get_points("xyb"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _ribbon(a, b):
+    ax, ay, sw, ew = a
+    bx, by = b[0], b[1]
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    if length < 1e-12 or max(sw, ew) <= 1e-9:
+        return None
+    ox, oy = -dy / length, dx / length
+    return [
+        (ax + ox * sw / 2, ay + oy * sw / 2),
+        (bx + ox * ew / 2, by + oy * ew / 2),
+        (bx - ox * ew / 2, by - oy * ew / 2),
+        (ax - ox * sw / 2, ay - oy * sw / 2),
+    ]
+
+
+def _clip_wide_polyline(block, entity, win):
+    """A thick stroke is a filled strip. Cutting only its centre line would turn a colour bar into a hairline."""
+    if _has_bulge(entity):
+        width = _max_width(entity)
+        samples = _curve_points(entity, win)
+        pts = [(x, y, width, width) for x, y in samples]
+        closed = False
+    else:
+        const = float(entity.dxf.const_width) if entity.dxf.hasattr("const_width") else 0.0
+        pts = []
+        for p in entity.get_points("xyseb"):
+            sw, ew = float(p[3]), float(p[4])
+            if const > 1e-9:
+                sw = ew = const
+            pts.append((float(p[0]), float(p[1]), sw, ew))
+        closed = bool(entity.closed)
+    pairs = list(zip(pts, pts[1:]))
+    if closed and len(pts) >= 2:
+        pairs.append((pts[-1], pts[0]))
+    attribs, true_color = _dxf_attribs(entity)
+    block.delete_entity(entity)
+    for a, b in pairs:
+        quad = _ribbon(a, (b[0], b[1]))
+        if not quad:
+            continue
+        clipped = _clip_poly(quad, win)
+        if not clipped:
+            continue
+        hatch = block.add_hatch(dxfattribs=attribs)
+        if true_color is not None:
+            hatch.dxf.true_color = true_color
+        hatch.paths.add_polyline_path([(round(x, 6), round(y, 6)) for x, y in clipped], is_closed=True)
+
+
+def _curve_closed(entity) -> bool:
+    kind = entity.dxftype()
+    if kind == "CIRCLE":
+        return True
+    if kind == "ELLIPSE":
+        return abs(float(entity.dxf.end_param) - float(entity.dxf.start_param)) >= math.tau - 1e-3
+    if kind == "LWPOLYLINE":
+        return bool(entity.closed)
+    if kind == "POLYLINE":
+        return bool(entity.is_closed)
+    return False
+
+
+def _curve_points(entity, win):
+    from ezdxf.path import make_path
+
+    try:
+        path = make_path(entity)
+        pts = _dedupe((float(v.x), float(v.y)) for v in path.flattening(distance=_flat_distance(win)))
+    except Exception:  # noqa: BLE001 - not a curve we can sample
+        return []
+    if len(pts) < 2:
+        return []
+    if _curve_closed(entity) and (abs(pts[0][0] - pts[-1][0]) > 1e-9 or abs(pts[0][1] - pts[-1][1]) > 1e-9):
+        pts.append(pts[0])
+    return pts
+
+
+def _same_segments(segs, clipped) -> bool:
+    return all(
+        abs(a[0] - c[0][0]) < 1e-6 and abs(a[1] - c[0][1]) < 1e-6 and abs(b[0] - c[1][0]) < 1e-6 and abs(b[1] - c[1][1]) < 1e-6
+        for (a, b), c in zip(segs, clipped))
+
+
+def _clip_one(block, entity, win, depth=0):
+    kind = entity.dxftype()
+    if kind == "INSERT":
+        if depth > 8:
+            if not _bbox_inside(entity, win):
+                block.delete_entity(entity)
+            return
         try:
             kids = list(entity.virtual_entities())
-        except Exception:  # noqa: BLE001 - keep the insert when it cannot be opened
+        except Exception:  # noqa: BLE001 - drop the insert when it sticks out and cannot be opened
             kids = None
         if kids:
             block.delete_entity(entity)
             for kid in kids:
                 block.add_entity(kid)
-                _clip_one(block, kid, win)
+                _clip_one(block, kid, win, depth + 1)
             return
-        if not _bbox_hits(entity, win):
+        if not _bbox_inside(entity, win):
             block.delete_entity(entity)
         return
-    segs = _line_segments(entity)
-    if segs is None:
-        if not _bbox_hits(entity, win):
+    # a label that does not fit in the tile is the legend text drawn again, over the description
+    if kind in ("TEXT", "MTEXT", "ATTRIB", "ATTDEF"):
+        if not _bbox_inside(entity, win):
             block.delete_entity(entity)
+        return
+    if _bbox_inside(entity, win):
+        return
+    if not _bbox_hits(entity, win):
+        block.delete_entity(entity)
+        return
+    if kind in ("HATCH", "MPOLYGON"):
+        _clip_hatch(block, entity, win)
+        return
+    if kind in ("SOLID", "TRACE", "3DFACE"):
+        _clip_solid(block, entity, win)
+        return
+    if kind == "LWPOLYLINE" and _max_width(entity) > 1e-6:
+        _clip_wide_polyline(block, entity, win)
+        return
+    segs = _line_segments(entity) if kind in ("LINE", "LWPOLYLINE") and not _has_bulge(entity) else None
+    if segs is None:
+        pts = _curve_points(entity, win)
+        segs = list(zip(pts, pts[1:])) if len(pts) >= 2 else None
+    if not segs:
+        block.delete_entity(entity)
         return
     clipped = [c for a, b in segs if (c := _clip_seg(a, b, win))]
-    if len(clipped) == len(segs) and all(
-        abs(a[0] - c[0][0]) < 1e-6 and abs(a[1] - c[0][1]) < 1e-6 and abs(b[0] - c[1][0]) < 1e-6 and abs(b[1] - c[1][1]) < 1e-6
-        for (a, b), c in zip(segs, clipped)):
+    if len(clipped) == len(segs) and _same_segments(segs, clipped):
         return
     _replace_with_lines(block, entity, clipped)
 
 
 def _clip_block(block, src, win) -> None:
-    """Drop what the layout crops away, so a long stroke does not run into the text."""
+    """Keep only the part of the row graphic that the layout shows.
+
+    The editor crops the drawing at the symbol tile. A line was already cut.
+    A fill, a thick stroke or a text that merely crossed the tile used to be
+    kept whole, so a colour bar or a symbol label ran across the description.
+    """
     if not block:
         return
     sx0, sy0, sx1, sy1 = src
