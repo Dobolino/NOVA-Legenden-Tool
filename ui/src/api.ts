@@ -637,7 +637,7 @@ export const api = {
   reloadGeneral: () => request<CompanyGeneral>("POST", "/api/company/general/reload"),
   saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number; hatch_off?: boolean; fill_off?: boolean }) =>
     request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
-  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null }[], fills: { hatch_off: boolean; fill_off: boolean } = { hatch_off: false, fill_off: false }) =>
+  legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null; flat?: boolean }[], fills: { hatch_off: boolean; fill_off: boolean } = { hatch_off: false, fill_off: false }) =>
     request<{ items: SymbolRender[] }>("POST", "/api/legend/symbols", { items, ...fills }),
   diagnostics: (projectId = "") =>
     request<Record<string, unknown>>("GET", `/api/diagnostics${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`),

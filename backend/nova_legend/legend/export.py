@@ -208,10 +208,13 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
         if not r or r["id"] not in names:
             continue
         if r["id"] not in tuned:
-            tune_entities(doc, list(doc.blocks.get(names[r["id"]])), general.to_mm * p["k"], seen)
+            blk = doc.blocks.get(names[r["id"]])
+            win = _source_window(r, p)
+            _clip_block(blk, r["src"], win)
+            tune_entities(doc, list(blk), general.to_mm * p["k"], seen)
             tuned.add(r["id"])
         s = general.to_mm * p["k"]
-        x0, y0, x1, y1 = r["src"]
+        x0, y0, x1, y1 = _source_window(r, p)
         rot = int(p.get("rot") or 0) % 360
         cmx, cmy = (x0 + x1) / 2, (y0 + y1) / 2
         a = math.radians(rot)
@@ -225,17 +228,160 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
             "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, FRAME_LAYER)})
 
 
+def _source_window(row: dict, prim: dict) -> tuple[float, float, float, float]:
+    """The part of the row graphic that the layout actually shows, in drawing units.
+
+    A long stroke beside a symbol is cut at the tile. Without full_w the whole
+    graphic is shown, which is how a plain line sample is placed."""
+    x0, y0, x1, y1 = row["src"]
+    full_w = float(prim.get("full_w") or prim.get("w") or 0)
+    full_h = float(prim.get("full_h") or prim.get("h") or 0)
+    src_w, src_h = x1 - x0, y1 - y0
+    if full_w <= 0 or full_h <= 0 or src_w <= 0 or src_h <= 0:
+        return x0, y0, x1, y1
+    if abs(full_w - float(prim["w"])) < 1e-3 and abs(full_h - float(prim["h"])) < 1e-3:
+        return x0, y0, x1, y1
+    fx, fy = float(prim.get("fx") or 0), float(prim.get("fy") or 0)
+    ww = src_w * (float(prim["w"]) / full_w)
+    hh = src_h * (float(prim["h"]) / full_h)
+    wx0 = x0 + fx * src_w
+    wy0 = y0 + fy * src_h
+    return wx0, wy0, wx0 + ww, wy0 + hh
+
+
+def _clip_seg(a, b, box):
+    """Cohen–Sutherland. None when the segment misses the box."""
+    x0, y0, x1, y1 = box
+    def code(x, y):
+        c = 0
+        if x < x0:
+            c |= 1
+        elif x > x1:
+            c |= 2
+        if y < y0:
+            c |= 4
+        elif y > y1:
+            c |= 8
+        return c
+    ax, ay = a
+    bx, by = b
+    ca, cb = code(ax, ay), code(bx, by)
+    for _ in range(12):
+        if not ca and not cb:
+            return (ax, ay), (bx, by)
+        if ca & cb:
+            return None
+        c = ca or cb
+        if c & 8:
+            t = (y1 - ay) / (by - ay) if by != ay else 0
+            x, y = ax + (bx - ax) * t, y1
+        elif c & 4:
+            t = (y0 - ay) / (by - ay) if by != ay else 0
+            x, y = ax + (bx - ax) * t, y0
+        elif c & 2:
+            t = (x1 - ax) / (bx - ax) if bx != ax else 0
+            x, y = x1, ay + (by - ay) * t
+        else:
+            t = (x0 - ax) / (bx - ax) if bx != ax else 0
+            x, y = x0, ay + (by - ay) * t
+        if c == ca:
+            ax, ay, ca = x, y, code(x, y)
+        else:
+            bx, by, cb = x, y, code(x, y)
+    return None
+
+
+def _line_segments(entity):
+    kind = entity.dxftype()
+    if kind == "LINE":
+        return [((entity.dxf.start.x, entity.dxf.start.y), (entity.dxf.end.x, entity.dxf.end.y))]
+    if kind == "LWPOLYLINE":
+        pts = [(p[0], p[1]) for p in entity.get_points("xy")]
+        if len(pts) < 2:
+            return []
+        if entity.closed:
+            pts = [*pts, pts[0]]
+        return list(zip(pts, pts[1:]))
+    return None
+
+
+def _bbox_hits(entity, box) -> bool:
+    from ezdxf import bbox
+
+    ext = bbox.extents([entity], fast=True)
+    if not ext.has_data:
+        return True
+    x0, y0, x1, y1 = box
+    return not (ext.extmax.x < x0 or ext.extmin.x > x1 or ext.extmax.y < y0 or ext.extmin.y > y1)
+
+
+def _replace_with_lines(block, entity, segments):
+    attribs = {}
+    for key in ("layer", "color", "linetype", "lineweight", "ltscale"):
+        if entity.dxf.hasattr(key):
+            attribs[key] = entity.dxf.get(key)
+    true_color = entity.dxf.true_color if entity.dxf.hasattr("true_color") else None
+    block.delete_entity(entity)
+    for a, b in segments:
+        if abs(a[0] - b[0]) < 1e-9 and abs(a[1] - b[1]) < 1e-9:
+            continue
+        ln = block.add_line(a, b, dxfattribs=attribs)
+        if true_color is not None:
+            ln.dxf.true_color = true_color
+
+
+def _clip_one(block, entity, win):
+    if entity.dxftype() == "INSERT":
+        try:
+            kids = list(entity.virtual_entities())
+        except Exception:  # noqa: BLE001 - keep the insert when it cannot be opened
+            kids = None
+        if kids:
+            block.delete_entity(entity)
+            for kid in kids:
+                block.add_entity(kid)
+                _clip_one(block, kid, win)
+            return
+        if not _bbox_hits(entity, win):
+            block.delete_entity(entity)
+        return
+    segs = _line_segments(entity)
+    if segs is None:
+        if not _bbox_hits(entity, win):
+            block.delete_entity(entity)
+        return
+    clipped = [c for a, b in segs if (c := _clip_seg(a, b, win))]
+    if len(clipped) == len(segs) and all(
+        abs(a[0] - c[0][0]) < 1e-6 and abs(a[1] - c[0][1]) < 1e-6 and abs(b[0] - c[1][0]) < 1e-6 and abs(b[1] - c[1][1]) < 1e-6
+        for (a, b), c in zip(segs, clipped)):
+        return
+    _replace_with_lines(block, entity, clipped)
+
+
+def _clip_block(block, src, win) -> None:
+    """Drop what the layout crops away, so a long stroke does not run into the text."""
+    if not block:
+        return
+    sx0, sy0, sx1, sy1 = src
+    x0, y0, x1, y1 = win
+    if x0 <= sx0 + 1e-4 and y0 <= sy0 + 1e-4 and x1 >= sx1 - 1e-4 and y1 >= sy1 - 1e-4:
+        return
+    for entity in list(block):
+        _clip_one(block, entity, win)
+
+
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:
     layer_color = prim.get("color") or "#000000"
+    flat = bool(prim.get("flat"))
     key = (f"{prim['key']}|{prim.get('length_mm') or ''}|{prim.get('width_mm') or ''}|"
-           f"{int(bool(prim.get('hatch_off')))}{int(bool(prim.get('fill_off')))}|{layer_color}")
+           f"{int(bool(prim.get('hatch_off')))}{int(bool(prim.get('fill_off')))}{int(flat)}|{layer_color}")
     if key in cache:
         return cache[key]
     base = re.sub(r"[^A-Za-z0-9_\-]", "_", str(prim["key"]))[:60] or "Symbol"
     name = f"{base}_{len(cache) + 1}"
     blk = doc.blocks.new(name)
-    mixed = is_mixed(geo)
-    monochrome = not any(_hue(p.color) for p in geo.primitives)
+    mixed = False if flat else is_mixed(geo)
+    monochrome = flat or not any(_hue(p.color) for p in geo.primitives)
 
     def colored(entity, color: str):
         entity.rgb = _rgb(color)

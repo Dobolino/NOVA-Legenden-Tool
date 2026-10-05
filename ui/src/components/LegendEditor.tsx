@@ -285,7 +285,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     const prims = [...(placed?.prims ?? []), ...(general?.prims ?? [])].filter((p) => p.t === "symbol");
     const need = new Map<string, LegendPrim>();
     for (const p of prims) {
-      const key = symbolRequestKey({ symbol_key: p.key, length_mm: p.length_mm, width_mm: p.width_mm });
+      const key = symbolRequestKey({ symbol_key: p.key, length_mm: p.length_mm, width_mm: p.width_mm, flat: Boolean(p.flat) });
       if (!known[key]) need.set(key, p);
     }
     const listed = [
@@ -297,11 +297,20 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       const key = symbolRequestKey({ symbol_key: l.key, length_mm: null, width_mm: null });
       if (!known[key] && !need.has(key)) need.set(key, { t: "symbol", key: l.key, family_key: l.family_key, length_mm: null, width_mm: null });
     }
+    for (const b of doc?.blocks ?? []) {
+      for (const it of b.items) {
+        if (it.kind !== "symbol" || !it.symbol_key || !it.symbol_color) continue;
+        const key = symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null, flat: true });
+        if (!known[key] && !need.has(key)) {
+          need.set(key, { t: "symbol", key: it.symbol_key, family_key: it.family_key, length_mm: null, width_mm: null, flat: true });
+        }
+      }
+    }
     if (!need.size) return;
     const list = [...need.entries()];
     const gen = ++symbolGen.current;
     api
-      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm })),
+      .legendSymbols(list.map(([, p]) => ({ symbol_key: p.key, family_key: p.family_key, length_mm: p.length_mm, width_mm: p.width_mm, flat: Boolean(p.flat) })),
         { hatch_off: stripFill[0] === "1", fill_off: stripFill[1] === "1" })
       .then((r) => {
         if (gen !== symbolGen.current || stripSeen.current !== stripFill) return;
@@ -312,7 +321,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         });
       })
       .catch(() => undefined);
-  }, [placed, general, symbols, data.rows, results, openStencilEntries, stripFill]);
+  }, [placed, general, symbols, data.rows, results, openStencilEntries, stripFill, doc]);
 
   useEffect(() => {
     if (search.trim().length < 2) {
@@ -922,7 +931,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                     {...dragProps({ type: "move", block: b.id, item: it.id })}
                     {...dropProps({ block: b.id, before: it.id })}
                   >
-                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null })]} color={it.color || b.style.symbol} /> : null}
+                    {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null, flat: Boolean(it.symbol_color) })]} color={it.symbol_color || it.color || b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
                     <span className="outline-text">{it.text || "(ohne Text)"}</span>
                     {companyKey(it) && descriptions[companyKey(it)!] === it.text.trim() && (
@@ -1240,7 +1249,7 @@ function Prim({
         </g>
       );
     case "symbol": {
-      const r = symbols[symbolRequestKey({ symbol_key: p.key, length_mm: p.length_mm, width_mm: p.width_mm })];
+      const r = symbols[symbolRequestKey({ symbol_key: p.key, length_mm: p.length_mm, width_mm: p.width_mm, flat: Boolean(p.flat) })];
       if (!r?.svg || !r.box)
         return (
           <g pointerEvents="none">
@@ -1265,12 +1274,22 @@ function Prim({
       );
     }
     case "grow": {
-      // one row graphic of the general part, as drawn in the server file
+      // one row graphic of the general part. A long stroke is drawn at symbol size and
+      // cut at the tile, so the symbol itself stays as large as the other sections.
       const r = general?.row_svgs?.[p.row];
       if (!r) return null;
+      const fullW = Number(p.full_w) || p.w;
+      const fullH = Number(p.full_h) || p.h;
+      const crop = fullW > p.w + 0.05 || fullH > p.h + 0.05;
+      const fx = Number(p.fx) || 0;
+      const fy = Number(p.fy) || 0;
+      const innerX = crop ? -(fx * fullW) : 0;
+      const innerY = crop ? -((1 - fy - p.h / fullH) * fullH) : 0;
       const graphic = (
-        <svg x={p.x} y={p.y} width={p.w} height={p.h} viewBox={r.vb} preserveAspectRatio="xMidYMid meet" overflow="visible"
-          pointerEvents="none" dangerouslySetInnerHTML={{ __html: r.svg }} />
+        <svg x={p.x} y={p.y} width={p.w} height={p.h} overflow={crop ? "hidden" : "visible"} pointerEvents="none">
+          <svg x={innerX} y={innerY} width={fullW} height={fullH} viewBox={r.vb} preserveAspectRatio="xMidYMid meet" overflow="visible"
+            dangerouslySetInnerHTML={{ __html: r.svg }} />
+        </svg>
       );
       const rot = Number(p.rot) || 0;
       if (!rot) return graphic;
@@ -1706,6 +1725,35 @@ function ItemProps({
       <p className="hint">
         Faktor 1 = gemeinsame Schriftgrösse bzw. gemeinsamer Symbolmassstab. 1,2 macht nur diesen Eintrag grösser, die Zeile wächst um ganze Rasterzeilen.
       </p>
+      {(item.kind === "symbol" || item.kind === "line" || item.kind === "note") && (
+        <div className="field">
+          <span>Symbolfarbe</span>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="color"
+              aria-label="Symbolfarbe"
+              value={item.symbol_color || item.color || block.style.symbol || "#000000"}
+              onChange={(e) => set({ symbol_color: e.target.value })}
+            />
+            <button
+              className="btn small"
+              onClick={() => set({ symbol_color: block.style.symbol })}
+              title="Das ganze Symbol in der Farbe dieses Abschnitts zeichnen"
+            >
+              Farbe von Abschnitt übernehmen
+            </button>
+            {item.symbol_color && (
+              <button className="btn small" onClick={() => set({ symbol_color: "" })} title="Wieder die automatische Farbe: eigene Farben bleiben, Schwarz und Grau folgen dem Abschnitt">
+                Automatisch
+              </button>
+            )}
+          </div>
+          <p className="hint">
+            Automatisch bleiben Schwarz, Grau und Weiss in der Abschnittsfarbe. Eine eigene Farbe im Symbol, zum Beispiel Rot, bleibt.
+            Eine gewählte Farbe oder «Farbe von Abschnitt übernehmen» färbt das ganze Symbol.
+          </p>
+        </div>
+      )}
       {item.kind === "symbol" && render?.engine && (
         <div className="form two">
           <label className="field">

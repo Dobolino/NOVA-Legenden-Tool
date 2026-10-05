@@ -86,6 +86,25 @@ TILE_FACTOR = 3.6            # symbol tile side = text size × this × symbol sc
 TILE_FILL = 0.75             # a drawing fills this share of its tile, so it never looks squeezed
 
 
+def _clip_origin(focus: float, frac: float) -> float:
+    """Left or bottom edge of a window that covers ``frac`` of the graphic.
+
+    The window stays inside 0..1 and is centred on ``focus`` when that fits.
+    ``focus`` and the result are fractions of the full box, from the left and
+    from the bottom (drawing axes)."""
+    if frac >= 1:
+        return 0.0
+    return min(max(float(focus) - frac / 2, 0.0), 1.0 - frac)
+
+
+def _forced_color(item: dict) -> str:
+    """A colour chosen for this one entry. Empty means the automatic colour."""
+    raw = item.get("symbol_color") or ""
+    if isinstance(raw, str) and len(raw) == 7 and raw.startswith("#"):
+        return raw
+    return ""
+
+
 def symbol_tile(style: dict) -> float:
     """Side of the shared symbol tile in mm. It grows with the text size."""
     ts = max(float(style.get("text_size") or 2.5), 1.0)
@@ -289,26 +308,36 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                 gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
                 rot = int(r.get("rotation") or 0) % 360
                 if r.get("gw") is not None and (gw > 0 or gh > 0):
-                    line_row = gh <= max(0.9, gw * 0.18)
+                    line_row = gh <= 0.35
                     if line_row:
-                        # one sample of the stroke, always the same length, so the line type stays readable
-                        length = side
-                        thick = 0.45
-                        if 0.15 < gh <= gw * 0.28:
-                            thick = min(1.1, max(0.35, gh * length / max(gw, 1e-6)))
+                        # one sample of the stroke, as long as the symbol tile, so the line type
+                        # reads next to the symbols of the other sections
+                        length = tile * 0.92
+                        thick = 0.5
                         w, hgt, scale = length, thick, length / max(gw, 1e-6)
+                        prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
+                                      "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
+                                      "k": round(scale, 5), "rot": 0})
                     else:
+                        # the bulky part (the symbol) fills the same tile as the project symbols.
+                        # a long stroke beside it is cut at the tile, so it cannot shrink the symbol
                         gw, gh = gw or 0.35, gh or 0.35
-                        scale = side / max(gw, gh, 1e-6) * factor
-                        w, hgt = gw * scale, gh * scale
-                        limit = min(tile * 0.92, max(2.0, (text_x - axis - 0.8) * 2), slot - 0.6)
-                        longest = max(w, hgt, 1e-6)
-                        if longest > limit:
-                            shrink = limit / longest
-                            w, hgt, scale = w * shrink, hgt * shrink, scale * shrink
-                    prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
-                                  "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
-                                  "k": round(scale, 5), "rot": rot})
+                        wide = gw > gh * 1.6
+                        basis = gh if wide else max(gw, gh, 1e-6)
+                        scale = side / basis * factor
+                        full_w, full_h = gw * scale, gh * scale
+                        # the window is the tile: the symbol stays as large as the project
+                        # symbols, and a stroke that runs past the tile is cut off
+                        view = min(tile * 0.92, max(slot - 0.4, side))
+                        show_w, show_h = min(full_w, view), min(full_h, view)
+                        focus = r.get("focus") or [0.5, 0.5]
+                        fx = _clip_origin(float(focus[0]), show_w / full_w)
+                        fy = _clip_origin(float(focus[1]), show_h / full_h)
+                        prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - show_w / 2, 3),
+                                      "y": round(mid - show_h / 2, 3), "w": round(show_w, 3), "h": round(show_h, 3),
+                                      "full_w": round(full_w, 3), "full_h": round(full_h, 3),
+                                      "fx": round(fx, 4), "fy": round(fy, 4),
+                                      "k": round(scale, 5), "rot": rot})
                 base = mid - (len(shown) - 1) * row_lh / 2 + size * 0.32
                 for j, line in enumerate(shown):
                     prims.append({"t": "text", "x": round(cx + text_x, 3), "y": round(base + j * row_lh, 3),
@@ -521,6 +550,11 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     mid = cy + h / 2
     sx = cx0 + axis
     w = box["left"] + box["right"]
+    # symbol_color paints this one entry in one colour. Otherwise a symbol keeps the
+    # plan colour of its row, or the section colour, and a real hue in the drawing stays.
+    section_color = st.get("symbol") or "#000000"
+    forced = _forced_color(item)
+    paint = forced or (item.get("color") or section_color if kind == "symbol" else section_color)
     if kind == "symbol":
         out.append({"t": "symbol", "id": item["id"], "key": item["symbol_key"], "family_key": item["family_key"],
                     "length_mm": item["length_mm"], "width_mm": item["width_mm"],
@@ -529,14 +563,14 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
                     "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
                     "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
                     "hatch_off": fills_off[0], "fill_off": fills_off[1],
-                    "color": item.get("color") or st.get("symbol") or "#000000"})
+                    "color": paint, "flat": bool(forced)})
     elif kind == "line":
         out.append({"t": "line", "dash": dash_array(item["line_style"], box["left"] + box["right"]),
                     "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
-                    "y1": round(mid, 3), "y2": round(mid, 3), "color": st["symbol"], "style": item["line_style"],
+                    "y1": round(mid, 3), "y2": round(mid, 3), "color": paint, "style": item["line_style"],
                     "layer": block.get("layer") or "", "item": item["id"]})
     elif kind == "note":
-        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": st["symbol"],
+        out.append({"t": "half", "cx": round(sx, 3), "cy": round(mid, 3), "r": round(w / 2, 3), "color": paint,
                     "item": item["id"]})
     # The first line of every entry shares one baseline. Further lines go downward.
     base = mid - (reserve - 1) * lh / 2 + its * 0.32

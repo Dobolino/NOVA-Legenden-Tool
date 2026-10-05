@@ -238,12 +238,48 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     return part
 
 
+def _mark_focus(ents, to_mm: float, x0: float, y0: float, x1: float, y1: float) -> list[float]:
+    """Where the bulky part sits inside the row graphic, as fractions of the box.
+
+    A long stroke next to a small symbol must not pull the symbol into a corner:
+    the symbol (circle, insert, closed shape) is the part we centre in the tile."""
+    from ezdxf import bbox
+
+    cx = cy = weight = 0.0
+    pieces = []
+    for e, box in ents:
+        if e.dxftype() == "INSERT":
+            try:
+                for ve in e.virtual_entities():
+                    b = bbox.extents([ve], fast=True)
+                    if b.has_data:
+                        pieces.append(b)
+                continue
+            except Exception:  # noqa: BLE001 - the insert itself still counts
+                pass
+        if box.has_data:
+            pieces.append(box)
+    for b in pieces:
+        ww = (b.extmax.x - b.extmin.x) * to_mm
+        hh = (b.extmax.y - b.extmin.y) * to_mm
+        if hh <= 0.35 and ww > hh * 4:
+            continue
+        area = max(ww * hh, 0.05)
+        cx += (b.extmin.x + b.extmax.x) / 2 * area
+        cy += (b.extmin.y + b.extmax.y) / 2 * area
+        weight += area
+    if weight <= 0 or x1 <= x0 or y1 <= y0:
+        return [0.5, 0.5]
+    return [round(min(1.0, max(0.0, (cx / weight - x0) / (x1 - x0))), 4),
+            round(min(1.0, max(0.0, (cy / weight - y0) / (y1 - y0))), 4)]
+
+
 def _is_line_graphic(row: dict) -> bool:
     """A flat stroke (a cable, a colour bar). It stays one readable sample, not a scaled symbol."""
     gw, gh = float(row.get("gw") or 0.0), float(row.get("gh") or 0.0)
     if gw <= 0:
         return False
-    return gh <= max(0.9, gw * 0.18)
+    return gh <= 0.35
 
 
 def _row_factor(value, lo: float, hi: float) -> float:
@@ -377,6 +413,7 @@ def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
             y1 = max(b.extmax.y for _e, b in r["ents"])
             item.update({"gx": round((x0 - text_x) * to_mm, 3), "gw": round((x1 - x0) * to_mm, 3),
                          "gh": round((y1 - y0) * to_mm, 3),
+                         "focus": _mark_focus(r["ents"], to_mm, x0, y0, x1, y1),
                          "src": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)],
                          "handles": [e.dxf.handle for e, _b in r["ents"]]})
             item["vb"], item["svg"] = _row_svg(doc, [e for e, _b in r["ents"]], (x0, y0, x1, y1), f"g{i}")

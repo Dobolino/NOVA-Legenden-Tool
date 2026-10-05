@@ -22,6 +22,7 @@ export interface LegendItem {
   hidden: boolean; // the general part already shows it: hidden, not deleted
   keep: boolean; // shown again on purpose, not hidden a second time
   color?: string; // plan colour of this entry, when it differs from the section
+  symbol_color?: string; // chosen colour of this one entry; the whole symbol is drawn in it
 }
 
 export interface SectionStyle {
@@ -505,6 +506,6 @@ export function describe(familyKey: string | null, fallback: string, description
   return (familyKey && (descriptions[familyKey] || stencilNames[familyKey])) || fallback;
 }
 
-export function symbolRequestKey(it: { symbol_key: string | null; length_mm: number | null; width_mm: number | null }): string {
-  return `${it.symbol_key}|${it.length_mm ?? ""}|${it.width_mm ?? ""}`;
+export function symbolRequestKey(it: { symbol_key: string | null; length_mm: number | null; width_mm: number | null; flat?: boolean }): string {
+  return `${it.symbol_key}|${it.length_mm ?? ""}|${it.width_mm ?? ""}${it.flat ? "|flat" : ""}`;
 }

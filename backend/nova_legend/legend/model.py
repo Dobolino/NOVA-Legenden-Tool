@@ -268,6 +268,10 @@ def _item(it, uid) -> dict | None:
     own = it.get("color") or ""
     if isinstance(own, str) and _HEX.match(own) and own.lower() != "#ffffff":
         item["color"] = own.lower()
+    # a colour chosen for this entry alone: the whole symbol is drawn in it
+    forced = it.get("symbol_color") or ""
+    if isinstance(forced, str) and _HEX.match(forced) and forced.lower() != "#ffffff":
+        item["symbol_color"] = forced.lower()
     if kind == "symbol" and not item["symbol_key"]:
         return None
     return item

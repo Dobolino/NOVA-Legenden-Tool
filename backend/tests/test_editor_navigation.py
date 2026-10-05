@@ -109,6 +109,23 @@ def test_the_wide_view_button_sits_on_the_settings_row(editor):
     assert side_by_side
 
 
+def test_a_symbol_can_take_the_section_colour(editor):
+    page, _field, client, ids = editor
+    item = page.locator("button.outline-item").filter(has_not_text="T Titel").first
+    playwright.expect(item).to_be_visible()
+    item.click()
+    take = page.get_by_role("button", name="Farbe von Abschnitt übernehmen")
+    playwright.expect(take).to_be_visible()
+    playwright.expect(page.get_by_label("Symbolfarbe")).to_be_visible()
+    with page.expect_response(LEGEND_URL) as saved:
+        take.click()
+    assert saved.value.ok
+    doc = client.get(f"/api/projects/{ids[0]}/legend").json()["legend"]["doc"]
+    picked = [(it["symbol_color"], b["style"]["symbol"])
+              for b in doc["blocks"] for it in b["items"] if it.get("symbol_color")]
+    assert len(picked) == 1 and picked[0][0] == picked[0][1]
+
+
 def test_the_grid_starts_on_and_stays_off_once_switched(editor):
     page, _field, _client, _ids = editor
     grid = page.get_by_role("button", name="Raster anzeigen")

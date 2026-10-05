@@ -68,6 +68,7 @@ class SymbolRequest(BaseModel):
     family_key: str | None = None
     length_mm: float | None = None
     width_mm: float | None = None
+    flat: bool = False          # one colour: the page colour, own hues included
 
 
 class SymbolsIn(BaseModel):
@@ -411,7 +412,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             show_fill = own and not (body.fill_off or body.strip_fill)
             show_soft = own and not (body.hatch_off or body.strip_fill)
             svg = render_svg(geo, None, show_points=False, show_fill=show_fill,
-                             own_colors=True, show_soft=show_soft)
+                             own_colors=True, show_soft=show_soft, force_color=bool(req.flat))
             m = _VIEWBOX.search(svg)
             out.append({**base, "svg": svg, "box": [float(v) for v in m.groups()] if m else [0, 0, 5, 5]})
         return {"items": out}

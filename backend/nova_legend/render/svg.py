@@ -171,7 +171,8 @@ def is_mixed(geo: SymbolGeometry) -> bool:
 
 def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool = True,
                stroke_mm: float = 0.18, title: str | None = None, show_fill: bool = True,
-               own_colors: bool = False, show_soft: bool | None = None) -> str:
+               own_colors: bool = False, show_soft: bool | None = None,
+               force_color: bool = False) -> str:
     """``show_fill`` False hides the fills; with ``show_soft`` given, it decides on its
     own for hatches and light areas and ``show_fill`` only for solid fills."""
     soft_shown = show_fill if show_soft is None else show_soft
@@ -181,8 +182,10 @@ def render_svg(geo: SymbolGeometry, size_px: int | None = 96, show_points: bool 
     w, h = (x1 - x0) * MM, (y1 - y0) * MM
     # Large symbols (e.g. an 11 m PV array at 1:50) keep visible lines
     stroke_mm = max(stroke_mm, 0.012 * max(w, h))
-    mixed = is_mixed(geo)
-    monochrome = not any(_hue(p.color) for p in geo.primitives)
+    # force_color: one colour for the whole symbol (the section colour, or a chosen one).
+    # White stays a mask. Otherwise a real hue in the drawing stays.
+    mixed = False if force_color else is_mixed(geo)
+    monochrome = force_color or not any(_hue(p.color) for p in geo.primitives)
     parts: list[str] = []
     for p in geo.primitives:
         if p.filled and not (soft_shown if is_soft(p, mixed) else show_fill):

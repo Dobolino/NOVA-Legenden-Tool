@@ -782,6 +782,52 @@ def test_general_rows_share_the_legend_text_size_and_tile():
     assert title["y"] < gen["y"]
 
 
+def test_a_wide_general_symbol_fills_the_tile_and_the_stroke_is_cut():
+    from nova_legend.legend.layout import TILE_FILL, symbol_tile
+
+    general = {"rows": [
+        {"id": "g0", "text": "Steigleitung", "gw": 16, "gh": 4, "focus": [0.15, 0.5]},
+    ], "symbol_area": 12}
+    doc = normalize({"style": {"text_size": 2.5}, "blocks": []})
+    g = next(p for p in layout(doc, {}, general)["prims"] if p["t"] == "grow")
+    tile = symbol_tile(doc["style"])
+    assert g["h"] == pytest.approx(tile * TILE_FILL, abs=0.05)
+    assert g["full_w"] > g["w"] + 1 and g["w"] <= tile * 0.92 + 0.05
+    assert 0 <= g["fx"] < 0.5
+
+
+def test_a_chosen_symbol_colour_replaces_the_drawing_colour():
+    doc = normalize({"blocks": [{"id": "A", "title": "Dosen", "style": section_style("#1c7ed6"), "items": [
+        {"id": "s0", "kind": "symbol", "symbol_key": "k", "text": "Dose", "color": "#ff0000"},
+        {"id": "s1", "kind": "symbol", "symbol_key": "k", "text": "Dose Decke", "color": "#ff0000",
+         "symbol_color": "#1c7ed6"},
+        {"id": "n", "kind": "line", "text": "Leitung", "symbol_color": "#00aa00"},
+    ]}]})
+    lay = layout(doc, {"s0": (4, 4, False), "s1": (4, 4, False)})
+    auto = next(p for p in lay["prims"] if p["t"] == "symbol" and p["id"] == "s0")
+    forced = next(p for p in lay["prims"] if p["t"] == "symbol" and p["id"] == "s1")
+    line = next(p for p in lay["prims"] if p["t"] == "line")
+    assert auto["color"] == "#ff0000" and not auto["flat"]
+    assert forced["color"] == "#1c7ed6" and forced["flat"]
+    assert line["color"] == "#00aa00"
+    assert "symbol_color" not in normalize({"blocks": [{"id": "A", "items": [
+        {"id": "s", "kind": "symbol", "symbol_key": "k", "symbol_color": "#ffffff"}]}]})["blocks"][0]["items"][0]
+
+
+def test_a_forced_colour_paints_a_red_symbol_in_the_page_colour():
+    from nova_legend.parser.geometry import Primitive, SymbolGeometry
+    from nova_legend.render.svg import render_svg
+
+    square = {"points": [(-0.002, -0.002), (0.002, -0.002), (0.002, 0.002), (-0.002, 0.002)],
+              "closed": True, "segments": []}
+    geo = SymbolGeometry(primitives=[
+        Primitive("line", "X", False, {"start": (0, 0), "end": (0.004, 0)}, color="#000000"),
+        Primitive("polygon", "X", True, square, color="#ff0000"),
+    ])
+    svg = render_svg(geo, None, show_points=False, own_colors=True, force_color=True)
+    assert "currentColor" in svg and "#ff0000" not in svg and "#000000" not in svg
+
+
 def test_a_black_or_grey_symbol_takes_the_section_colour_a_hue_stays():
     from nova_legend.parser.geometry import Primitive, SymbolGeometry
     from nova_legend.render.svg import render_svg
