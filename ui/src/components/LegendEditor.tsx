@@ -845,7 +845,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       </div>
       {windowed && (
         <div className="legend-window-bar">
-          <span>Grossansicht. Esc kehrt zurück.</span>
+          <span><span className="le-badge small" aria-hidden>✎</span> <strong>Legendeneditor</strong> · {info?.legend?.name || "Legende"} · Grossansicht, Esc kehrt zurück.</span>
           <button className="btn small primary" onClick={() => setWindowed(false)}>✕ Grossansicht beenden</button>
         </div>
       )}

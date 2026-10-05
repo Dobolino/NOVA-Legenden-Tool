@@ -784,3 +784,14 @@ body.pane-resizing { cursor: col-resize; user-select: none; }
 .stencil-tab .outline-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .outline-item.disabled { cursor: default; opacity: 0.6; }
 img.sym-icon { object-fit: contain; }
+
+/* the legend editor is its own work area: clearly marked */
+.legend-workspace { display: flex; flex-direction: column; gap: 10px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-top: 4px solid var(--accent); border-radius: var(--radius-md); padding: 12px 14px 14px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel)); }
+.legend-workspace-head { display: flex; align-items: center; gap: 12px; }
+.legend-workspace-head h2 { margin: 0; font-size: 18px; line-height: 1.2; }
+.le-title { display: flex; flex-direction: column; min-width: 0; }
+.le-badge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; font-size: 18px; flex: none; }
+.le-badge.small { width: 20px; height: 20px; border-radius: 6px; font-size: 12px; vertical-align: middle; }
+.legend-editor.windowed { border-top: 4px solid var(--accent); }

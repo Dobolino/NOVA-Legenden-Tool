@@ -738,14 +738,24 @@ export default function ProjectView({ projectId, projects, categories, notify, o
             )}
 
             {tab === "legend" && (
-              <>
+              <section className="legend-workspace" aria-label="Legendeneditor">
+                <header className="legend-workspace-head">
+                  <span className="le-badge" aria-hidden>✎</span>
+                  <div className="le-title">
+                    <h2>Legendeneditor</h2>
+                    <span className="hint">
+                      {data.meta.project_number ? `${data.meta.project_number} · ` : ""}{data.meta.name}
+                      {" "}· Änderungen speichern sich selbst
+                    </span>
+                  </div>
+                </header>
                 <LegendTabs key={projectId} projectId={projectId} categories={data.category_colors} active={legendId}
                   onSelect={(id) => setLegendSel({ project: projectId, id })} notify={notify} />
                 {legendId !== null && (
                   <LegendEditor key={`${projectId}:${legendId}`} projectId={projectId} legendId={legendId || null}
                     data={data} categories={categories} notify={notify} />
                 )}
-              </>
+              </section>
             )}
 
             {tab === "changes" && (
