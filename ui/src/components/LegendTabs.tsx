@@ -37,6 +37,22 @@ export default function LegendTabs({ projectId, categories, active, onSelect, no
 
   const current = items.find((l) => l.id === active) ?? null;
 
+  async function saveAs() {
+    if (!current) return;
+    const name = window.prompt("Name der gespeicherten Legende", current.name)?.trim();
+    if (!name) return;
+    await navigate(async () => {
+      try {
+        const r = await api.newLegend(projectId, { name, source: "copy", copy_of: current.id });
+        setItems(r.items);
+        onSelect(r.legend.id!);
+        notify(`Legende «${r.legend.name}» gespeichert`);
+      } catch (e) {
+        notify((e as Error).message, true);
+      }
+    });
+  }
+
   async function rename() {
     if (!current) return;
     const name = window.prompt("Neuer Name der Legende", current.name)?.trim();
@@ -65,20 +81,29 @@ export default function LegendTabs({ projectId, categories, active, onSelect, no
   }
 
   return (
-    <div className="legend-tabs" role="tablist" aria-label="Legenden des Projekts">
-      {items.map((l) => (
-        <button
-          key={l.id}
-          role="tab"
-          aria-selected={l.id === active}
-          className={`legend-tab${l.id === active ? " active" : ""}`}
-          title={`${l.entries} Einträge · zuletzt ${l.updated_at ? l.updated_at.slice(0, 16).replace("T", " ") : "nie"}`}
-          onClick={() => l.id !== active && navigate(() => onSelect(l.id))}
+    <div className="legend-tabs">
+      <label className="filter-label">
+        Legende
+        <select
+          className="select"
+          value={active ?? ""}
+          aria-label="Legende wählen"
+          title="Gespeicherte Legenden dieses Projekts. Auf dem Server liegt jede in einem eigenen Ordner unter Legenden."
+          onChange={(e) => {
+            const id = Number(e.target.value);
+            if (id !== active) navigate(() => onSelect(id));
+          }}
         >
-          {l.name}
-        </button>
-      ))}
-      <button className="btn small" onClick={() => setCreating(true)}>+ Neue Legende</button>
+          {items.map((l) => (
+            <option key={l.id} value={l.id}>{l.name}</option>
+          ))}
+        </select>
+      </label>
+      <button className="btn small" disabled={!current} onClick={saveAs}
+        title="Die aktuelle Legende unter einem neuen Namen speichern">
+        Speichern unter…
+      </button>
+      <button className="btn small" onClick={() => setCreating(true)}>+ Neu</button>
       {current && (
         <span className="legend-tabs-end">
           <button className="btn small" onClick={rename}>Umbenennen</button>

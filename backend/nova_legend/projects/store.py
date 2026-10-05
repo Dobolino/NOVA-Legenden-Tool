@@ -2,6 +2,7 @@
 
     <projects folder>/<Projektname>/projekt.nlproj   SQLite file with all data
     <projects folder>/<Projektname>/Plaene/          copies of the imported plan files
+    <projects folder>/<Projektname>/Legenden/        one folder per named legend
     <projects folder>/_Geloescht/                    deleted projects (moved, not destroyed)
 
 The project file stores plans (floors), each import as a version, the
@@ -29,6 +30,8 @@ from ..config import current_user
 
 PROJECT_FILE = "projekt.nlproj"
 PLANS_DIR = "Plaene"
+LEGENDS_DIR = "Legenden"
+LEGEND_FILE = "legende.json"
 TRASH_DIR = "_Geloescht"
 SCHEMA_VERSION = 1
 log = logging.getLogger(__name__)
@@ -71,6 +74,11 @@ def safe_folder_name(name: str) -> str:
     """Folder name for a project: no characters Windows forbids."""
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip().rstrip(".")
     return cleaned or "Projekt"
+
+
+def legend_dir_name(legend_id: int, name: str) -> str:
+    """Folder of one legend: the number keeps the order and survives a rename."""
+    return safe_folder_name(f"{int(legend_id):02d} {(name or 'Legende').strip()}")
 
 
 def project_folder_name(name: str) -> str:
@@ -426,7 +434,9 @@ class Project:
             entries = sum(1 for b in doc.get("blocks") or [] for it in b.get("items") or []
                           if it.get("kind") != "gap")
             out.append({"id": r["id"], "name": r["name"], "updated_at": r["updated_at"],
-                        "updated_by": r["updated_by"], "entries": entries})
+                        "updated_by": r["updated_by"], "entries": entries,
+                        "folder": f"{LEGENDS_DIR}/{legend_dir_name(r['id'], r['name'])}"})
+        self.sync_legend_folders()
         return out
 
     def first_legend_id(self) -> int | None:
@@ -464,6 +474,7 @@ class Project:
                 con.execute("UPDATE legends SET doc=?, updated_at=?, updated_by=? WHERE id=?",
                             (text, _now(), current_user(), legend_id))
             self._mirror_first(con)
+        self.sync_legend_folders()
         return self.legend(legend_id) or {}
 
     def add_legend(self, name: str, doc: dict) -> dict:
@@ -475,6 +486,7 @@ class Project:
                                _now(), current_user()))
             new_id = int(cur.lastrowid)
             self._mirror_first(con)
+        self.sync_legend_folders()
         return self.legend(new_id) or {}
 
     def rename_legend(self, legend_id: int, name: str) -> None:
@@ -483,6 +495,7 @@ class Project:
             if not con.execute("UPDATE legends SET name=? WHERE id=?",
                                (name.strip()[:80] or "Legende", legend_id)).rowcount:
                 raise KeyError(legend_id)
+        self.sync_legend_folders()
 
     def delete_legend(self, legend_id: int) -> None:
         """Remove one legend. The last legend of a project stays."""
@@ -493,6 +506,27 @@ class Project:
             if not con.execute("DELETE FROM legends WHERE id=?", (legend_id,)).rowcount:
                 raise KeyError(legend_id)
             self._mirror_first(con)
+        self.sync_legend_folders()
+
+    def sync_legend_folders(self) -> None:
+        """One folder per legend under Legenden/, next to Plaene. The database stays the record."""
+        root = self.folder / LEGENDS_DIR
+        root.mkdir(parents=True, exist_ok=True)
+        with self.tx() as con:
+            self._legends_ready(con)
+            rows = list(con.execute("SELECT * FROM legends ORDER BY sort, id"))
+        keep: set[str] = set()
+        for r in rows:
+            folder_name = legend_dir_name(r["id"], r["name"])
+            keep.add(folder_name)
+            dest = root / folder_name
+            dest.mkdir(parents=True, exist_ok=True)
+            payload = {"id": r["id"], "name": r["name"], "updated_at": r["updated_at"],
+                       "updated_by": r["updated_by"], "doc": json.loads(r["doc"])}
+            (dest / LEGEND_FILE).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        for child in list(root.iterdir()):
+            if child.is_dir() and (child / LEGEND_FILE).is_file() and child.name not in keep:
+                shutil.rmtree(child)
 
     @staticmethod
     def _mirror_first(con: sqlite3.Connection) -> None:

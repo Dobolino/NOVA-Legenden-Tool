@@ -206,15 +206,15 @@ def test_close_warning_only_appears_while_the_document_is_unsaved(editor):
 def test_several_legends_are_edited_and_saved_separately(editor):
     page, field, client, (a, b) = editor
     field.fill("Hauptlegende")
-    page.get_by_role("button", name="+ Neue Legende", exact=True).click()
+    page.get_by_role("button", name="+ Neu", exact=True).click()
     page.get_by_label("Name", exact=True).fill("Brandmelder")
     page.get_by_role("radio", name="Leer", exact=True).check()
     page.get_by_role("button", name="Anlegen", exact=True).click()
-    playwright.expect(page.get_by_role("tab", name="Brandmelder", exact=True)).to_have_attribute("aria-selected", "true")
+    playwright.expect(page.get_by_label("Legende wählen")).to_have_value(/.+/)
     page.get_by_role("button", name="T Titel", exact=True).click()
     playwright.expect(field).to_have_value("Brandmelder")
     field.fill("Brandmelder EG")
-    page.get_by_role("tab", name="Legende", exact=True).click()
+    page.get_by_label("Legende wählen").select_option(label="Legende")
     page.get_by_role("button", name="T Titel", exact=True).click()
     playwright.expect(field).to_have_value("Hauptlegende")
     items = client.get(f"/api/projects/{a}/legends").json()["items"]

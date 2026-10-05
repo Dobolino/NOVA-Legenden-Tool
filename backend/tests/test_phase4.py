@@ -763,7 +763,9 @@ def test_dxf_text_height_is_the_capital_height_of_the_editor_font():
 
 
 def test_several_named_legends_per_project(env, monkeypatch):  # noqa: F811
+    import json
     import sqlite3
+    from pathlib import Path
 
     client, tmp = env
     pid = _project(client, tmp)
@@ -799,8 +801,15 @@ def test_several_named_legends_per_project(env, monkeypatch):  # noqa: F811
     client.put(f"/api/projects/{pid}/legends/{copy['id']}", json={"name": "BMA Variante"})
     items = client.get(f"/api/projects/{pid}/legends").json()["items"]
     assert [l["name"] for l in items] == ["Legende", "Brandmelder", "BMA Variante"]
+    root = Path(folder) / "Legenden"
+    names = sorted(p.name for p in root.iterdir() if p.is_dir())
+    assert names == ["01 Legende", "02 Brandmelder", "03 BMA Variante"]
+    saved = json.loads((root / "02 Brandmelder" / "legende.json").read_text(encoding="utf-8"))
+    assert saved["name"] == "Brandmelder" and saved["doc"]["title"]["text"] == "BMA geändert"
     for item in items[1:]:
         assert client.delete(f"/api/projects/{pid}/legends/{item['id']}").status_code == 200
+    left = sorted(p.name for p in root.iterdir() if p.is_dir())
+    assert left == ["01 Legende"]
     assert client.delete(f"/api/projects/{pid}/legends/{items[0]['id']}").status_code == 400
     assert client.get(f"/api/projects/{pid}/legend", params={"legend": 999}).status_code == 404
 
