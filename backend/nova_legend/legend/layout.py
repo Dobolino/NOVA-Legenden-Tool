@@ -205,6 +205,68 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
     return box(0.0, 0.0, 0.0, 0.0)
 
 
+def _general_rows(general: dict, prims: list, x0: float, top: float, inner: float, cols: int,
+                  style: dict) -> float:
+    """Place the rows of the general part column by column; return the bottom edge.
+    The graphics keep their position relative to the text column of the drawing and
+    shrink only when the symbol area would take more than 45 % of a column."""
+    ts = style["text_size"]
+    lh = ts * LINE_FACTOR
+    colw = inner / cols
+    area = max(float(general.get("symbol_area") or 0.0), 1.0)
+    k = min(1.0, colw * 0.45 / area)
+    text_dx = area * k + 1.5                 # text column right of the symbol area
+    rows = []
+    for r in general["rows"]:
+        size = ts * (1.15 if r.get("heading") else 1.0)
+        lines = wrap(r["text"], size, colw - (0 if r.get("heading") else text_dx) - 0.8, bool(r.get("heading")))
+        text_h = max(1, len(lines)) * lh + TEXT_CLEARANCE
+        h = max(text_h, (r.get("gh") or 0.0) * k + 1.0)
+        if r.get("heading"):
+            h += 2.0                          # room above a heading
+        rows.append((r, lines, size, h))
+    total = sum(h for *_x, h in rows)
+    target = total / cols
+    columns: list[list] = [[]]
+    used = 0.0
+    for i, item in enumerate(rows):
+        nxt = rows[i + 1] if i + 1 < len(rows) else None
+        h = item[3]
+        # a new column when this one is full; a heading never stays alone at the bottom
+        full = used + h > target + 0.01 and columns[-1] and len(columns) < cols
+        heading_last = item[0].get("heading") and nxt and used + h + nxt[3] > target + 0.01 and len(columns) < cols
+        if (full or heading_last) and columns[-1]:
+            columns.append([])
+            used = 0.0
+        columns[-1].append(item)
+        used += h
+    bottom = top
+    for c, chunk in enumerate(columns):
+        cx = x0 + c * colw
+        cy = top
+        for r, lines, size, h in chunk:
+            mid = cy + h / 2
+            if r.get("heading"):
+                prims.append({"t": "text", "x": round(cx, 3), "y": round(mid + 1.0 + size * 0.32, 3), "size": round(size, 3),
+                              "text": lines[0] if lines else r["text"], "bold": True, "color": "#000000"})
+            else:
+                if r.get("gw") is not None:
+                    gx = cx + area * k + r["gx"] * k
+                    prims.append({"t": "grow", "row": r["id"], "x": round(gx, 3), "y": round(mid - r["gh"] * k / 2, 3),
+                                  "w": round(r["gw"] * k, 3), "h": round(r["gh"] * k, 3), "k": round(k, 5)})
+                base = mid - (len(lines) - 1) * lh / 2 + size * 0.32
+                for j, line in enumerate(lines):
+                    prims.append({"t": "text", "x": round(cx + text_dx, 3), "y": round(base + j * lh, 3),
+                                  "size": round(size, 3), "text": line, "bold": False, "color": "#000000"})
+            cy += h
+        bottom = max(bottom, cy)
+    prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": bottom - top, "fill": None, "stroke": None,
+                  "role": "general", "fit": round(k, 5), "rows": True})
+    prims.append({"t": "hit", "kind": "general", "block": None, "id": "general",
+                  "x": x0, "y": top, "w": inner, "h": bottom - top})
+    return bottom
+
+
 def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
            only_block: str | None = None, include_general: bool = True) -> dict:
     """Place everything. ``sizes`` maps an item id to (x0, y0, x1, y1, engine) of its
@@ -221,7 +283,10 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     prims: list[dict] = []
     y = margin
 
-    if general and include_general and general.get("h"):
+    if general and include_general and general.get("rows"):
+        # a general part made of rows flows into the columns of the legend (2 or 3)
+        y = _general_rows(general, prims, margin, y, inner, cols, style) + row
+    elif general and include_general and general.get("h"):
         # the general part shrinks with a narrower sheet, keeping its proportions
         fit = min(1.0, inner / general["w"]) if general.get("w") else 1.0
         gw, gh = general["w"] * fit, general["h"] * fit

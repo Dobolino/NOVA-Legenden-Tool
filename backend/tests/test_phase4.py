@@ -955,3 +955,64 @@ def test_up_ap_hint_fills_the_tile_like_a_symbol_scales_and_has_a_company_text(e
     client.put("/api/descriptions", json={"family_key": "hinweis:up-ap", "text": "UP voll, AP halb gefüllt"})
     row = next(r for r in client.get("/api/descriptions").json()["items"] if r["family_key"] == "hinweis:up-ap")
     assert row["known"] and row["title"].startswith("Hinweis")
+
+
+def _rows_dxf(path):
+    """A general part like the edeco DWG: symbols left, texts in one column, a heading."""
+    import ezdxf as _ezdxf
+    d = _ezdxf.new("R2013")
+    d.header["$INSUNITS"] = 4
+    blk = d.blocks.new("Steigleitung_ nach oben_A09TKTBGG3")
+    blk.add_line((0, 0), (4, 0))
+    blk.add_circle((0, 0), 0.4)
+    msp = d.modelspace()
+    texts = ["Leitung von/nach OBEN", "UP-Abzweigdose Decke / Wand", "Verteilung", "Lichtinstallation"]
+    for i, t in enumerate(texts):
+        y = 100 - i * 4.5 - (4 if i == 3 else 0)
+        msp.add_text(t, height=2).set_placement((126.8, y))
+        if i == 0:
+            msp.add_blockref("Steigleitung_ nach oben_A09TKTBGG3", (112, y + 0.7))
+        elif i == 3:
+            msp.add_lwpolyline([(112, y + 0.7), (121, y + 0.7)])
+        else:
+            msp.add_lwpolyline([(113, y), (116, y), (116, y + 2), (113, y + 2)], close=True)
+    msp.add_text("Farbcodes", height=2).set_placement((115.1, 100 - 3 * 4.5 + 0.6))
+    d.saveas(path)
+    return path
+
+
+def test_general_part_rows_flow_into_two_or_three_columns(tmp_path):
+    from pathlib import Path as _P
+    from nova_legend.legend import general as gp
+    from nova_legend.legend.export import build_dxf
+
+    part = gp._from_dxf("x", _P(_rows_dxf(tmp_path / "g.dxf")), 190)
+    assert [r["text"] for r in part.rows] == ["Leitung von/nach OBEN", "UP-Abzweigdose Decke / Wand", "Verteilung",
+                                              "Farbcodes", "Lichtinstallation"]
+    assert [r["heading"] for r in part.rows] == [False, False, False, True, False]
+    assert "steigleitung nach oben" in part.symbol_names
+    assert part.rows[0].get("svg") and part.rows[0]["gw"] > 0
+    xs = {}
+    for cols in (2, 3):
+        doc = normalize({"style": {"columns": cols}, "blocks": [block("A", 1)]})
+        lay = layout(doc, {}, part.info())
+        grows = [p for p in lay["prims"] if p["t"] == "grow"]
+        assert len(grows) == 4                                 # the heading has no graphic
+        xs[cols] = sorted({round(p["x"]) for p in grows})
+        dxf = build_dxf(lay, part, lambda p: None)
+        inserts = [e for e in dxf.modelspace().query("INSERT") if e.dxf.name.startswith("Allgemeinteil_")]
+        assert len(inserts) == 4
+        texts = {e.dxf.text for e in dxf.modelspace().query("TEXT")}
+        assert "Leitung von/nach OBEN" in texts and "Farbcodes" in texts
+    assert len(xs[3]) > len(xs[2]) or xs[3] != xs[2]          # the rows move with the column count
+
+
+def test_general_part_symbols_hide_their_families_in_the_sections(tmp_path):
+    from pathlib import Path as _P
+    from nova_legend.api.legend import covered_families
+    from nova_legend.legend import general as gp
+
+    part = gp._from_dxf("x", _P(_rows_dxf(tmp_path / "g.dxf")), 190)
+    rows = [{"family_key": "steigleitung, nach oben", "title": "Steigleitung, nach oben"},
+            {"family_key": "schalter", "title": "Schalter"}]
+    assert covered_families(part, rows, {}) == {"steigleitung, nach oben"}

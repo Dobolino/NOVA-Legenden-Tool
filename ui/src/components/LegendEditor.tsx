@@ -1170,6 +1170,7 @@ function Prim({
   switch (p.t) {
     case "rect":
       if (p.role === "general") {
+        if (p.rows) return null;                 // drawn row by row (prims "grow")
         if (general?.kind === "dxf" && general.svg)
           return <image x={p.x} y={p.y} width={p.w} height={p.h} href={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(general.svg)}`} preserveAspectRatio="xMinYMin meet" />;
         if (general?.kind === "project")
@@ -1221,6 +1222,15 @@ function Prim({
           style={{ color, ["--sym-layer" as string]: tint(color, 0.45) }}
           dangerouslySetInnerHTML={{ __html: innerSvg(r.svg) }}
         />
+      );
+    }
+    case "grow": {
+      // one row graphic of the general part, as drawn in the server file
+      const r = general?.row_svgs?.[p.row];
+      if (!r) return null;
+      return (
+        <svg x={p.x} y={p.y} width={p.w} height={p.h} viewBox={r.vb} preserveAspectRatio="xMidYMid meet" overflow="visible"
+          pointerEvents="none" dangerouslySetInnerHTML={{ __html: r.svg }} />
       );
     }
     case "hit": {

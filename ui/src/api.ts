@@ -279,6 +279,10 @@ export interface GeneralInfo {
   error: string;
   w: number;
   h: number;
+  /** a DXF / DWG split into rows (graphic + text): they flow into the legend columns */
+  rows?: { id: string; text: string; heading: boolean; names: string[] }[];
+  /** drawing of every row graphic (preview), by row id */
+  row_svgs?: Record<string, { vb: string; svg: string }>;
 }
 
 export interface CompanyLegend {

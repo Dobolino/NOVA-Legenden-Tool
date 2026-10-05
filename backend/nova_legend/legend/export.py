@@ -134,7 +134,9 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
         if g:
             draw(_scaled(general.prims, g.get("fit", 1.0)), g["x"], g["y"])
-    if general and general.kind == "dxf":
+    if general and general.kind == "dxf" and general.rows:
+        _import_general_rows(doc, msp, general, [p for p in lay["prims"] if p["t"] == "grow"], Y)
+    elif general and general.kind == "dxf":
         g = next((p for p in lay["prims"] if p.get("role") == "general"), None)
         if g:
             _import_general(doc, msp, general, g["x"], Y(g["y"] + g["h"]), g.get("fit", 1.0))
@@ -168,6 +170,38 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, f
     sc = general.scale * fit
     msp.add_blockref("Allgemeinteil", (x - general.ext_min[0] * sc, y_bottom - general.ext_min[1] * sc),
                      dxfattribs={"xscale": sc, "yscale": sc, "layer": _layer(doc, FRAME_LAYER)})
+
+
+def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -> None:
+    """Every row graphic of the general part as its own block, placed where the layout
+    put it (the texts are drawn by the layout like all other texts)."""
+    import ezdxf
+    from ezdxf.addons import Importer
+
+    if not grows:
+        return
+    src = ezdxf.readfile(general.dxf_path)
+    rows = {r["id"]: r for r in general.rows}
+    imp = Importer(src, doc)
+    names: dict[str, str] = {}
+    for p in grows:
+        r = rows.get(p["row"])
+        if not r or r["id"] in names:
+            continue
+        name = f"Allgemeinteil_{r['id']}"
+        blk = doc.blocks.new(name)
+        ents = [src.entitydb[h] for h in r.get("handles", []) if h in src.entitydb]
+        imp.import_entities(ents, target_layout=blk)
+        names[r["id"]] = name
+    imp.finalize()
+    for p in grows:
+        r = rows.get(p["row"])
+        if not r or r["id"] not in names:
+            continue
+        s = general.to_mm * p["k"]
+        x0, y0 = r["src"][0], r["src"][1]
+        msp.add_blockref(names[r["id"]], (round(p["x"] - x0 * s, 4), round(Y(p["y"] + p["h"]) - y0 * s, 4)),
+                         dxfattribs={"xscale": s, "yscale": s, "layer": _layer(doc, FRAME_LAYER)})
 
 
 def _symbol_block(doc, cache: dict, prim: dict, geo) -> str:

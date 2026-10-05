@@ -114,6 +114,9 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
     if not gen or not gen.kind:
         return out
     fams, syms, texts = set(gen.family_keys), set(gen.symbol_keys), set(gen.texts)
+    # symbols of a DXF / DWG general part by their Nova name (block name), without UP/AP:
+    # «Steigleitung_ nach oben» shows the family «Steigleitung, nach oben»
+    names = {_no_mount(n) for n in getattr(gen, "symbol_names", []) or []}
     for row in rows:
         fk = row.get("family_key")
         if not fk:
@@ -122,7 +125,13 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
             out.add(fk)
         elif texts and any(norm_text(t) in texts for t in (descriptions.get(fk), row.get("title")) if t):
             out.add(fk)
+        elif names and any(_no_mount(norm_text(t)) in names for t in [row.get("title"), *(row.get("names") or [])] if t):
+            out.add(fk)
     return out
+
+
+def _no_mount(text: str) -> str:
+    return " ".join(w for w in text.split() if w not in ("up", "ap", "nup", "nap", "eb"))
 
 
 def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
@@ -529,7 +538,8 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
     def general_preview(project_id: str) -> dict:
         project(project_id)
         gen = load_general()
-        return {**gen.info(), "svg": gen.svg, "prims": gen.prims}
+        return {**gen.info(), "svg": gen.svg, "prims": gen.prims,
+                "row_svgs": {r["id"]: {"vb": r.get("vb", ""), "svg": r.get("svg", "")} for r in gen.rows if r.get("svg")}}
 
     @app.get("/api/projects/{project_id}/legend/export-name")
     def export_file_name(project_id: str, format: str = "dxf", block: str = "",  # noqa: A002
