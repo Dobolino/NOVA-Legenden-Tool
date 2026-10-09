@@ -303,7 +303,7 @@ def color_shares(row: dict, category_id: str | None, layer_categories: dict[str,
     """(plan colour, count) of this symbol, most used first.
 
     Layers that belong to another category are left out, so each section only
-    shows the colours of its own layers. Two colours become two legend rows.
+    shows the colours of its own layers. The legend uses the first (most used) one.
     """
     if not layer_colors:
         return []
@@ -347,8 +347,8 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
 
     A symbol that sits on plan layers of two or more categories is entered in
     each of those categories, so each copy keeps that category's layer colour.
-    A symbol that sits on two colours inside one category is shown twice, once
-    in each colour. The section bar uses the category colour, or, when that
+    A symbol that sits on two colours inside one category is shown once, in the
+    colour it has most often. The section bar uses the category colour, or, when that
     layer has none, the colour that occurs most often.
 
     ``covered`` holds the family keys the general part already shows; they are
@@ -397,8 +397,9 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
         has_ap = has_ap or any(m in ("AP", "NAP") for m in (row.get("mountings") or {}))
         for cid in targets:
             shares = color_shares(row, cid if by_category else None, layer_categories, layer_colors)
-            # one colour, or none: a single row. several colours: one row each
-            chosen = shares if len(shares) >= 2 else (shares[:1] or [("", 0)])
+            # one row per symbol, in the colour of the plan layer it sits on most often
+            # (a symbol on several colours used to get one row per colour: it looked doubled)
+            chosen = shares[:1] or [("", 0)]
             block = block_for(cid)
             key = cid if by_category else "_all"
             for color, count in chosen:

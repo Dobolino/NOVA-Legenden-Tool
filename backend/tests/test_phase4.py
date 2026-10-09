@@ -727,20 +727,20 @@ def test_linear_symbol_keeps_its_proportion():
     assert sym["w"] > sym["h"] * 2
 
 
-def test_proposal_shows_each_plan_colour_and_colours_a_grey_section():
+def test_proposal_shows_a_symbol_once_in_its_main_plan_colour_and_colours_a_grey_section():
     sample = row("dose", ["schalter"], total=6)
     sample["layers"] = {"E_Blau": 4, "E_Rot": 2}
     doc = propose([sample], CATS, True, {}, "L", colors={},
                   layer_colors={"E_Blau": "#0000ff", "E_Rot": "#ff0000"})
     block = next(b for b in doc["blocks"] if b["category_id"] == "schalter")
     items = [i for i in block["items"] if i["kind"] == "symbol"]
-    assert [i["color"] for i in items] == ["#0000ff", "#ff0000"]
+    assert [i["color"] for i in items] == ["#0000ff"]          # once, in the colour used most
     assert block["style"]["header"] == "#0000ff" and block["style"]["symbol"] == "#0000ff"
     kept = propose([sample], CATS, True, {}, "L", colors={"schalter": "#00aa00"},
                    layer_colors={"E_Blau": "#0000ff", "E_Rot": "#ff0000"})
     head = next(b for b in kept["blocks"] if b["category_id"] == "schalter")
     assert head["style"]["header"] == "#00aa00"
-    assert sorted(i["color"] for i in head["items"]) == ["#0000ff", "#ff0000"]
+    assert [i["color"] for i in head["items"]] == ["#0000ff"]
 
 
 def test_a_grey_section_takes_a_known_plan_colour():

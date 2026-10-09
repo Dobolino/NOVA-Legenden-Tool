@@ -45,6 +45,8 @@ export interface Category {
   sort: number;
   hidden: boolean;
   sheets: string[];
+  /** company colour, the same in every project ("" = colour of the plan layer) */
+  color?: string;
   family_count?: number;
   updated_by?: string;
   updated_at?: string;
@@ -648,6 +650,18 @@ export const api = {
     ),
   setDescription: (familyKey: string, text: string | null) =>
     request<{ ok: boolean; text: string | null }>("PUT", "/api/descriptions", { family_key: familyKey, text }),
+  setCategoryColor: (id: string, color: string) =>
+    request<{ items: Category[] }>("PUT", `/api/categories/${encodeURIComponent(id)}/color`, { color }),
+  checkCategories: () =>
+    request<{ items: { kind: string; text: string; ids: string[] }[] }>("GET", "/api/categories/check"),
+  mergeCategories: (source: string, target: string) =>
+    request<{ items: Category[] }>("POST", "/api/categories/merge", { source, target }),
+  familyCategories: (familyKey: string) =>
+    request<{ family_key: string; categories: string[]; source: string }>(
+      "GET", `/api/category-family?${qs({ family_key: familyKey })}`),
+  setFamilyCategories: (familyKey: string, categories: string[] | null) =>
+    request<{ family_key: string; categories: string[]; source: string }>(
+      "PUT", "/api/category-family", { family_key: familyKey, categories }),
   resetCategories: () => request<{ items: Category[] }>("POST", "/api/categories/reset"),
 };
 

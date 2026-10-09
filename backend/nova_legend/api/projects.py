@@ -133,6 +133,9 @@ def register(app: FastAPI, st) -> None:
         for cat in ev.categories:
             picked = pick_category_layer(cat.get("layer") or "", layers, usage.get(cat["id"], {}),
                                          chosen.get(cat["id"]) or None)
+            if cat.get("color"):
+                # company colour of the category: the same in every project
+                picked = {**picked, "color": cat["color"], "reason": "Firmenfarbe der Kategorie", "fixed": True}
             out.append({"id": cat["id"], "title": cat["title"], "parent": cat.get("parent"),
                         "legend_layer": cat.get("layer") or "", **picked,
                         **category_state(picked, layers, used.get(cat["id"], 0))})

@@ -1802,6 +1802,9 @@ function ItemProps({
           </p>
         </div>
       )}
+      {item.kind === "symbol" && item.family_key && (
+        <CompanyCategoryField familyKey={item.family_key} notify={notify} />
+      )}
       {item.kind === "symbol" && render?.engine && (
         <div className="form two">
           <label className="field">
@@ -2320,4 +2323,58 @@ function round(v: number): number {
 function formatStamp(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || "");
   return m ? `${m[3]}.${m[2]}. ${m[4]}:${m[5]}` : "";
+}
+
+/** Category of a symbol family for the whole company (as in the symbol library). */
+function CompanyCategoryField({ familyKey, notify }: { familyKey: string; notify: (text: string, error?: boolean) => void }) {
+  const [cats, setCats] = useState<Category[]>([]);
+  const [state, setState] = useState<{ categories: string[]; source: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([api.categories(), api.familyCategories(familyKey)])
+      .then(([c, f]) => {
+        if (!alive) return;
+        setCats(c.items);
+        setState(f);
+      })
+      .catch(() => alive && setState(null));
+    return () => {
+      alive = false;
+    };
+  }, [familyKey]);
+
+  if (!state) return null;
+  const manual = state.source === "manuell";
+  const byId = Object.fromEntries(cats.map((c) => [c.id, c]));
+  const value = manual ? state.categories[0] ?? "" : "";
+  const auto = state.categories.map((id) => byId[id]?.title ?? id).join(", ");
+
+  async function choose(id: string) {
+    setBusy(true);
+    try {
+      const r = await api.setFamilyCategories(familyKey, id ? [id] : null);
+      setState(r);
+      notify(id ? `Kategorie «${byId[id]?.title ?? id}» gespeichert (gilt für die ganze Firma)` : "Kategorie wieder automatisch");
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <label className="field">
+      <span>Kategorie firmenweit</span>
+      <select className="select" value={value} disabled={busy} onChange={(e) => choose(e.target.value)}
+        title="Ordnet dieses Symbol für die ganze Firma einer Kategorie zu, wie in der Symbolbibliothek">
+        <option value="">Automatisch{!manual && auto ? ` (${auto})` : ""}</option>
+        {cats.map((c) => (
+          <option key={c.id} value={c.id}>{c.parent ? `${byId[c.parent]?.title ?? ""} › ` : ""}{c.title}</option>
+        ))}
+      </select>
+      <p className="hint">Wirkt in allen Projekten beim nächsten Vorschlag. Diese Legende bleibt, bis du sie neu vorschlagen lässt.</p>
+    </label>
+  );
 }

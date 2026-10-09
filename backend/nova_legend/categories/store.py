@@ -72,6 +72,10 @@ LEGEND_DEFAULTS = {
 DEFAULTS_VERSION = 2
 
 CATEGORY_FIELDS = ("title", "parent", "layer", "columns", "spacing", "hidden", "sheets")
+# Company colour of a category: fixed for all projects, wins over the plan colour.
+# «Allgemein» is grey unless someone chooses otherwise ("" = take the plan colour).
+DEFAULT_CATEGORY_COLORS = {"allgemein": "#808080"}
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def normalize_sheets(values: list[str] | str) -> list[str]:
@@ -211,13 +215,105 @@ class CompanyStore:
     def categories(self) -> list[dict]:
         with self._tx() as con:
             rows = con.execute("SELECT * FROM categories ORDER BY sort, title").fetchall()
+        fixed = self.category_colors()
         out = []
         for r in rows:
             d = dict(r)
             d["sheets"] = json.loads(d["sheets"] or "[]")
             d["hidden"] = bool(d["hidden"])
+            d["color"] = fixed.get(d["id"], "")
             out.append(d)
         return out
+
+    # -- company colours of categories ------------------------------------------
+
+    def _stored_category_colors(self, con) -> dict:
+        row = con.execute("SELECT value FROM options WHERE key='category_colors'").fetchone()
+        try:
+            value = json.loads(row["value"]) if row else {}
+        except ValueError:
+            value = {}
+        return value if isinstance(value, dict) else {}
+
+    def category_colors(self) -> dict[str, str]:
+        """{category id: fixed colour} for all projects (empty entries left out)."""
+        with self._tx() as con:
+            stored = self._stored_category_colors(con)
+        merged = {**DEFAULT_CATEGORY_COLORS, **stored}
+        return {k: v.lower() for k, v in merged.items() if isinstance(v, str) and _HEX_COLOR.match(v)}
+
+    def set_category_color(self, cat_id: str, color: str | None) -> None:
+        """A fixed colour for a category; None or "" goes back to the plan colour."""
+        color = (color or "").strip()
+        if color and not _HEX_COLOR.match(color):
+            raise ValueError("Farbe als #rrggbb angeben")
+        with self._tx() as con:
+            stored = self._stored_category_colors(con)
+            stored[cat_id] = color.lower()          # "" also switches a default (grey) off
+            con.execute("INSERT OR REPLACE INTO options VALUES ('category_colors', ?)", (json.dumps(stored),))
+            self._log(con, "category.color", f"{cat_id} -> {color or 'Planfarbe'}")
+
+    # -- check and merge -----------------------------------------------------------
+
+    def check_categories(self) -> list[dict]:
+        """Hints for tidying the categories: same title, same legend layer, nothing in it."""
+        cats = self.categories()
+        assigned: set[str] = {c for cs in self.assignments().values() for c in cs}
+        parents = {c["parent"] for c in cats if c.get("parent")}
+        out: list[dict] = []
+        by_title: dict[str, list[dict]] = {}
+        by_layer: dict[str, list[dict]] = {}
+        for c in cats:
+            by_title.setdefault(re.sub(r"\W+", " ", c["title"].lower()).strip(), []).append(c)
+            if c.get("layer"):
+                by_layer.setdefault(c["layer"], []).append(c)
+        for group in by_title.values():
+            if len(group) > 1:
+                out.append({"kind": "title", "text": f"Gleicher Name: {group[0]['title']}",
+                            "ids": [c["id"] for c in group]})
+        for layer, group in by_layer.items():
+            if len(group) > 1:
+                out.append({"kind": "layer", "text": f"Gleiche Legendenebene {layer}: "
+                            + ", ".join(c["title"] for c in group), "ids": [c["id"] for c in group]})
+        for c in cats:
+            if not c["sheets"] and c["id"] not in assigned and c["id"] not in parents:
+                out.append({"kind": "empty", "text": f"Leer: {c['title']} (keine Katalogblätter, keine Zuordnung)",
+                            "ids": [c["id"]]})
+        return out
+
+    def merge_categories(self, source: str, target: str) -> dict:
+        """Put category ``source`` into ``target``: catalogue sheets, symbol assignments
+        and sub-categories move over, then ``source`` is removed."""
+        if source == target:
+            raise ValueError("Quelle und Ziel sind dieselbe Kategorie")
+        with self._tx() as con:
+            rows = {r["id"]: r for r in con.execute("SELECT * FROM categories WHERE id IN (?,?)", (source, target))}
+            if source not in rows or target not in rows:
+                raise KeyError(source if source not in rows else target)
+            sheets = json.loads(rows[target]["sheets"] or "[]")
+            for s in json.loads(rows[source]["sheets"] or "[]"):
+                if s not in sheets:
+                    sheets.append(s)
+            con.execute("UPDATE categories SET sheets=?, updated_by=?, updated_at=? WHERE id=?",
+                        (json.dumps(sheets), current_user(), _now(), target))
+            con.execute("UPDATE categories SET parent=? WHERE parent=?", (target, source))
+            con.execute("UPDATE categories SET parent=NULL WHERE id=? AND parent=?", (target, target))
+            for row in con.execute("SELECT family_key, categories FROM assignments").fetchall():
+                cats = json.loads(row["categories"])
+                if source in cats:
+                    merged = []
+                    for c in (target if c == source else c for c in cats):
+                        if c not in merged:
+                            merged.append(c)
+                    con.execute("UPDATE assignments SET categories=? WHERE family_key=?",
+                                (json.dumps(merged), row["family_key"]))
+            con.execute("DELETE FROM categories WHERE id=?", (source,))
+            stored = self._stored_category_colors(con)
+            if source in stored:
+                stored.pop(source)
+                con.execute("INSERT OR REPLACE INTO options VALUES ('category_colors', ?)", (json.dumps(stored),))
+            self._log(con, "category.merge", f"{source} -> {target}")
+        return next(c for c in self.categories() if c["id"] == target)
 
     def create_category(self, title: str, parent: str | None = None, layer: str = "") -> dict:
         base = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "kategorie"

@@ -158,3 +158,30 @@ def test_new_plan_version_without_floor_name_as_sent_by_the_ui(env):
     assert res.status_code == 200, res.text
     assert res.json()["plans"][0]["versions"] == 2
     assert import_dxf(client, pid, nova_like_dxf(tmp / "x.dxf"), name="").status_code == 200  # name from file
+
+
+def test_category_colour_check_merge_and_company_assignment(env):
+    client = env[0]
+    cats = client.get("/api/categories").json()["items"]
+    general = next(c for c in cats if c["id"] == "allgemein")
+    assert general["color"] == "#808080"           # «Allgemein» is grey by default
+    first = next(c for c in cats if c["id"] != "allgemein")
+    r = client.put(f"/api/categories/{first['id']}/color", json={"color": "#12AB34"})
+    assert next(c for c in r.json()["items"] if c["id"] == first["id"])["color"] == "#12ab34"
+    assert client.put(f"/api/categories/{first['id']}/color", json={"color": "rot"}).status_code == 400
+    r = client.put("/api/categories/allgemein/color", json={"color": ""})
+    assert next(c for c in r.json()["items"] if c["id"] == "allgemein")["color"] == ""
+
+    a = client.post("/api/categories", json={"title": "Doppelt"}).json()
+    b = client.post("/api/categories", json={"title": "doppelt"}).json()
+    client.put(f"/api/categories/{a['id']}", json={"sheets": ["777"]})
+    sub = client.post("/api/categories", json={"title": "Unter", "parent": b["id"]}).json()
+    client.put("/api/category-family", json={"family_key": "fam-x", "categories": [b["id"], a["id"]]})
+    hints = client.get("/api/categories/check").json()["items"]
+    assert any(h["kind"] == "title" and set(h["ids"]) == {a["id"], b["id"]} for h in hints)
+
+    r = client.post("/api/categories/merge", json={"source": b["id"], "target": a["id"]})
+    items = {c["id"]: c for c in r.json()["items"]}
+    assert b["id"] not in items and items[sub["id"]]["parent"] == a["id"]
+    assert client.get("/api/category-family", params={"family_key": "fam-x"}).json()["categories"] == [a["id"]]
+    assert client.post("/api/categories/merge", json={"source": a["id"], "target": a["id"]}).status_code == 400

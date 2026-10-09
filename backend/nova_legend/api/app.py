@@ -87,6 +87,20 @@ class CategoryIn(BaseModel):
     sheets: list[str] | None = None
 
 
+class ColorIn(BaseModel):
+    color: str | None = None
+
+
+class MergeIn(BaseModel):
+    source: str
+    target: str
+
+
+class FamilyCategoriesIn(BaseModel):
+    family_key: str
+    categories: list[str] | None = None
+
+
 class AssignIn(BaseModel):
     categories: list[str] | None = None
 
@@ -383,6 +397,57 @@ def create_app(state: AppState | None = None, ui_dir: Path | None = None) -> Fas
     @app.post("/api/categories/reset")
     def reset() -> dict:
         return {"items": st.company.reset_defaults()}
+
+    @app.put("/api/categories/{cat_id}/color")
+    def category_color(cat_id: str, body: ColorIn) -> dict:
+        if cat_id not in {c["id"] for c in st.company.categories()}:
+            raise HTTPException(404, "Kategorie nicht gefunden")
+        try:
+            st.company.set_category_color(cat_id, body.color)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"items": st.company.categories()}
+
+    @app.get("/api/categories/check")
+    def check_categories() -> dict:
+        return {"items": st.company.check_categories()}
+
+    @app.post("/api/categories/merge")
+    def merge_categories(body: MergeIn) -> dict:
+        try:
+            st.company.merge_categories(body.source, body.target)
+        except KeyError:
+            raise HTTPException(404, "Kategorie nicht gefunden") from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"items": st.company.categories()}
+
+    def family_by_key(key: str):
+        for fam in st.library.families(st.family_options()).values():
+            if fam.key == key:
+                return fam
+        return None
+
+    @app.get("/api/category-family")
+    def family_categories_get(family_key: str) -> dict:
+        """Categories of a symbol family, company-wide (from the legend editor)."""
+        cats = st.company.categories()
+        fam = family_by_key(family_key)
+        manual = st.company.assignments().get(family_key)
+        if fam is not None:
+            ids, source = family_categories(fam, cats, st.company.assignments())
+        else:
+            ids, source = list(manual or []), ("manuell" if manual else "keine")
+        return {"family_key": family_key, "categories": ids, "source": source}
+
+    @app.put("/api/category-family")
+    def family_categories_put(body: FamilyCategoriesIn) -> dict:
+        known = {c["id"] for c in st.company.categories()}
+        unknown = [c for c in (body.categories or []) if c not in known]
+        if unknown:
+            raise HTTPException(400, f"Unbekannte Kategorie: {', '.join(unknown)}")
+        st.company.assign(body.family_key, body.categories)
+        return family_categories_get(body.family_key)
 
     from .projects import register as register_projects
     register_projects(app, st)

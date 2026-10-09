@@ -827,3 +827,7 @@ img.sym-icon { object-fit: contain; }
 .gp-search { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .gp-search .input { min-width: 160px; width: 180px; }
 .chip-x { border: 0; background: none; cursor: pointer; color: inherit; padding: 0 0 0 4px; }
+
+.category-hints ul { margin: 12px 0 0; padding-left: 18px; }
+.category-hints li { margin: 6px 0; }
+.category-hints .btn { margin-left: 4px; }
