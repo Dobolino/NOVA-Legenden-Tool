@@ -2200,6 +2200,13 @@ function DocProps({
             <option value="real">Echte Grösse</option>
           </select>
         </label>
+        {(s.symbol_size ?? "tile") === "tile" && (
+          <label className="toggle field" style={{ alignSelf: "end" }}>
+            <input type="checkbox" checked={s.normalize_size !== false}
+              onChange={(e) => setStyle({ normalize_size: e.target.checked })} />
+            Gleiche Fläche <InfoTip text="Jedes Symbol bekommt dieselbe Fläche, höchstens 75 % der Kachel. Ein Kreis wirkt so nicht grösser als ein langer Balken. Aus: die längere Seite füllt 75 % der Kachel." />
+          </label>
+        )}
         <label className="field">
           <span>Einträge (mm)</span>
           <NumberInput label="Abstand zwischen Einträgen" value={s.entry_gap ?? 0} step={0.5} onCommit={(v) => setStyle({ entry_gap: Math.max(0, Math.min(20, v)) })} />

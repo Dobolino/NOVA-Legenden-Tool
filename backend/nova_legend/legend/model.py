@@ -34,6 +34,7 @@ GRIDS = {
     "extrem": {"label": "Extrem", "row": 24.0, "text_offset": 34.0},
 }
 GRID_CUSTOM = "custom"
+DEFAULT_GRID = "dicht"
 # older name of the tight step
 _GRID_ALIAS = {"kompakt": "dicht"}
 ROW_MIN, ROW_MAX = 3.0, 30.0
@@ -119,14 +120,16 @@ def _section_style(value, fallback: dict) -> dict:
 
 def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DEFAULT_SYMBOL_SCALE,
                   columns: int = 2) -> dict:
-    grid = GRIDS["standard"]
+    # new legends start on the tight grid (6 mm rows), close to the edeco legend (4.55 mm)
+    grid = GRIDS[DEFAULT_GRID]
     return {"font": "Arial", "text_size": text_size, "symbol_scale": symbol_scale,
-            "grid": "standard", "row": grid["row"], "text_offset": grid["text_offset"],
+            "grid": DEFAULT_GRID, "row": grid["row"], "text_offset": grid["text_offset"],
             "columns": columns, "width": SHEET_WIDTH, "margin": MARGIN, "plan_scale": 50,
             "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0,
             "hatch_off": False, "fill_off": False,
             "symbol_size": "tile",
             "pdf_lines": "original",
+            "normalize_size": True,
             "frame_on": False, "frame": "#000000"}
 
 
@@ -199,6 +202,7 @@ def normalize_style(value) -> dict:
     # "tile" (default): every drawing fills 75 % of one tile sized from the text;
     # "real": every symbol at the common scale, on its insertion point, in grid rows
     style["symbol_size"] = "real" if v.get("symbol_size") == "real" else "tile"
+    style["normalize_size"] = v.get("normalize_size") is not False
     style["pdf_lines"] = "proportional" if v.get("pdf_lines") == "proportional" else "original"
     style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend

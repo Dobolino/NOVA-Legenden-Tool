@@ -84,6 +84,9 @@ SYMBOL_CLEARANCE = 0.5       # mm free above and below a symbol inside its grid 
 TEXT_CLEARANCE = 0.4
 TILE_FACTOR = 3.6            # symbol tile side = text size × this × symbol scale
 TILE_FILL = 0.75             # a drawing fills this share of its tile, so it never looks squeezed
+# equal visual weight: a compact drawing (circle, square) covers this share of the area of
+# a full 75 % square, a long narrow one grows until its longer side reaches 75 % of the tile
+AREA_SHARE = 0.6
 
 
 def _clip_origin(focus: float, frac: float) -> float:
@@ -231,7 +234,12 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
             left, right, up, down = _turn(hw, hw, hh, hh, rot, bool(item.get("mirror")))
             span, tall = left + right, up + down
             longest = max(span, tall, 1e-6)
-            scale = tile * TILE_FILL / longest * factor
+            scale = tile * TILE_FILL / longest
+            if style.get("normalize_size", True):
+                # the same area for every drawing, never more than 75 % of the tile
+                target = (tile * TILE_FILL) ** 2 * AREA_SHARE
+                scale = min(scale, (target / max(span * tall, 1e-9)) ** 0.5)
+            scale *= factor
             return box(span * scale / 2, span * scale / 2, tall * scale / 2, tall * scale / 2,
                        round(scale, 4), (x0 + x1) / 2, (y0 + y1) / 2)
         half = tile * TILE_FILL / 2 * factor

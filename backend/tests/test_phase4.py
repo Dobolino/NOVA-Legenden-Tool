@@ -432,8 +432,8 @@ def test_company_description_is_used_for_new_proposals(env):  # noqa: F811
 
 def test_empty_doc_defaults():
     doc = empty_doc()
-    assert doc["style"]["width"] == 200 and doc["style"]["grid"] == "standard"
-    assert doc["style"]["row"] == 4.55 and doc["style"]["text_offset"] == 9.75 and doc["style"]["columns"] == 2
+    assert doc["style"]["width"] == 200 and doc["style"]["grid"] == "dicht"                # new legends: tight grid
+    assert doc["style"]["row"] == 6.0 and doc["style"]["text_offset"] == 8.0 and doc["style"]["columns"] == 2
     assert doc["title"]["size_mm"] == 5
 
 
@@ -580,6 +580,7 @@ def test_entries_share_one_tile_sized_from_the_text():
                             rotation=(3, 90))
     doc["blocks"][0]["items"][2]["text"] = "Sehr langer Text, der in seiner Spalte umbrechen muss " * 2
     doc["style"]["symbol_size"] = "tile"                             # equal tiles
+    doc["style"]["normalize_size"] = False                          # longest side fills 75 %
     lay = layout(doc, sizes)
     hits = boxes(lay)
     assert len({round(h["h"], 3) for h in hits}) == 1
@@ -601,6 +602,7 @@ def test_every_symbol_is_centred_in_the_same_tile_and_texts_share_one_line():
              "s2": (-1.0, -1.5, 1.0, 1.5, False),
              "s3": (3.0, 1.0, 7.0, 3.0, False)}
     doc["style"]["symbol_size"] = "tile"                             # equal tiles
+    doc["style"]["normalize_size"] = False
     lay = layout(doc, sizes)
     syms = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
     texts = {p["item"]: p for p in lay["prims"] if p["t"] == "text" and p.get("item")}
@@ -1521,3 +1523,19 @@ def test_pdf_line_weights_follow_the_symbol_size_when_proportional():
     original = build_pdf(drawing(), 40, 20)
     proportional = build_pdf(drawing(), 40, 20, lines="proportional")
     assert original != proportional and proportional.startswith(b"%PDF")
+
+
+def test_normalized_symbols_share_one_area_and_stay_within_the_tile():
+    items = [{"id": f"s{k}", "kind": "symbol", "symbol_key": f"k{k}", "text": f"T{k}"} for k in range(3)]
+    doc = normalize({"version": 3, "style": {"columns": 2, "symbol_size": "tile"},
+                     "blocks": [{"id": "S", "title": "Dosen", "items": items}]})
+    assert doc["style"]["normalize_size"] is True                       # on by default
+    sizes = {"s0": (-2.0, -2.0, 2.0, 2.0, False),      # square
+             "s1": (-2.6, -2.0, 2.6, 2.0, False),      # 1.3 : 1
+             "s2": (-20.0, -0.5, 20.0, 0.5, False)}    # long and thin
+    lay = layout(doc, sizes)
+    syms = {p["id"]: p for p in lay["prims"] if p["t"] == "symbol"}
+    side = 2.5 * 3.6 * 0.75
+    assert syms["s0"]["w"] * syms["s0"]["h"] == pytest.approx(syms["s1"]["w"] * syms["s1"]["h"], rel=0.01)
+    assert syms["s0"]["w"] < side and syms["s1"]["w"] < side
+    assert max(syms["s2"]["w"], syms["s2"]["h"]) == pytest.approx(side, abs=0.01)   # capped at 75 %

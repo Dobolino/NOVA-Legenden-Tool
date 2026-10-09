@@ -66,6 +66,8 @@ export interface LegendStyle {
   fill_off?: boolean; // legend-wide: no solid fills in symbols, the outlines stay
   /** PDF: line weights as drawn, or thinner / thicker with the symbol size */
   pdf_lines?: "original" | "proportional";
+  /** equal tiles: every drawing gets the same area, at most 75 % of the tile (default on) */
+  normalize_size?: boolean;
   symbol_size?: "real" | "tile"; // real size on the insertion point (default) or equal tiles
   frame_on: boolean; // border round the whole legend
   frame: string;

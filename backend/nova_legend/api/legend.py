@@ -24,7 +24,7 @@ from ..library.families import family_title
 from ..parser.stencil import read_stencil_file, stencil_folder
 from ..legend.layout import layout as place
 from ..legend.general import norm_text
-from ..legend.model import (AP_NOTE, AP_NOTE_KEY, GRIDS, MARGIN, MAX_SHEET_WIDTH, apply_plan_section_colors,
+from ..legend.model import (AP_NOTE, AP_NOTE_KEY, DEFAULT_GRID, GRIDS, MARGIN, MAX_SHEET_WIDTH, apply_plan_section_colors,
                              normalize, normalize_style, propose, template_texts)
 from ..projects.review import build_review
 from ..projects.store import Project, safe_folder_name
@@ -430,7 +430,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
     def project_style(p) -> dict:
         s = p.settings().get("legend_style") or {}
         c = company_legend()
-        return normalize_style({"text_size": s.get("text_size", c["text_size"]),
+        return normalize_style({"grid": s.get("grid", DEFAULT_GRID), "text_size": s.get("text_size", c["text_size"]),
                                 "symbol_scale": s.get("symbol_scale", c["symbol_scale"]),
                                 "columns": s.get("columns", 2),
                                 "hatch_off": s.get("hatch_off", c["hatch_off"]),
