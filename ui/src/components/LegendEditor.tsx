@@ -474,6 +474,9 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   // -- drag and drop ---------------------------------------------------------------------
 
   function drop(payload: DragPayload | null, target: DropTarget | null) {
+    // the preview already shows the legend after the drop: keep it on the sheet until the
+    // new layout arrives, so the entries do not jump back to their old places first
+    if (target?.cell !== undefined && preview) setPlaced(preview.layout);
     setDropAt(null);
     setPreview(null);
     if (!doc || !payload || !target) return;

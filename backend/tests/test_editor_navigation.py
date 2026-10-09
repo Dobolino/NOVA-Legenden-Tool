@@ -300,7 +300,12 @@ def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
         .some(g => (g.style.transition || '').includes('transform'))""", timeout=3000)
     page.wait_for_timeout(400)                 # live preview with the highlighted cell
     page.mouse.up()
+    # right after the drop the entry is already at its new place (no jump back to the old one)
+    page.wait_for_timeout(60)
+    early = first.bounding_box()
     page.wait_for_timeout(1500)                # autosave
+    late = first.bounding_box()
+    assert abs(early["x"] - late["x"]) < 2 and abs(early["y"] - late["y"]) < 2
     items = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]["blocks"][0]["items"]
     assert [it["kind"] == "gap" and "_" or it["id"] for it in items] == ["_", "e1", "e2", "e3", "_", "e0"]
 
