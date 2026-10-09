@@ -167,7 +167,10 @@ def _import_general(doc, msp, general: GeneralPart, x: float, y_bottom: float, f
     import ezdxf
     from ezdxf.addons import Importer
 
+    from .general import strip_raster
+
     src = ezdxf.readfile(general.dxf_path)
+    strip_raster(src)                        # the helper grid of the template is never exported
     blk = doc.blocks.new("Allgemeinteil")
     imp = Importer(src, doc)
     imp.import_entities(src.modelspace(), target_layout=blk)

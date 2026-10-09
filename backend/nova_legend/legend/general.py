@@ -206,6 +206,29 @@ def _from_dwg(source: str, dwg: Path, inner_width: float, oda_exe: str | None) -
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
+RASTER_LAYER = "NL_RASTER"      # helper grid of the template: read for the rows, never drawn
+
+
+def strip_raster(doc) -> list[float]:
+    """Remove the helper grid (layer NL_RASTER) from the drawing in memory. Returns the
+    heights of its horizontal lines: they separate the rows of the template."""
+    msp = doc.modelspace()
+    bands: set[float] = set()
+    for e in list(msp):
+        try:
+            layer = e.dxf.layer
+        except Exception:  # noqa: BLE001
+            continue
+        if layer.upper() != RASTER_LAYER:
+            continue
+        if e.dxftype() == "LINE":
+            a, b = e.dxf.start, e.dxf.end
+            if abs(a.y - b.y) <= 1e-6 * max(1.0, abs(a.x - b.x)) and abs(a.x - b.x) > 0:
+                bands.add(round(a.y, 6))
+        msp.delete_entity(e)
+    return sorted(bands)
+
+
 def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     import ezdxf
     from ezdxf import bbox
@@ -214,6 +237,7 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
         doc = ezdxf.readfile(str(path))
     except Exception as exc:  # noqa: BLE001 - unreadable file
         return GeneralPart(source=source, error=f"DXF konnte nicht gelesen werden: {exc}")
+    bands = strip_raster(doc)
     msp = doc.modelspace()
     ext = bbox.extents(msp, fast=True)
     if not ext.has_data:
@@ -229,7 +253,7 @@ def _from_dxf(source: str, path: Path, inner_width: float) -> GeneralPart:
     part.svg = _svg(doc, part.w, part.h)
     part.texts = _texts(msp)
     try:
-        rows, area, text_x = split_rows(doc, to_mm)
+        rows, area, text_x = split_rows(doc, to_mm, bands)
     except Exception:  # noqa: BLE001 - without rows the drawing is placed as a whole
         rows, area, text_x = [], 0.0, 0.0
     if len(rows) >= 3:
@@ -409,11 +433,15 @@ def block_title(name: str) -> str:
     return _SUFFIX.sub("", name).replace("_ ", ", ").replace("_", " ").strip()
 
 
-def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
+def split_rows(doc, to_mm: float, bands: list[float] | None = None) -> tuple[list[dict], float, float]:
     """Split a legend drawing into rows: every text in the text column with the graphic
     left of it at the same height; a text outside the column without graphic is a heading.
     Returns (rows top down, width of the symbol area in mm, x of the text column in
-    drawing units). Positions stay in drawing units, sizes are in mm."""
+    drawing units). Positions stay in drawing units, sizes are in mm.
+
+    ``bands``: heights of the horizontal lines of the helper grid (NL_RASTER). With
+    them a graphic belongs to the row whose text lies between the same two lines."""
+    import bisect
     from collections import Counter
 
     from ezdxf import bbox
@@ -461,9 +489,16 @@ def split_rows(doc, to_mm: float) -> tuple[list[dict], float, float]:
         cx, cy = (box.extmin.x + box.extmax.x) / 2, (box.extmin.y + box.extmax.y) / 2
         if cx > text_x - 0.3:
             continue                     # right of the text column: not part of a symbol
-        row = min(rows, key=lambda r: abs(r["y"] - cy))
-        if abs(row["y"] - cy) > pitch * 0.8:
-            continue
+        if bands and len(bands) >= 2:
+            band = bisect.bisect(bands, cy)
+            same = [r for r in rows if bisect.bisect(bands, r["y"]) == band]
+            if not same:
+                continue                 # a band without text: nothing to explain
+            row = min(same, key=lambda r: abs(r["y"] - cy))
+        else:
+            row = min(rows, key=lambda r: abs(r["y"] - cy))
+            if abs(row["y"] - cy) > pitch * 0.8:
+                continue
         row["ents"].append((e, box))
         if e.dxftype() == "INSERT":
             row["names"].append(norm_text(block_title(e.dxf.name)))

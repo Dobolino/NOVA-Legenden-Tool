@@ -1468,3 +1468,32 @@ def test_general_symbols_share_one_scale_and_allgemein_has_one_bar():
     assert abs(grow["g0"]["h"] - grow["g1"]["h"]) < 1e-6 and grow["g1"]["w"] > grow["g0"]["w"] * 2.5
     bars = [p for p in lay["prims"] if p["t"] == "rect" and p.get("role") == "header"]
     assert len(bars) == 1 and bars[0]["fill"] == "#808080"
+
+
+def test_helper_grid_of_the_template_groups_rows_and_is_never_drawn(tmp_path):
+    import ezdxf
+
+    from nova_legend.legend.general import _from_dxf
+
+    doc = ezdxf.new("R2013")
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    doc.layers.add("NL_RASTER")
+    for i, text in enumerate(["Abzweigdose", "Steckdose", "Schalter", "Schlaufkasten"]):
+        y = -i * 5.0
+        msp.add_text(text, dxfattribs={"height": 2.5, "insert": (20, y - 0.9)})
+        msp.add_circle((10, y), 1.5)
+    # a part of the row-2 symbol that lies nearer row 3: the grid keeps it in row 2
+    msp.add_circle((12, -8.6), 0.3)
+    for y in (2.5, -2.5, -9.0, -12.5, -17.5):
+        msp.add_line((0, y), (60, y), dxfattribs={"layer": "NL_RASTER"})
+    msp.add_line((18, 2.5), (18, -17.5), dxfattribs={"layer": "NL_RASTER"})
+    msp.add_text("Hinweis zum Raster", dxfattribs={"height": 2.5, "insert": (0, 6), "layer": "NL_RASTER"})
+    path = tmp_path / "vorlage.dxf"
+    doc.saveas(path)
+    part = _from_dxf("x", path, 190)
+    assert [r["text"] for r in part.rows] == ["Abzweigdose", "Steckdose", "Schalter", "Schlaufkasten"]
+    assert part.w < 50 and part.h < 25            # the grid and its note do not count
+    assert "hinweis zum raster" not in part.texts
+    steck = part.rows[1]
+    assert len(steck["handles"]) == 2             # both circles of the row
