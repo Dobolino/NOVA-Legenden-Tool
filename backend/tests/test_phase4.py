@@ -1434,3 +1434,37 @@ def test_general_part_export_in_two_and_three_columns(env, monkeypatch, tmp_path
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
     client.put("/api/company/legend", json={"general_path": ""})
     assert client.get("/api/company/general/export/x.dxf").status_code == 400
+
+
+def test_risers_are_covered_when_the_general_part_explains_lines_up_and_down():
+    from nova_legend.api.legend import covered_families
+    from nova_legend.legend.general import GeneralPart, norm_text
+
+    titles = {"a": "Steigleitung, von oben", "b": "Steigleitung, von unten", "c": "Leitung, nach unten, durchgehend",
+              "d": "Leitung nach oben rechts", "e": "Leitung"}
+    rows = [row(k, ["leitungen"]) for k in titles]
+    for r in rows:
+        r["title"] = titles[r["family_key"]]
+    dxf = GeneralPart(kind="dxf", texts=[norm_text("Leitung von/nach OBEN"), norm_text("Leitung von nach UNTEN")])
+    assert covered_families(dxf, rows, {}) == {"a", "b", "c"}
+    assert covered_families(GeneralPart(kind="dxf", texts=["abzweigdose"]), rows, {}) == set()
+
+
+def test_general_symbols_share_one_scale_and_allgemein_has_one_bar():
+    from nova_legend.legend.model import normalize, section_style
+
+    general = {"rows": [
+        {"id": "g0", "text": "Abzweigdose", "picture": "symbol", "gw": 4.0, "gh": 4.0, "svg": "", "vb": "0 0 4 4"},
+        {"id": "g1", "text": "Decke / Wand", "picture": "symbol", "gw": 12.0, "gh": 4.0, "svg": "", "vb": "0 0 12 4"},
+        {"id": "g2", "text": "Dose", "picture": "symbol", "gw": 5.0, "gh": 5.0, "svg": "", "vb": "0 0 5 5"},
+    ]}
+    doc = normalize({"version": 3, "blocks": [
+        {"id": "b", "category_id": "allgemein", "title": "Allgemein", "style": section_style("#808080"),
+         "items": [{"id": "i", "kind": "note", "text": "Hinweis"}]}]})
+    lay = layout(doc, {}, general)
+    grow = {p["row"]: p for p in lay["prims"] if p["t"] == "grow"}
+    # the same factor for the single and the double symbol: the double one stays as tall
+    assert abs(grow["g0"]["k"] - grow["g1"]["k"]) < 1e-6
+    assert abs(grow["g0"]["h"] - grow["g1"]["h"]) < 1e-6 and grow["g1"]["w"] > grow["g0"]["w"] * 2.5
+    bars = [p for p in lay["prims"] if p["t"] == "rect" and p.get("role") == "header"]
+    assert len(bars) == 1 and bars[0]["fill"] == "#808080"

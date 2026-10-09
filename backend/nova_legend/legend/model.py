@@ -129,11 +129,17 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
             "frame_on": False, "frame": "#000000"}
 
 
+GENERAL_HEADER = "#808080"      # grey, as the company colour of the category «Allgemein»
+
+
 def _general_section(value) -> dict:
     """The category bar above the general part. Same idea as a section header."""
     v = value if isinstance(value, dict) else {}
     title = str(v.get("title") or "Allgemein").strip()[:200] or "Allgemein"
-    return {"title": title, "header": _hex(v.get("header"), "#1c7ed6"),
+    header = _hex(v.get("header"), GENERAL_HEADER)
+    if header == "#1c7ed6":
+        header = GENERAL_HEADER          # the former blue default: «Allgemein» is grey now
+    return {"title": title, "header": header,
             "header_text": _hex(v.get("header_text"), "#ffffff"),
             "title_scale": _scale(v.get("title_scale"))}
 

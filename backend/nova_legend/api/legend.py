@@ -114,6 +114,11 @@ def export_name(meta: dict, part: str, ext: str) -> str:
 DISTRIBUTION_ITEMS = {"UV", "UV_UP", "HV", "HV_UP", "ZV", "HSA_250", "HausAS"}
 
 
+# rising and falling lines (Steigleitung von oben / nach unten, Leitung durchgehend):
+# the general part explains them once with its rows «Leitung von/nach OBEN / UNTEN»
+RISER = re.compile(r"^(steig)?leitung( (nach|von) (oben|unten))?( durchgehend)?$")
+
+
 def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set[str]:
     """Family keys of project rows the general part already shows.
 
@@ -130,6 +135,7 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
     # symbols of a DXF / DWG general part by their Nova name (block name), without UP/AP:
     # «Steigleitung_ nach oben» shows the family «Steigleitung, nach oben»
     names = {_no_mount(n) for n in getattr(gen, "symbol_names", []) or []}
+    risers = any("leitung" in t and ("oben" in t or "unten" in t) for t in texts)
     for row in rows:
         fk = row.get("family_key")
         if not fk:
@@ -139,6 +145,8 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
         elif texts and any(norm_text(t) in texts for t in (descriptions.get(fk), row.get("title")) if t):
             out.add(fk)
         elif names and any(_no_mount(norm_text(t)) in names for t in [row.get("title"), *(row.get("names") or [])] if t):
+            out.add(fk)
+        elif risers and any(RISER.match(_no_mount(norm_text(t))) and norm_text(t) not in ("leitung", "steigleitung") for t in [row.get("title"), *(row.get("names") or [])] if t):
             out.add(fk)
     return out
 
@@ -552,6 +560,10 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                       covered=covered_families(gen, result["rows"], descriptions),
                       ap_covered=bool({norm_text(AP_NOTE), norm_text(descriptions.get(AP_NOTE_KEY) or AP_NOTE)} & set(gen.texts)),
                       layer_categories=layer_categories, layer_colors=layer_colors)
+        fixed = st.company.category_colors().get("allgemein")
+        if fixed:
+            # the bar of the general part in the company colour of «Allgemein»
+            doc["general_section"]["header"] = fixed
         if categories:
             wanted = set(categories)
             doc["blocks"] = [b for b in doc["blocks"] if b.get("category_id") in wanted]

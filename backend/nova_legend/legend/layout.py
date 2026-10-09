@@ -275,6 +275,18 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
     gap = max(0.0, float(style.get("entry_gap") or 0.0))
     cap = _line_cap(style)
     side = tile * TILE_FILL
+    # one scale for all symbols of the general part, as in the drawing: a typical symbol
+    # fills the tile, a double symbol (ceiling / wall) keeps its width beside it
+    dims = sorted(max(float(r.get("gw") or 0), float(r.get("gh") or 0)) for r in general["rows"]
+                  if r.get("picture") == "symbol" and not r.get("heading"))
+    dims = [d for d in dims if d > 0]
+    common = side / dims[len(dims) // 2] if dims else 1.0
+    # symbol column: from the cell edge to the text. A double symbol at the common scale
+    # widens it (the texts of the general part move right), up to 45 % of the column
+    widest = max((float(r.get("gw") or 0) * common for r in general["rows"]
+                  if r.get("picture") == "symbol" and not r.get("heading")), default=0.0)
+    room_w = max(side, text_x - 1.2, min(widest + 1.5, colw * 0.45))
+    text_x = max(text_x, room_w + 1.2)
     rows = []
     for r in general["rows"]:
         heading = bool(r.get("heading"))
@@ -345,12 +357,17 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                                       "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
                                       "k": round(scale, 5), "rot": 0})
                     elif r.get("picture") == "symbol":
-                        # the whole symbol, leaders and notes already removed, fitted into the tile
-                        view = min(tile * 0.92, max(slot - 0.4, side))
-                        shrink = factor if factor < 1 else 1.0
-                        fit = min(view / max(gw, 1e-6), view / max(gh, 1e-6)) * shrink
+                        # the whole symbol at the common scale of the general part; only a symbol
+                        # that does not fit the row (height) or the symbol column (width) shrinks
+                        view_h = max(slot - 0.4, side)
+                        fit = common * factor
+                        fit = min(fit, view_h / max(gh, 1e-6), room_w / max(gw, 1e-6))
                         w, hgt = gw * fit, gh * fit
-                        prims.append({"t": "grow", "row": r["id"], "x": round(cx + axis - w / 2, 3),
+                        # centred on the symbol axis; a wide symbol starts at the cell edge
+                        left = cx + axis - w / 2
+                        if left < cx + 1.5:
+                            left = cx + 1.5         # room to the text of the column on the left
+                        prims.append({"t": "grow", "row": r["id"], "x": round(left, 3),
                                       "y": round(mid - hgt / 2, 3), "w": round(w, 3), "h": round(hgt, 3),
                                       "k": round(fit, 5), "rot": rot})
                     else:
@@ -447,13 +464,19 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
         y += gh + row * 0.5
 
     first = True
+    under_general = bool(general and include_general and (general.get("rows") or general.get("h")))
     for block in doc["blocks"]:
         if only_block and block["id"] != only_block:
             continue
         if not first:
             y += gap
         first = False
-        y = _block(block, style, sizes, prims, margin, y, inner, cols, ts, row)
+        # the project's own «Allgemein» entries go on below the general part, without a
+        # second «Allgemein» bar
+        continued = under_general and block.get("category_id") == "allgemein"
+        if continued:
+            y -= row * 0.5
+        y = _block(block, style, sizes, prims, margin, y, inner, cols, ts, row, continued)
 
     height = max(math.ceil((y + margin) * 10) / 10, 2 * margin + row)
     if style.get("frame_on"):
@@ -463,11 +486,11 @@ def layout(doc: dict, sizes: dict | None = None, general: dict | None = None,
     return {"width": width, "height": height, "prims": prims}
 
 
-def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
+def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row, continued: bool = False) -> float:
     st = block["style"]
     pad = st["padding"]
     hts = ts * float(block.get("title_scale") or 1.0)
-    head_h = max(hts * LINE_FACTOR + 1.6, hts * 2.0)
+    head_h = 0.0 if continued else max(hts * LINE_FACTOR + 1.6, hts * 2.0)
     top = y
     body: list[dict] = []
     colw = (inner - 2 * pad) / cols
@@ -531,18 +554,20 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row) -> float:
                       "stroke": None, "role": "background", "block": block["id"]})
     prims.append({"t": "hit", "kind": "section", "block": block["id"], "id": block["id"],
                   "x": x0, "y": top, "w": inner, "h": total_h})
-    prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": head_h, "fill": st["header"],
-                  "stroke": None, "role": "header", "block": block["id"]})
-    title_lines = wrap(block["title"] or "", hts, inner - 2 * pad - 1, True)[:1]
-    prims.append({"t": "text", "x": x0 + pad + 0.5, "y": top + head_h / 2 + hts * 0.36, "size": hts,
-                  "text": title_lines[0], "bold": True, "color": st["header_text"]})
+    if head_h:
+        prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": head_h, "fill": st["header"],
+                      "stroke": None, "role": "header", "block": block["id"]})
+        title_lines = wrap(block["title"] or "", hts, inner - 2 * pad - 1, True)[:1]
+        prims.append({"t": "text", "x": x0 + pad + 0.5, "y": top + head_h / 2 + hts * 0.36, "size": hts,
+                      "text": title_lines[0], "bold": True, "color": st["header_text"]})
     prims.extend(body)
     prims.extend(cells)
     if st["border_on"]:
         prims.append({"t": "rect", "x": x0, "y": top, "w": inner, "h": total_h, "fill": None,
                       "stroke": st["border"], "role": "border", "block": block["id"]})
-    prims.append({"t": "hit", "kind": "block", "block": block["id"], "id": block["id"],
-                  "x": x0, "y": top, "w": inner, "h": head_h})
+    if head_h:
+        prims.append({"t": "hit", "kind": "block", "block": block["id"], "id": block["id"],
+                      "x": x0, "y": top, "w": inner, "h": head_h})
     return top + total_h
 
 
