@@ -64,6 +64,8 @@ export interface LegendStyle {
   text_lines: number; // 0 automatic, 1–3 fixed line count and one row height
   hatch_off?: boolean; // legend-wide: no hatches and light areas in symbols
   fill_off?: boolean; // legend-wide: no solid fills in symbols, the outlines stay
+  /** PDF: line weights as drawn, or thinner / thicker with the symbol size */
+  pdf_lines?: "original" | "proportional";
   symbol_size?: "real" | "tile"; // real size on the insertion point (default) or equal tiles
   frame_on: boolean; // border round the whole legend
   frame: string;

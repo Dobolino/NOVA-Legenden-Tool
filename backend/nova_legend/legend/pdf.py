@@ -13,11 +13,19 @@ import zlib
 
 PT_PER_MM = 72 / 25.4
 MARGIN_MM = 10.0
+LINE_MODES = ("original", "proportional")
+# proportional line weights stay printable and do not turn into bars
+PROPORTIONAL_MIN, PROPORTIONAL_MAX = 0.09, 0.50      # mm
+DEFAULT_LINEWEIGHT = 0.25                             # mm, what CAD plots for «Standard»
+_STROKES = ("LINE", "LWPOLYLINE", "POLYLINE", "ARC", "CIRCLE", "ELLIPSE", "SPLINE")
 
 
-def build_pdf(doc, width_mm: float, height_mm: float, title: str = "") -> bytes:
+def build_pdf(doc, width_mm: float, height_mm: float, title: str = "", lines: str = "original") -> bytes:
     """``doc`` is the legend DXF (millimetres, origin bottom left, legend in
-    0..width × 0..height)."""
+    0..width × 0..height). ``lines``: «original» keeps the line weights of the drawings,
+    «proportional» makes them thinner or thicker with the size of each symbol."""
+    if lines == "proportional":
+        scale_lineweights(doc)
     from ezdxf.addons.drawing import Frontend, RenderContext
     from ezdxf.addons.drawing.config import (BackgroundPolicy, ColorPolicy, Configuration,
                                              LineweightPolicy)
@@ -37,6 +45,34 @@ def build_pdf(doc, width_mm: float, height_mm: float, title: str = "") -> bytes:
     writer = _PdfPage(x0 - MARGIN_MM, y0 - MARGIN_MM)
     player.replay(writer)
     return writer.document(x1 - x0 + 2 * MARGIN_MM, y1 - y0 + 2 * MARGIN_MM, title)
+
+
+def scale_lineweights(doc) -> int:
+    """Line weight of every stroke in a symbol block times the factor the block is drawn
+    at (``doc.nl_line_factors``), kept between 0.09 and 0.5 mm. Changes the document in
+    memory. Returns the number of changed strokes."""
+    from ezdxf.lldxf.const import VALID_DXF_LINEWEIGHTS
+
+    factors = getattr(doc, "nl_line_factors", None) or {}
+    valid = [v for v in VALID_DXF_LINEWEIGHTS if v > 0]
+    changed = 0
+    for name, factor in factors.items():
+        if name not in doc.blocks or factor <= 0:
+            continue
+        for e in doc.blocks.get(name):
+            if e.dxftype() not in _STROKES:
+                continue
+            lw = int(e.dxf.get("lineweight", -1))
+            if lw < 0:
+                try:
+                    lw = int(doc.layers.get(e.dxf.layer).dxf.lineweight)
+                except Exception:  # noqa: BLE001
+                    lw = -3
+            mm = lw / 100 if lw >= 0 else DEFAULT_LINEWEIGHT
+            target = min(PROPORTIONAL_MAX, max(PROPORTIONAL_MIN, mm * factor)) * 100
+            e.dxf.lineweight = min(valid, key=lambda v: abs(v - target))
+            changed += 1
+    return changed
 
 
 def _rgb(color: str) -> str:

@@ -703,7 +703,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         ext = export_ext(format)
         name = export_name(p.meta(), target_block["title"] if target_block else legend_part_name(p, stored), ext)
         if ext == "pdf":
-            data = build_pdf(dxf, lay["width"], lay["height"], Path(name).stem)
+            data = build_pdf(dxf, lay["width"], lay["height"], Path(name).stem, doc["style"]["pdf_lines"])
             return Response(data, media_type="application/pdf",
                             headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
         tmp = Path(tempfile.mkdtemp(prefix="nl_legend_"))

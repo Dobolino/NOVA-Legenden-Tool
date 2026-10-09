@@ -126,6 +126,7 @@ def default_style(text_size: float = DEFAULT_TEXT_SIZE, symbol_scale: float = DE
             "section_gap": 0.0, "entry_gap": 0.0, "text_lines": 0,
             "hatch_off": False, "fill_off": False,
             "symbol_size": "tile",
+            "pdf_lines": "original",
             "frame_on": False, "frame": "#000000"}
 
 
@@ -198,6 +199,7 @@ def normalize_style(value) -> dict:
     # "tile" (default): every drawing fills 75 % of one tile sized from the text;
     # "real": every symbol at the common scale, on its insertion point, in grid rows
     style["symbol_size"] = "real" if v.get("symbol_size") == "real" else "tile"
+    style["pdf_lines"] = "proportional" if v.get("pdf_lines") == "proportional" else "original"
     style["width"] = _num(v.get("width"), SHEET_WIDTH, MIN_SHEET_WIDTH, MAX_SHEET_WIDTH)
     style["frame_on"] = bool(v.get("frame_on"))           # border round the whole legend
     style["frame"] = _hex(v.get("frame"), "#000000")

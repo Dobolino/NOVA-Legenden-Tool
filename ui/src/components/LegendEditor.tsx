@@ -2294,6 +2294,14 @@ function DocProps({
         </label>
         <InfoTip text="Verknüpfte DXF- oder DWG-Datei unter dem Titel. Hat sie eine Textspalte, nutzt sie Schriftgrösse, Symbolgrösse, Abstand und Spalten dieser Legende. Die Zeichnung bleibt gesperrt. N4D wird nicht gelesen." />
       </div>
+      <label className="field">
+        <span>Liniendicke im PDF <InfoTip text="Original: jede Linie so dick wie in der Zeichnung. Proportional: ein verkleinertes Symbol bekommt dünnere Linien, ein vergrössertes dickere (0,09 bis 0,5 mm). DXF und DWG behalten die Original-Liniendicke." /></span>
+        <select className="select" aria-label="Liniendicke im PDF" value={s.pdf_lines ?? "original"}
+          onChange={(e) => setStyle({ pdf_lines: e.target.value as "original" | "proportional" })}>
+          <option value="original">Original-Liniendicke</option>
+          <option value="proportional">Proportionale Skalierung der Liniendicke</option>
+        </select>
+      </label>
       <div className="row" style={{ marginTop: 6 }}>
         <button className="btn small" disabled={exporting} onClick={() => onExport("dxf", exportBlock, exportGeneral && hasGeneral)}>
           DXF

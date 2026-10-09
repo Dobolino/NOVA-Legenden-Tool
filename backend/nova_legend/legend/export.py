@@ -64,6 +64,9 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
     if "Arial Bold" not in doc.styles:
         doc.styles.add("Arial Bold", font="arialbd.ttf")
     msp = doc.modelspace()
+    # block name -> how much smaller or larger than its own size it is drawn (for the PDF
+    # option «proportional line weights»)
+    doc.nl_line_factors = {}
     ensure_linetypes(doc)
     height = lay["height"]
     blocks: dict[str, str] = {}
@@ -132,6 +135,7 @@ def build_dxf(lay: dict, general: GeneralPart | None, geometry_for, font: str = 
                 a = math.radians(rot)
                 ox = (mx * bcx * math.cos(a) - bcy * math.sin(a)) * s
                 oy = (mx * bcx * math.sin(a) + bcy * math.cos(a)) * s
+                doc.nl_line_factors[name] = abs(s)
                 msp.add_blockref(name, (p["cx"] + dx - ox, Y(p["cy"] + dy) - oy), dxfattribs={
                     "xscale": mx * s, "yscale": s, "rotation": rot, "layer": _layer(doc, p.get("layer") or "0")})
 
@@ -227,6 +231,8 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
         # the centre of the graphic stays in the cell; the block turns around that centre
         ix = p["x"] + p["w"] / 2 - rx
         iy = Y(p["y"] + p["h"] / 2) - ry
+        if hasattr(doc, "nl_line_factors"):
+            doc.nl_line_factors[names[r["id"]]] = abs(float(p["k"]))
         msp.add_blockref(names[r["id"]], (round(ix, 4), round(iy, 4)), dxfattribs={
             "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, FRAME_LAYER)})
 

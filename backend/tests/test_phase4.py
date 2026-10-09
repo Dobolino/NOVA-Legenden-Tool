@@ -1497,3 +1497,27 @@ def test_helper_grid_of_the_template_groups_rows_and_is_never_drawn(tmp_path):
     assert "hinweis zum raster" not in part.texts
     steck = part.rows[1]
     assert len(steck["handles"]) == 2             # both circles of the row
+
+
+def test_pdf_line_weights_follow_the_symbol_size_when_proportional():
+    import ezdxf
+
+    from nova_legend.legend.pdf import build_pdf, scale_lineweights
+
+    def drawing():
+        doc = ezdxf.new("R2013")
+        small, big = doc.blocks.new("klein"), doc.blocks.new("gross")
+        small.add_circle((0, 0), 2)
+        big.add_line((0, 0), (5, 0), dxfattribs={"lineweight": 35})
+        doc.modelspace().add_blockref("klein", (10, 10), dxfattribs={"xscale": 0.5, "yscale": 0.5})
+        doc.modelspace().add_blockref("gross", (20, 10), dxfattribs={"xscale": 4, "yscale": 4})
+        doc.nl_line_factors = {"klein": 0.5, "gross": 4.0}
+        return doc
+
+    doc = drawing()
+    assert scale_lineweights(doc) == 2
+    assert next(iter(doc.blocks.get("klein"))).dxf.lineweight == 13     # 0.25 mm * 0.5, snapped
+    assert next(iter(doc.blocks.get("gross"))).dxf.lineweight == 50     # capped at 0.5 mm
+    original = build_pdf(drawing(), 40, 20)
+    proportional = build_pdf(drawing(), 40, 20, lines="proportional")
+    assert original != proportional and proportional.startswith(b"%PDF")
