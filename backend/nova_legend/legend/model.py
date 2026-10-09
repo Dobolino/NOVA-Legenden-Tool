@@ -300,7 +300,36 @@ def _item(it, uid) -> dict | None:
         item["symbol_color"] = forced.lower()
     if kind == "symbol" and not item["symbol_key"]:
         return None
+    if kind == "symbol":
+        parts = [p for p in (_part(x) for x in (it.get("parts") or [])[:MAX_PARTS - 1]) if p]
+        if parts:
+            item["parts"] = parts
     return item
+
+
+MAX_PARTS = 4        # a combined entry: «Einlasskasten / Schalungsschoner», up to four symbols
+
+
+def _part(p) -> dict | None:
+    """A further symbol of a combined entry: its own drawing, text and turn."""
+    if not isinstance(p, dict) or not p.get("symbol_key"):
+        return None
+    out = {"family_key": p.get("family_key") or None, "symbol_key": str(p["symbol_key"]),
+           "text": str(p.get("text", ""))[:300],
+           "length_mm": _num(p.get("length_mm"), 0, 0, 100000) or None,
+           "width_mm": _num(p.get("width_mm"), 0, 0, 100000) or None,
+           "symbol_factor": round(_num(p.get("symbol_factor"), 1.0, 0.3, 4.0), 3),
+           "rotation": _rotation(p.get("rotation")), "mirror": bool(p.get("mirror"))}
+    own = p.get("color") or ""
+    if isinstance(own, str) and _HEX.match(own) and own.lower() != "#ffffff":
+        out["color"] = own.lower()
+    return out
+
+
+def entry_text(item: dict) -> str:
+    """Text of an entry; a combined entry joins its texts with « / »."""
+    texts = [item.get("text") or ""] + [p.get("text") or "" for p in item.get("parts") or []]
+    return " / ".join(t.strip() for t in texts if t.strip())
 
 
 # -- proposal from the project -------------------------------------------------

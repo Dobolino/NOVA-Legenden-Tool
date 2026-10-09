@@ -310,6 +310,38 @@ def test_dragging_onto_an_empty_cell_places_the_entry_there(editor):
     assert [it["kind"] == "gap" and "_" or it["id"] for it in items] == ["_", "e1", "e2", "e3", "_", "e0"]
 
 
+def test_two_entries_are_combined_with_ctrl_click_and_split_again(editor):
+    page, _field, client, (a, _b) = editor
+    doc = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]
+    symbols = [it for b in doc["blocks"] for it in b["items"] if it["kind"] == "symbol"][:2]
+    assert len(symbols) == 2
+    for k, it in enumerate(symbols):
+        it["id"], it["text"] = f"c{k}", ["Decke", "Wand"][k]
+    doc["blocks"] = [{"id": "blk", "title": "Test", "items": symbols}]
+    assert client.put(f"/api/projects/{a}/legend", json={"doc": doc}).status_code == 200
+    playwright.expect(page.get_by_label("Legende wählen")).to_be_visible()
+    page.get_by_role("button", name="Gesamtliste", exact=False).click()
+    page.get_by_role("button", name="Legende", exact=True).click()
+    page.set_viewport_size({"width": 1600, "height": 1200})
+    page.locator('[data-hit="item"][data-id="c0"]').click()
+    page.locator('[data-hit="item"][data-id="c1"]').click(modifiers=["Control"])
+    combine = page.get_by_role("button", name="Kombinieren", exact=True)
+    playwright.expect(combine).to_be_visible()
+    with page.expect_response(LEGEND_URL) as saved:
+        combine.click()
+    assert saved.value.ok
+    playwright.expect(page.locator("svg text", has_text="Decke / Wand")).to_be_visible()
+    page.get_by_role("tab", name="Text 2 / Symbol 2").click()
+    playwright.expect(page.get_by_label("Grösse Symbol 2")).to_be_visible()
+    items = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]["blocks"][0]["items"]
+    assert [it["id"] for it in items] == ["c0"] and items[0]["parts"][0]["text"] == "Wand"
+    with page.expect_response(LEGEND_URL) as saved:
+        page.get_by_role("button", name="Trennen", exact=True).click()
+    assert saved.value.ok
+    items = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]["blocks"][0]["items"]
+    assert [it["text"] for it in items] == ["Decke", "Wand"] and not items[0].get("parts")
+
+
 def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypatch):
     """Everyone sees the same star list. An empty list stays open; afterwards only admins edit it."""
     from nova_legend import config

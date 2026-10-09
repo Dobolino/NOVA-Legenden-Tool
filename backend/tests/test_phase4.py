@@ -1539,3 +1539,26 @@ def test_normalized_symbols_share_one_area_and_stay_within_the_tile():
     assert syms["s0"]["w"] * syms["s0"]["h"] == pytest.approx(syms["s1"]["w"] * syms["s1"]["h"], rel=0.01)
     assert syms["s0"]["w"] < side and syms["s1"]["w"] < side
     assert max(syms["s2"]["w"], syms["s2"]["h"]) == pytest.approx(side, abs=0.01)   # capped at 75 %
+
+
+def test_combined_entry_draws_its_symbols_side_by_side_with_one_text():
+    doc = normalize({"version": 3, "style": {"columns": 2, "symbol_size": "tile"}, "blocks": [
+        {"id": "S", "title": "Dosen", "items": [
+            {"id": "c", "kind": "symbol", "symbol_key": "k1", "family_key": "f1", "text": "Einlasskasten",
+             "parts": [{"symbol_key": "k2", "family_key": "f2", "text": "Schalungsschoner"},
+                       {"text": "ohne Symbol"}]},
+            {"id": "s", "kind": "symbol", "symbol_key": "k3", "text": "Dose"}]}]})
+    item = doc["blocks"][0]["items"][0]
+    assert len(item["parts"]) == 1                          # a part without a symbol is dropped
+    sizes = {"c": (-2.0, -2.0, 2.0, 2.0, False), "c#1": (-3.0, -1.0, 3.0, 1.0, False),
+             "s": (-2.0, -2.0, 2.0, 2.0, False)}
+    lay = layout(doc, sizes)
+    syms = [p for p in lay["prims"] if p["t"] == "symbol" and p["id"] == "c"]
+    assert [p["key"] for p in syms] == ["k1", "k2"] and [p.get("part") for p in syms] == [0, 1]
+    a, b = syms
+    assert a["x0"] + a["w"] < b["x0"]                       # side by side, not overlapping
+    grid = next(p for p in lay["prims"] if p["t"] == "grid")
+    text = next(p for p in lay["prims"] if p["t"] == "text" and p.get("item") == "c")
+    assert text["text"].startswith("Einlasskasten / Schalungsschoner")
+    assert b["x0"] + b["w"] <= grid["x"] + grid["text"] - 0.79       # never runs into the text
+    assert a["x0"] >= grid["x"] + 0.29

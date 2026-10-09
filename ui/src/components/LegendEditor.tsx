@@ -9,8 +9,10 @@ import {
   beginSave,
   blockForCategory,
   commit,
+  combineItems,
   coveredRows,
   describe,
+  entryText,
   duplicateItems,
   hideCovered,
   History,
@@ -38,6 +40,10 @@ import {
   replace,
   rotateItem,
   SectionStyle,
+  splitItem,
+  detachPart,
+  LegendPart,
+  updatePart,
   Selection,
   staleItems,
   symbolRequestKey,
@@ -106,6 +112,18 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [savedInfo, setSavedInfo] = useState("");
   const [sel, setSel] = useState<Selection>(null);
+  // a second entry chosen with Ctrl/Shift+click: it can be combined with the selected one
+  const [pick, setPick] = useState<{ block: string; item: string } | null>(null);
+  const selectOnSheet = useCallback((s: Selection, add?: boolean) => {
+    setSel((cur) => {
+      if (add && s?.type === "item" && cur?.type === "item" && cur.item !== s.item) {
+        setPick({ block: s.block, item: s.item });
+        return cur;
+      }
+      setPick(null);
+      return s;
+    });
+  }, []);
   const [generalRev, setGeneralRev] = useState(0);
   const [zoom, setZoom] = useState(4);
   const [symbols, setSymbols] = useState<Record<string, SymbolRender>>({});
@@ -963,14 +981,14 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                   <button
                     key={it.id}
                     className={`outline-item ${sel?.type === "item" && sel.item === it.id ? "active" : ""} ${it.hidden ? "hidden-entry" : ""} ${dropAt?.block === b.id && dropAt.before === it.id ? "drop-before" : ""}`}
-                    onClick={() => setSel({ type: "item", block: b.id, item: it.id })}
-                    title={`${it.text} · ziehen zum Verschieben`}
+                    onClick={(e) => selectOnSheet({ type: "item", block: b.id, item: it.id }, e.ctrlKey || e.metaKey || e.shiftKey)}
+                    title={`${entryText(it)} · ziehen zum Verschieben · Strg+Klick: zweites Kästchen zum Kombinieren`}
                     {...dragProps({ type: "move", block: b.id, item: it.id })}
                     {...dropProps({ block: b.id, before: it.id })}
                   >
                     {it.kind === "symbol" && it.symbol_key ? <SymIcon r={symbols[symbolRequestKey({ symbol_key: it.symbol_key, length_mm: null, width_mm: null, flat: Boolean(it.symbol_color) })]} color={it.symbol_color || it.color || b.style.symbol} /> : null}
                     {it.kind === "line" ? "― " : it.kind === "note" ? "◐ " : it.kind === "text" ? "¶ " : ""}
-                    <span className="outline-text">{it.text || "(ohne Text)"}</span>
+                    <span className="outline-text">{entryText(it) || "(ohne Text)"}</span>
                     {companyKey(it) && descriptions[companyKey(it)!] === it.text.trim() && (
                       <span className="badge company" title="Dieser Text ist der Firmentext">F</span>
                     )}
@@ -1134,7 +1152,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
             {(shown?.prims ?? [])
               .filter((p) => p.t === "rect" && p.role === "background")
               .map((p, i) => (
-                <Prim key={`bg${i}`} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} />
+                <Prim key={`bg${i}`} p={p} symbols={symbols} general={general} sel={sel} pick={pick?.item} stale={stale} dups={dups} onSelect={selectOnSheet} />
               ))}
             {showGrid && (shown?.prims ?? []).filter((p) => p.t === "grid").map((g) => <GridLines key={`g${g.block}`} g={g} />)}
             {groupByEntry((shown?.prims ?? []).filter((p) => !(p.t === "rect" && p.role === "background") && p.t !== "grid")).map((g, i) =>
@@ -1142,11 +1160,11 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
                 // one group per entry, keyed by its id: it glides to a new place (see the FLIP effect)
                 <g key={`e:${g.item}`} data-entry={g.item} className="lg-entry">
                   {g.prims.map((p, j) => (
-                    <Prim key={j} p={p} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
+                    <Prim key={j} p={p} symbols={symbols} general={general} sel={sel} pick={pick?.item} stale={stale} dups={dups} onSelect={selectOnSheet} onDragStart={startSheetDrag} />
                   ))}
                 </g>
               ) : (
-                <Prim key={`p${i}`} p={g.prims[0]} symbols={symbols} general={general} sel={sel} stale={stale} dups={dups} onSelect={setSel} onDragStart={startSheetDrag} />
+                <Prim key={`p${i}`} p={g.prims[0]} symbols={symbols} general={general} sel={sel} pick={pick?.item} stale={stale} dups={dups} onSelect={selectOnSheet} onDragStart={startSheetDrag} />
               ),
             )}
             {dropAt && dropAt.cell !== undefined && preview && <DropCell layout={preview.layout} id={preview.id} />}
@@ -1191,6 +1209,16 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
           ) : sel?.type === "title" ? (
             <TitleProps doc={doc} field={field} change={change} />
           ) : selItem && selBlock ? (
+            <>
+            {pick && (
+              <CombineBox doc={doc} first={selItem} second={pick}
+                onCombine={() => {
+                  change(combineItems(doc, { block: selBlock.id, item: selItem.id }, pick));
+                  setPick(null);
+                  notify("Zu einem Eintrag kombiniert. «Trennen» macht wieder einzelne Einträge daraus.");
+                }}
+                onCancel={() => setPick(null)} />
+            )}
             <ItemProps
               item={selItem}
               block={selBlock}
@@ -1213,6 +1241,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               onMove={moveSelected}
               onRemove={removeSelected}
             />
+            </>
           ) : sel?.type === "block" && selBlock ? (
             <BlockProps block={selBlock} field={field} change={change} doc={doc} onMove={moveSelected} onRemove={removeSelected} catTitle={catTitle} templateTexts={info.template_texts} />
           ) : (
@@ -1246,6 +1275,7 @@ function Prim({
   symbols,
   general,
   sel,
+  pick,
   stale,
   dups,
   onSelect,
@@ -1256,9 +1286,10 @@ function Prim({
   symbols: Record<string, SymbolRender>;
   general: (GeneralInfo & { svg: string; prims: LegendPrim[] }) | null;
   sel: Selection;
+  pick?: string;
   stale: Set<string>;
   dups?: Set<string>;
-  onSelect: (s: Selection) => void;
+  onSelect: (s: Selection, add?: boolean) => void;
   onDragStart?: (e: ReactPointerEvent, block: string, item: string) => void;
   inert?: boolean;
 }) {
@@ -1358,6 +1389,7 @@ function Prim({
         (p.kind === "general-row" && sel?.type === "general-row" && sel.id === p.id) ||
         (p.kind === "title" && sel?.type === "title");
       const isStale = p.kind === "item" && stale.has(p.id);
+      const picked = p.kind === "item" && pick === p.id;
       const isDup = p.kind === "item" && Boolean(dups?.has(p.id));
       if (p.kind === "section")
         return (
@@ -1381,10 +1413,10 @@ function Prim({
           y={p.y}
           width={p.w}
           height={p.h}
-          fill={selected ? "rgba(11,107,203,0.10)" : "transparent"}
-          stroke={selected ? "#0b6bcb" : isDup ? "#e8590c" : isStale ? "#c92a2a" : "none"}
+          fill={selected || picked ? "rgba(11,107,203,0.10)" : "transparent"}
+          stroke={selected || picked ? "#0b6bcb" : isDup ? "#e8590c" : isStale ? "#c92a2a" : "none"}
           strokeWidth={0.3}
-          strokeDasharray={(isStale || isDup) && !selected ? "0.8 0.5" : undefined}
+          strokeDasharray={picked ? "1 0.5" : (isStale || isDup) && !selected ? "0.8 0.5" : undefined}
           className="lg-hit"
           data-hit={p.kind}
           data-block={p.block ?? undefined}
@@ -1392,6 +1424,7 @@ function Prim({
           onPointerDown={p.kind === "item" && onDragStart ? (e) => onDragStart(e, p.block, p.id) : undefined}
           onClick={(e) => {
             e.stopPropagation();
+            const add = e.ctrlKey || e.metaKey || e.shiftKey;
             onSelect(
               p.kind === "item"
                 ? { type: "item", block: p.block, item: p.id }
@@ -1402,6 +1435,7 @@ function Prim({
                     : p.kind === "title"
                       ? { type: "title" }
                       : { type: "general" },
+              add,
             );
           }}
         >
@@ -1651,6 +1685,7 @@ function ItemProps({
   onRemove: () => void;
 }) {
   const [suggest, setSuggest] = useState<{ text: string; source: string }[]>([]);
+  const [tab, setTab] = useState(0);
   const set = (patch: Partial<LegendItem>) => change(updateItem(doc, block.id, item.id, patch));
 
   async function saveCompanyText() {
@@ -1681,9 +1716,43 @@ function ItemProps({
 
   const listId = `lg-texts-${item.id}`;
   const title = { symbol: "Symbol", line: "Linie", note: "Hinweis", text: "Freier Text", gap: "Leere Zelle" }[item.kind];
+  const parts = item.parts ?? [];
+  const tabIndex = tab <= parts.length ? tab : 0;
+  const tabs = parts.length ? (
+    <div className="part-tabs" role="tablist" aria-label="Symbole dieses Eintrags">
+      {[item.text, ...parts.map((x) => x.text)].map((t, k) => (
+        <button key={k} role="tab" aria-selected={tabIndex === k} className={`part-tab ${tabIndex === k ? "active" : ""}`}
+          onClick={() => setTab(k)} title={t || `Symbol ${k + 1}`}>
+          {`Text ${k + 1} / Symbol ${k + 1}`}
+        </button>
+      ))}
+    </div>
+  ) : null;
+  const splitBox = parts.length ? (
+    <div className="row" style={{ gap: 6, margin: "6px 0 10px" }}>
+      <span className="hint" style={{ flex: 1 }}>Kombiniert: «{entryText(item)}»</span>
+      <button className="btn small" onClick={() => { setTab(0); change(splitItem(doc, block.id, item.id)); }}
+        title="Jedes Symbol wieder als eigener Eintrag">
+        Trennen
+      </button>
+    </div>
+  ) : null;
+  if (tabIndex > 0) {
+    const k = tabIndex - 1;
+    return (
+      <>
+        <h4>{title}</h4>
+        {tabs}
+        {splitBox}
+        <PartProps part={parts[k]} index={k} item={item} block={block} doc={doc} field={field} change={change} />
+      </>
+    );
+  }
   return (
     <>
       <h4>{title}</h4>
+      {tabs}
+      {splitBox}
       {item.kind === "text" && <p className="hint">{FREE_TEXT_HINT}</p>}
       {stale && <p className="warn-text">Dieser Apparat kommt in den aktuellen Importen nicht vor.</p>}
       {duplicate && <p className="warn-text">doppelt: Dieses Symbol steht schon weiter oben in der Legende.</p>}
@@ -1695,8 +1764,11 @@ function ItemProps({
           </button>
         </div>
       )}
+      {item.kind === "symbol" && !parts.length && (
+        <p className="hint">Strg+Klick auf ein zweites Kästchen: beide zu einem Eintrag kombinieren, z. B. «Decke / Wand».</p>
+      )}
       <label className="field">
-        <span>{item.kind === "text" ? "Text" : "Beschreibung"}</span>
+        <span>{item.kind === "text" ? "Text" : parts.length ? "Text 1" : "Beschreibung"}</span>
         <input className="input" list={listId} value={item.text} {...field((d, v) => updateItem(d, block.id, item.id, { text: v }))} />
         <datalist id={listId}>
           {[...suggest.map((s) => s.text), ...templateTexts].filter((t, i, a) => a.indexOf(t) === i).map((t) => (
@@ -2391,5 +2463,70 @@ function CompanyCategoryField({ familyKey, notify }: { familyKey: string; notify
       </select>
       <p className="hint">Wirkt in allen Projekten beim nächsten Vorschlag. Diese Legende bleibt, bis du sie neu vorschlagen lässt.</p>
     </label>
+  );
+}
+
+/** Two entries chosen: combine the second into the first («Text 1 / Text 2», symbols side by side). */
+function CombineBox({ doc, first, second, onCombine, onCancel }: {
+  doc: LegendDoc;
+  first: LegendItem;
+  second: { block: string; item: string };
+  onCombine: () => void;
+  onCancel: () => void;
+}) {
+  const other = doc.blocks.find((b) => b.id === second.block)?.items.find((x) => x.id === second.item);
+  if (!other) return null;
+  const ok = first.kind === "symbol" && other.kind === "symbol" && (first.parts?.length ?? 0) + 1 + (other.parts?.length ?? 0) <= 3;
+  return (
+    <div className="combine-box" role="region" aria-label="Zwei Einträge gewählt">
+      <b>2 Einträge gewählt</b>
+      <p className="hint">«{entryText(first)}» und «{entryText(other)}» werden ein Eintrag: Symbole nebeneinander, Texte mit « / ».</p>
+      {!ok && <p className="warn-text">Kombinieren geht nur mit Symbolen, höchstens vier pro Eintrag.</p>}
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn small primary" disabled={!ok} onClick={onCombine}>Kombinieren</button>
+        <button className="btn small" onClick={onCancel}>Abbrechen</button>
+      </div>
+    </div>
+  );
+}
+
+/** Text and symbol of a further part of a combined entry (tab «Text 2 / Symbol 2» ...). */
+function PartProps({ part, index, item, block, doc, field, change }: {
+  part: LegendPart;
+  index: number;
+  item: LegendItem;
+  block: LegendBlock;
+  doc: LegendDoc;
+  field: FieldFn;
+  change: (d: LegendDoc) => void;
+}) {
+  const set = (patch: Partial<LegendPart>) => change(updatePart(doc, block.id, item.id, index, patch));
+  const n = index + 2;
+  return (
+    <>
+      <label className="field">
+        <span>Text {n}</span>
+        <input className="input" value={part.text} {...field((d, v) => updatePart(d, block.id, item.id, index, { text: v }))} />
+      </label>
+      <div className="form two">
+        <label className="field">
+          <span>Symbol {n}: Grösse (Faktor)</span>
+          <NumberInput label={`Grösse Symbol ${n}`} value={part.symbol_factor} step={0.1}
+            onCommit={(v) => set({ symbol_factor: Math.max(0.3, Math.min(4, v)) })} />
+        </label>
+        <div className="field">
+          <span>Symbol {n}: Lage</span>
+          <div className="row" style={{ gap: 4 }}>
+            <button className="btn small" onClick={() => set({ rotation: ((part.rotation || 0) + 90) % 360 })} title="Um 90 Grad drehen">↻ 90°</button>
+            <button className={`btn small ${part.mirror ? "primary" : ""}`} aria-pressed={Boolean(part.mirror)}
+              onClick={() => set({ mirror: !part.mirror })} title="Links-rechts spiegeln">⇋ Spiegeln</button>
+          </div>
+        </div>
+      </div>
+      <button className="btn small" onClick={() => change(detachPart(doc, block.id, item.id, index))}
+        title="Nur dieses Symbol wird wieder ein eigener Eintrag">
+        Symbol {n} herauslösen
+      </button>
+    </>
   );
 }

@@ -295,6 +295,12 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                     # drawing around its insertion point, in mm (the layout puts that point on the axis)
                     x0, y0, x1, y1 = geometry_bounds(geo)
                     out[it["id"]] = (x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000, engine)
+                # the further symbols of a combined entry: «<id>#1», «<id>#2» ...
+                for k, part in enumerate(it.get("parts") or [], 1):
+                    geo, engine, _, _ = geometry(part["symbol_key"], part["length_mm"], part["width_mm"])
+                    if geo is not None:
+                        x0, y0, x1, y1 = geometry_bounds(geo)
+                        out[f"{it['id']}#{k}"] = (x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000, engine)
         return out
 
     def load_general(raw: bool = False) -> general_part.GeneralPart:

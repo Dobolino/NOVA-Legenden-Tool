@@ -23,6 +23,27 @@ export interface LegendItem {
   keep: boolean; // shown again on purpose, not hidden a second time
   color?: string; // plan colour of this entry, when it differs from the section
   symbol_color?: string; // chosen colour of this one entry; the whole symbol is drawn in it
+  parts?: LegendPart[]; // combined entry: further symbols beside the first, texts joined with « / »
+}
+
+/** A further symbol of a combined entry («Einlasskasten / Schalungsschoner»). */
+export interface LegendPart {
+  family_key: string | null;
+  symbol_key: string;
+  text: string;
+  length_mm: number | null;
+  width_mm: number | null;
+  symbol_factor: number;
+  rotation: number;
+  mirror?: boolean;
+  color?: string;
+}
+
+export const MAX_PARTS = 4;
+
+/** Text of an entry; a combined entry joins its texts with « / ». */
+export function entryText(it: LegendItem): string {
+  return [it.text, ...(it.parts ?? []).map((p) => p.text)].map((t) => (t || "").trim()).filter(Boolean).join(" / ");
 }
 
 export interface SectionStyle {
@@ -306,7 +327,9 @@ export interface RowLike {
 /** Apparatus in use in the project that the legend does not show yet
  *  (without those the general part already shows). */
 export function missingRows<T extends RowLike>(doc: LegendDoc, rows: T[], covered: Set<string> = new Set()): T[] {
-  const shown = new Set(doc.blocks.flatMap((b) => b.items.filter((it) => !it.hidden).map((it) => it.family_key)).filter(Boolean));
+  // the further symbols of combined entries count as shown too
+  const shown = new Set(doc.blocks.flatMap((b) => b.items.filter((it) => !it.hidden)
+    .flatMap((it) => [it.family_key, ...(it.parts ?? []).map((p) => p.family_key)])).filter(Boolean));
   return rows.filter((r) => r.total > 0 && !shown.has(r.family_key) && !covered.has(r.family_key));
 }
 
@@ -409,6 +432,67 @@ function insertAt(items: LegendItem[], item: LegendItem, beforeId: string | null
   return i < 0 ? [...items, item] : [...items.slice(0, i), item, ...items.slice(i)];
 }
 
+function asPart(it: LegendItem): LegendPart {
+  return {
+    family_key: it.family_key, symbol_key: it.symbol_key ?? "", text: it.text, length_mm: it.length_mm,
+    width_mm: it.width_mm, symbol_factor: it.symbol_factor, rotation: it.rotation, mirror: it.mirror,
+    ...(it.color ? { color: it.color } : {}),
+  };
+}
+
+/** Put entry `second` into entry `first`: its symbol stands beside the first one and its
+ *  text follows after « / ». The second entry leaves its section. */
+export function combineItems(doc: LegendDoc, first: { block: string; item: string }, second: { block: string; item: string }): LegendDoc {
+  const a = doc.blocks.find((b) => b.id === first.block)?.items.find((x) => x.id === first.item);
+  const b = doc.blocks.find((x) => x.id === second.block)?.items.find((x) => x.id === second.item);
+  if (!a || !b || a.id === b.id || a.kind !== "symbol" || b.kind !== "symbol" || !b.symbol_key) return doc;
+  const parts = [...(a.parts ?? []), asPart(b), ...(b.parts ?? [])].slice(0, MAX_PARTS - 1);
+  return updateItem(removeItem(doc, second.block, second.item), first.block, first.item, { parts });
+}
+
+/** Split a combined entry again: every further symbol becomes its own entry right after it. */
+export function splitItem(doc: LegendDoc, blockId: string, itemId: string): LegendDoc {
+  const it = doc.blocks.find((b) => b.id === blockId)?.items.find((x) => x.id === itemId);
+  if (!it?.parts?.length) return doc;
+  const extra = it.parts.map((p) =>
+    makeItem({ kind: "symbol", family_key: p.family_key, symbol_key: p.symbol_key, text: p.text, length_mm: p.length_mm,
+      width_mm: p.width_mm, symbol_factor: p.symbol_factor, rotation: p.rotation, mirror: p.mirror,
+      ...(p.color ? { color: p.color } : {}) }));
+  return mapBlock(doc, blockId, (b) => {
+    const i = b.items.findIndex((x) => x.id === itemId);
+    const head = { ...b.items[i] };
+    delete head.parts;
+    return { ...b, items: [...b.items.slice(0, i), head, ...extra, ...b.items.slice(i + 1)] };
+  });
+}
+
+/** Take one further symbol (index 0 = the second) out of a combined entry: it becomes its
+ *  own entry right after it, the other symbols stay combined. */
+export function detachPart(doc: LegendDoc, blockId: string, itemId: string, index: number): LegendDoc {
+  const it = doc.blocks.find((b) => b.id === blockId)?.items.find((x) => x.id === itemId);
+  const p = it?.parts?.[index];
+  if (!it || !p) return doc;
+  const rest = it.parts!.filter((_x, k) => k !== index);
+  const single = makeItem({ kind: "symbol", family_key: p.family_key, symbol_key: p.symbol_key, text: p.text,
+    length_mm: p.length_mm, width_mm: p.width_mm, symbol_factor: p.symbol_factor, rotation: p.rotation, mirror: p.mirror,
+    ...(p.color ? { color: p.color } : {}) });
+  return mapBlock(doc, blockId, (b) => {
+    const i = b.items.findIndex((x) => x.id === itemId);
+    const head: LegendItem = { ...b.items[i], parts: rest };
+    if (!rest.length) delete head.parts;
+    return { ...b, items: [...b.items.slice(0, i), head, single, ...b.items.slice(i + 1)] };
+  });
+}
+
+/** Change one further symbol (index 0 = the second symbol) of a combined entry. */
+export function updatePart(doc: LegendDoc, blockId: string, itemId: string, index: number, patch: Partial<LegendPart>): LegendDoc {
+  return mapBlock(doc, blockId, (b) => ({
+    ...b,
+    items: b.items.map((it) =>
+      it.id === itemId && it.parts ? { ...it, parts: it.parts.map((p, k) => (k === index ? { ...p, ...patch } : p)) } : it),
+  }));
+}
+
 /** Turn a symbol by 90 degrees around its centre. */
 export function rotateItem(doc: LegendDoc, blockId: string, itemId: string, step = 90): LegendDoc {
   const it = doc.blocks.find((b) => b.id === blockId)?.items.find((x) => x.id === itemId);
@@ -444,7 +528,8 @@ export function duplicateItems(doc: LegendDoc): Set<string> {
 /** True if the legend already shows this symbol. */
 export function inLegend(doc: LegendDoc, familyKey: string | null, symbolKey: string | null): boolean {
   const k = symbolIdentity({ family_key: familyKey, symbol_key: symbolKey });
-  return Boolean(k) && doc.blocks.some((b) => b.items.some((it) => !it.hidden && it.kind === "symbol" && symbolIdentity(it) === k));
+  return Boolean(k) && doc.blocks.some((b) => b.items.some((it) => !it.hidden && it.kind === "symbol"
+    && (symbolIdentity(it) === k || (it.parts ?? []).some((p) => symbolIdentity(p) === k))));
 }
 
 /** Same rule as norm_text in the backend: no case, punctuation or extra spaces. */
@@ -490,7 +575,10 @@ export function hideCovered(doc: LegendDoc, g: GeneralLike | null | undefined): 
 export function staleItems(doc: LegendDoc, rows: RowLike[]): Set<string> {
   const used = new Set(rows.filter((r) => r.total > 0).map((r) => r.family_key));
   const out = new Set<string>();
-  for (const b of doc.blocks) for (const it of b.items) if (it.kind === "symbol" && it.family_key && !used.has(it.family_key)) out.add(it.id);
+  for (const b of doc.blocks)
+    for (const it of b.items)
+      if (it.kind === "symbol" && it.family_key && ![it.family_key, ...(it.parts ?? []).map((p) => p.family_key)].some((k) => k && used.has(k)))
+        out.add(it.id);
   return out;
 }
 

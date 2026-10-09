@@ -59,6 +59,8 @@ def build_review(evaluation: dict, category_colors: list[dict], legend: dict | N
         items = [(b, it) for b in doc["blocks"] for it in b["items"]]
         visible = [(b, it) for b, it in items if not it.get("hidden")]
         shown = {it["family_key"] for _, it in visible if it.get("family_key")}
+        # the further symbols of combined entries count as shown too
+        shown |= {p["family_key"] for _, it in visible for p in it.get("parts") or [] if p.get("family_key")}
 
         missing = [{"title": r["title"], "detail": f"{r['total']}×"}
                    for r in rows if r["family_key"] not in shown and r["family_key"] not in covered]
@@ -88,7 +90,8 @@ def build_review(evaluation: dict, category_colors: list[dict], legend: dict | N
 
         stale = [{"title": it["text"], "detail": b["title"]} for b, it in visible
                  if it["kind"] == "symbol" and it.get("family_key")
-                 and not (by_family.get(it["family_key"]) or {}).get("total")]
+                 and not any((by_family.get(k) or {}).get("total")
+                             for k in [it["family_key"], *(p.get("family_key") for p in it.get("parts") or [])])]
         checks.append(_check("stale", "Nicht mehr in den Plänen", "legend", stale, "warn",
                              "Die Legende zeigt Apparate, die in den aktuellen Plänen nicht vorkommen.",
                              "Jeder Eintrag der Legende kommt in den Plänen vor."))

@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 
 from .linetypes import dash_array
-from .model import DEFAULT_TITLE_MM
+from .model import DEFAULT_TITLE_MM, entry_text
 
 LINE_FACTOR = 1.3            # line height relative to the text size
 _NARROW = set("il.,;:|!'`Iíìj()[]/\\ ")
@@ -252,6 +252,52 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
     if kind == "note":
         return box(half, half, half, half)
     return box(0.0, 0.0, 0.0, 0.0)
+
+
+PART_GAP = 1.0      # mm between the symbols of a combined entry
+
+
+def _combined(item: dict, sizes: dict, single, room: tuple[float, float, float] | None = None) -> dict:
+    """Box of an entry. A combined entry (``parts``) puts its symbols side by side, each
+    with its own size rule, the group centred on the symbol axis. ``room`` = (axis,
+    left edge, right edge) of the symbol column: a group wider than that shrinks and
+    moves so it never runs into the text."""
+    parts = item.get("parts") or []
+    first = single(item, sizes.get(item["id"]))
+    if not parts or item["kind"] != "symbol":
+        return first
+    members = [(item, first)]
+    for k, part in enumerate(parts, 1):
+        merged = {**item, **part, "kind": "symbol", "parts": None}
+        members.append((merged, single(merged, sizes.get(f"{item['id']}#{k}"))))
+    widths = [b["left"] + b["right"] for _p, b in members]
+    total = sum(widths) + PART_GAP * (len(members) - 1)
+    shrink = 1.0
+    if room is not None:
+        axis, lo, hi = room
+        if total > hi - lo:
+            gaps = PART_GAP * (len(members) - 1)
+            shrink = max(0.2, (hi - lo - gaps) / max(sum(widths), 1e-6))
+    scaled = []
+    for (part, b), w in zip(members, widths):
+        if shrink < 1.0:
+            b = {**b, "left": b["left"] * shrink, "right": b["right"] * shrink, "up": b["up"] * shrink,
+                 "down": b["down"] * shrink, "scale": round(b["scale"] * shrink, 5)}
+        scaled.append((part, b))
+    total = sum(b["left"] + b["right"] for _p, b in scaled) + PART_GAP * (len(scaled) - 1)
+    shift = 0.0
+    if room is not None:
+        axis, lo, hi = room
+        centre = min(max(axis, lo + total / 2), hi - total / 2)
+        shift = centre - axis
+    x = -total / 2 + shift
+    out_parts = []
+    for part, b in scaled:
+        out_parts.append({"dx": round(x + b["left"], 4), "box": b, "part": part})
+        x += b["left"] + b["right"] + PART_GAP
+    return {"left": total / 2 - shift, "right": total / 2 + shift,
+            "up": max(b["up"] for _p, b in scaled), "down": max(b["down"] for _p, b in scaled),
+            "scale": scaled[0][1]["scale"], "ax": first["ax"], "ay": first["ay"], "parts": out_parts}
 
 
 def _general_header(prims: list, x: float, y: float, inner: float, ts: float, section: dict) -> float:
@@ -510,7 +556,8 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row, continued: b
         # real size: insertion points on one axis, texts right of the widest part,
         # every entry takes whole rows of the chosen grid
         off = style["text_offset"]
-        boxes = {it["id"]: _symbol_box_real(it, sizes.get(it["id"]), style, colw / 2) for it in items}
+        boxes = {it["id"]: _combined(it, sizes, lambda part, size: _symbol_box_real(part, size, style, colw / 2))
+                 for it in items}
         axis = max([off * 0.4] + [boxes[it["id"]]["left"] + 0.3 for it in items])
         text_x = max([off] + [axis + boxes[it["id"]]["right"] + 1.2 for it in items])
         fixed = None
@@ -518,7 +565,8 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row, continued: b
         # equal tiles: every drawing fills one tile sized from the text.
         # a raster other than Standard uses the chosen row height and text distance
         tile, fixed, axis, text_x = tile_frame(style, colw)
-        boxes = {it["id"]: _symbol_box(it, sizes.get(it["id"]), style, tile) for it in items}
+        boxes = {it["id"]: _combined(it, sizes, lambda part, size: _symbol_box(part, size, style, tile),
+                                     (axis, 0.3, text_x - 0.8)) for it in items}
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     # every place of the grid is a cell (also the empty ones): the editor drops entries
@@ -595,7 +643,7 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     its = ts * float(item.get("text_scale") or 1.0)
     lh = its * LINE_FACTOR
     tx = cx0 + text_x
-    lines = wrap(item["text"], its, cx0 + colw - tx - 0.8)
+    lines = wrap(entry_text(item) if item.get("parts") else item["text"], its, cx0 + colw - tx - 0.8)
     if lines_n:
         # a chosen line count: extra lines are dropped
         reserve = lines_n
@@ -622,14 +670,24 @@ def _entry(item, box, out, block, cx0, cy, colw, ts, row, axis, text_x, st,
     forced = _forced_color(item)
     paint = forced or (item.get("color") or section_color if kind == "symbol" else section_color)
     if kind == "symbol":
-        out.append({"t": "symbol", "id": item["id"], "key": item["symbol_key"], "family_key": item["family_key"],
-                    "length_mm": item["length_mm"], "width_mm": item["width_mm"],
-                    "cx": round(sx, 3), "cy": round(mid, 3), "scale": box["scale"], "rot": item.get("rotation", 0),
-                    "ax": round(box["ax"], 4), "ay": round(box["ay"], 4), "mirror": bool(item.get("mirror")),
-                    "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
-                    "w": round(w, 3), "h": round(box["up"] + box["down"], 3), "layer": block.get("layer") or "",
+        # a combined entry draws each of its symbols at its own place, side by side
+        members = box.get("parts") or [{"dx": 0.0, "box": box, "part": item}]
+        for k, m in enumerate(members):
+            part, b = m["part"], m["box"]
+            px = sx + m["dx"]
+            colour = forced or (part.get("color") or item.get("color") or section_color)
+            prim = {"t": "symbol", "id": item["id"], "key": part["symbol_key"], "family_key": part["family_key"],
+                    "length_mm": part["length_mm"], "width_mm": part["width_mm"],
+                    "cx": round(px, 3), "cy": round(mid, 3), "scale": b["scale"], "rot": part.get("rotation", 0),
+                    "ax": round(b["ax"], 4), "ay": round(b["ay"], 4), "mirror": bool(part.get("mirror")),
+                    "x0": round(px - b["left"], 3), "y0": round(mid - b["up"], 3),
+                    "w": round(b["left"] + b["right"], 3), "h": round(b["up"] + b["down"], 3),
+                    "layer": block.get("layer") or "",
                     "hatch_off": fills_off[0], "fill_off": fills_off[1],
-                    "color": paint, "flat": bool(forced)})
+                    "color": colour, "flat": bool(forced)}
+            if len(members) > 1:
+                prim["part"] = k
+            out.append(prim)
     elif kind == "line":
         out.append({"t": "line", "dash": dash_array(item["line_style"], box["left"] + box["right"]),
                     "x1": round(sx - box["left"], 3), "x2": round(sx + box["right"], 3),
