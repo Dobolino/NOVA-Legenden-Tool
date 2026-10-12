@@ -69,6 +69,10 @@ LEGEND_DEFAULTS = {
     # the order of all rows (row keys); both kept beside the server drawing
     "legend_general_extra": [],
     "legend_general_order": [],
+    # company symbols: how a symbol family looks in every legend
+    # ({family_key: {symbol_factor, rotation, mirror, parts: [{family_key, symbol_factor,
+    # rotation, mirror}], by, at}}); text and section live in descriptions / assignments
+    "legend_company_symbols": {},
 }
 
 # Bump when default categories gain number ranges; existing company files

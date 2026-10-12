@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
-import { api, Category, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, StencilData, StencilEntry, SymbolRender } from "../api";
+import { api, Category, CompanySymbolLook, FamilyItem, GeneralInfo, LegendInfo, LegendLayout, LegendPrim, ProjectDetail, StencilData, StencilEntry, SymbolRender } from "../api";
 import { exportDiagnostic } from "../diagnostics";
 import InfoTip from "./InfoTip";
 import {
@@ -195,6 +195,12 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
   const catTitle = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c.title])), [categories]);
   const descriptions = info?.descriptions ?? {};
   const stencilNames = info?.stencil_names ?? {};
+  const companySymbols = info?.company_symbols ?? {};
+  /** Size, turn and mirror a company symbol brings along when it is added. */
+  const look = (familyKey: string | null | undefined): Partial<LegendItem> => {
+    const saved = familyKey ? companySymbols[familyKey] : undefined;
+    return saved ? { symbol_factor: saved.symbol_factor, rotation: saved.rotation, mirror: saved.mirror } : {};
+  };
   // your Nova user stencil: loaded once per editor, one tab open at a time
   const [stencil, setStencil] = useState<StencilData | null>(null);
   const [stencilTab, setStencilTab] = useState<string | null>(null);
@@ -421,7 +427,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     let last: { block: string; item: string } | null = null;
     for (const r of rows) {
       const target = ensureBlock(d, r.categories, selectedBlockId());
-      const res = addItem(target.doc, target.id, { kind: "symbol", family_key: r.family_key, symbol_key: r.symbol_key, text: describe(r.family_key, r.title, descriptions, stencilNames) });
+      const res = addItem(target.doc, target.id, { kind: "symbol", family_key: r.family_key, symbol_key: r.symbol_key, text: describe(r.family_key, r.title, descriptions, stencilNames), ...look(r.family_key) });
       d = res.doc;
       last = { block: target.id, item: res.id };
     }
@@ -433,7 +439,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     if (!doc) return;
     const familyKey = f.key;
     const target = ensureBlock(doc, f.categories, selectedBlockId());
-    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: familyKey, symbol_key: f.representative.key, text: describe(familyKey, f.title, descriptions, stencilNames) });
+    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: familyKey, symbol_key: f.representative.key, text: describe(familyKey, f.title, descriptions, stencilNames), ...look(familyKey) });
     change(res.doc);
     setSel({ type: "item", block: target.id, item: res.id });
     setSearch("");
@@ -443,7 +449,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
     if (!doc || !e.symbol_key) return;
     const target = ensureBlock(doc, e.categories, selectedBlockId());
     const text = describe(e.family_key, e.name, descriptions, {});
-    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: e.family_key, symbol_key: e.symbol_key, text });
+    const res = addItem(target.doc, target.id, { kind: "symbol", family_key: e.family_key, symbol_key: e.symbol_key, text, ...look(e.family_key) });
     change(res.doc);
     setSel({ type: "item", block: target.id, item: res.id });
   }
@@ -503,7 +509,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
         change(placeInCell(doc, target.block, target.cell, { block: payload.block, item: payload.item }));
         setSel({ type: "item", block: target.block, item: payload.item });
       } else {
-        const fresh = makeItem({ kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text });
+        const fresh = makeItem({ kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text, ...look(payload.family_key) });
         change(placeInCell(doc, target.block, target.cell, { item: fresh }));
         setSel({ type: "item", block: target.block, item: fresh.id });
       }
@@ -514,7 +520,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       change(moveItemTo(doc, payload.block, payload.item, target.block, target.before));
       setSel({ type: "item", block: target.block, item: payload.item });
     } else {
-      const res = insertItem(doc, target.block, { kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text }, target.before);
+      const res = insertItem(doc, target.block, { kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text, ...look(payload.family_key) }, target.before);
       change(res.doc);
       setSel({ type: "item", block: target.block, item: res.id });
     }
@@ -628,7 +634,7 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
       payload.type === "move"
         ? placeInCell(doc, dropAt.block, dropAt.cell, { block: payload.block, item: payload.item })
         : placeInCell(doc, dropAt.block, dropAt.cell, {
-            item: makeItem({ id: DROP_ID, kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text }),
+            item: makeItem({ id: DROP_ID, kind: "symbol", family_key: payload.family_key, symbol_key: payload.symbol_key, text: payload.text, ...look(payload.family_key) }),
           });
     const id = payload.type === "move" ? payload.item : DROP_ID;
     const ctrl = new AbortController();
@@ -1234,6 +1240,10 @@ export default function LegendEditor({ projectId, data, categories, notify, lege
               notify={notify}
               companyText={companyKey(selItem) ? descriptions[companyKey(selItem)!] ?? null : null}
               onDescription={(fam, text) => setInfo((i) => (i ? { ...i, descriptions: { ...i.descriptions, [fam]: text } } : i))}
+              companySymbol={selItem.family_key ? companySymbols[selItem.family_key] ?? null : null}
+              onCompanySymbols={(symbols, fam, text) => setInfo((i) => (i ? {
+                ...i, company_symbols: symbols, descriptions: text ? { ...i.descriptions, [fam]: text } : i.descriptions,
+              } : i))}
               onMoveTo={(to) => {
                 change(moveItemToBlock(doc, selBlock.id, selItem.id, to));
                 setSel({ type: "item", block: to, item: selItem.id });
@@ -1662,6 +1672,8 @@ function ItemProps({
   notify,
   companyText,
   onDescription,
+  companySymbol,
+  onCompanySymbols,
   onMoveTo,
   onMove,
   onRemove,
@@ -1680,6 +1692,8 @@ function ItemProps({
   notify: (text: string, error?: boolean) => void;
   companyText: string | null;
   onDescription: (familyKey: string, text: string) => void;
+  companySymbol: CompanySymbolLook | null;
+  onCompanySymbols: (symbols: Record<string, CompanySymbolLook>, familyKey: string, text: string) => void;
   onMoveTo: (blockId: string) => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -1696,6 +1710,27 @@ function ItemProps({
       await api.setDescription(key, text);
       onDescription(key, text);
       notify("Als Firmentext gespeichert. Gilt beim Hinzufügen und bei neuen Vorschlägen in allen Projekten.");
+    } catch (e) {
+      notify((e as Error).message, true);
+    }
+  }
+
+  const symbolParts = (item.parts ?? []).filter((x) => x.family_key);
+  const sameLook = Boolean(companySymbol) && companySymbol!.symbol_factor === item.symbol_factor
+    && companySymbol!.rotation === (item.rotation || 0) && companySymbol!.mirror === Boolean(item.mirror)
+    && JSON.stringify(companySymbol!.parts.map((x) => x.family_key)) === JSON.stringify(symbolParts.map((x) => x.family_key));
+
+  async function saveCompanySymbol() {
+    if (!item.family_key) return;
+    try {
+      const r = await api.saveCompanySymbol({
+        family_key: item.family_key, text: item.text.trim() || undefined, category: block.category_id || null,
+        symbol_factor: item.symbol_factor, rotation: item.rotation || 0, mirror: Boolean(item.mirror),
+        parts: symbolParts.map((x) => ({ family_key: x.family_key!, symbol_factor: x.symbol_factor, rotation: x.rotation || 0, mirror: Boolean(x.mirror) })),
+      });
+      onCompanySymbols(r.symbols, item.family_key, item.text.trim());
+      notify("Als Firmensymbol gespeichert: Text, Abschnitt, Grösse, Drehung" + (symbolParts.length ? " und Kombination" : "")
+        + " gelten in allen Projekten ab dem nächsten Vorschlag.");
     } catch (e) {
       notify((e as Error).message, true);
     }
@@ -1875,7 +1910,24 @@ function ItemProps({
         </div>
       )}
       {item.kind === "symbol" && item.family_key && (
-        <CompanyCategoryField familyKey={item.family_key} notify={notify} />
+        <div className={`company-text ${sameLook ? "is-company" : ""}`}>
+          {sameLook ? (
+            <span className="company-state">✓ Firmensymbol: so erscheint es in allen Projekten</span>
+          ) : (
+            <span className="company-state muted">
+              {companySymbol ? "Firmensymbol gespeichert, diese Legende weicht davon ab." : "Noch kein Firmensymbol."}
+            </span>
+          )}
+          {!sameLook && (
+            <button className="btn small" onClick={saveCompanySymbol}
+              title={`Text, Abschnitt «${block.title}», Grösse, Drehung, Spiegeln${symbolParts.length ? " und die kombinierten Symbole" : ""} für alle Projekte speichern. Die Farbe kommt weiter aus dem Plan.`}>
+              Als Firmensymbol speichern
+            </button>
+          )}
+        </div>
+      )}
+      {item.kind === "symbol" && item.family_key && (
+        <CompanyCategoryField key={`${item.family_key}|${companySymbol?.at ?? ""}`} familyKey={item.family_key} notify={notify} />
       )}
       {item.kind === "symbol" && render?.engine && (
         <div className="form two">

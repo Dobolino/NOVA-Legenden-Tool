@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import CompanyLegendCard from "./CompanyLegendCard";
 import CompanyTextsCard from "./CompanyTextsCard";
+import CompanySymbolsCard from "./CompanySymbolsCard";
 import { api, DATASET_LABEL, StencilData, Status, UpdateInfo } from "../api";
 import { TrashIcon } from "./Icons";
 import InfoTip from "./InfoTip";
@@ -392,6 +393,8 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <CompanyLegendCard canPick={canPick} choose={choose} notify={notify} />
 
         <CompanyTextsCard notify={notify} />
+
+        <CompanySymbolsCard notify={notify} />
 
         <div className="card">
           <h3>Nova-Version (Standard für neue Projekte)</h3>

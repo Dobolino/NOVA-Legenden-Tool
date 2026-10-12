@@ -50,6 +50,23 @@ class GeneralExtraIn(BaseModel):
     after: str = ""
 
 
+class CompanyPartIn(BaseModel):
+    family_key: str
+    symbol_factor: float = 1.0
+    rotation: int = 0
+    mirror: bool = False
+
+
+class CompanySymbolIn(BaseModel):
+    family_key: str
+    text: str | None = None
+    category: str | None = None
+    symbol_factor: float = 1.0
+    rotation: int = 0
+    mirror: bool = False
+    parts: list[CompanyPartIn] = []
+
+
 class GeneralOrderIn(BaseModel):
     keys: list[str]
 
@@ -693,7 +710,8 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                       texts, title.strip(), style=style or project_style(p), colors=colors,
                       covered=covered_families(gen, result["rows"], descriptions),
                       ap_covered=bool({norm_text(AP_NOTE), norm_text(descriptions.get(AP_NOTE_KEY) or AP_NOTE)} & set(gen.texts)),
-                      layer_categories=layer_categories, layer_colors=layer_colors)
+                      layer_categories=layer_categories, layer_colors=layer_colors,
+                      company_symbols=st.company.legend_settings().get("legend_company_symbols") or {})
         fixed = st.company.category_colors().get("allgemein")
         if fixed:
             # the bar of the general part in the company colour of «Allgemein»
@@ -774,6 +792,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                 "template_texts": template_texts(), "descriptions": descriptions,
                 "stencil_names": stencil_names(evaluator(), project_nova(p)),
                 "in_general": in_general,
+                "company_symbols": st.company.legend_settings().get("legend_company_symbols") or {},
                 "grids": [{"id": k, **v} for k, v in GRIDS.items()], "style": project_style(p),
                 "company": company_legend(), "oda": bool(st.settings.oda_path or config.find_oda_converter())}
 
@@ -953,6 +972,66 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
             elif key in before:
                 removed += 1
         return {"changed": changed, "removed": removed, "rows": len(pairs)}
+
+    # -- company symbols ---------------------------------------------------------------
+
+    def company_symbol_list() -> dict:
+        saved = st.company.legend_settings().get("legend_company_symbols") or {}
+        texts = st.company.descriptions()
+        manual = st.company.assignments()
+        titles = {}
+        if saved:
+            for fam in st.library.families(st.family_options()).values():
+                titles[fam.key] = fam.title
+        cats = {c["id"]: c["title"] for c in st.company.categories()}
+        items = []
+        for fk, rec in sorted(saved.items(), key=lambda kv: (texts.get(kv[0]) or titles.get(kv[0]) or kv[0]).lower()):
+            items.append({"family_key": fk, "title": titles.get(fk, fk), "text": texts.get(fk, ""),
+                          "category": (manual.get(fk) or [""])[0], "category_title": cats.get((manual.get(fk) or [""])[0], ""),
+                          "symbol_factor": rec.get("symbol_factor", 1.0), "rotation": rec.get("rotation", 0),
+                          "mirror": bool(rec.get("mirror")),
+                          "parts": [{**p, "title": texts.get(p["family_key"]) or titles.get(p["family_key"], p["family_key"])}
+                                    for p in rec.get("parts") or []],
+                          "by": rec.get("by", ""), "at": rec.get("at", "")})
+        return {"items": items, "symbols": saved}
+
+    @app.get("/api/company/symbols")
+    def company_symbols() -> dict:
+        return company_symbol_list()
+
+    @app.put("/api/company/symbols")
+    def save_company_symbol(body: CompanySymbolIn) -> dict:
+        """«Als Firmensymbol speichern» (admins): text, section, size, turn, mirror and the
+        symbols combined with it apply in every project from the next proposal on."""
+        require_admin()
+        from datetime import datetime
+
+        if body.category and body.category not in {c["id"] for c in st.company.categories()}:
+            raise HTTPException(400, "Unbekannte Kategorie")
+        if body.text is not None and body.text.strip():
+            st.company.set_description(body.family_key, body.text.strip())
+        if body.category:
+            st.company.assign(body.family_key, [body.category])
+        saved = dict(st.company.legend_settings().get("legend_company_symbols") or {})
+        clamp = lambda v: round(max(0.3, min(4.0, float(v))), 3)  # noqa: E731
+        saved[body.family_key] = {
+            "symbol_factor": clamp(body.symbol_factor), "rotation": int(body.rotation) % 360, "mirror": body.mirror,
+            "parts": [{"family_key": p.family_key, "symbol_factor": clamp(p.symbol_factor),
+                       "rotation": int(p.rotation) % 360, "mirror": p.mirror}
+                      for p in body.parts if p.family_key and p.family_key != body.family_key][:3],
+            "by": config.current_user(), "at": datetime.now().isoformat(timespec="seconds")}
+        st.company.set_legend_settings({"legend_company_symbols": saved})
+        return company_symbol_list()
+
+    @app.delete("/api/company/symbols/{family_key:path}")
+    def reset_company_symbol(family_key: str) -> dict:
+        """Size, turn, mirror and combination back to normal. Company text and section stay
+        (they have their own lists)."""
+        require_admin()
+        saved = dict(st.company.legend_settings().get("legend_company_symbols") or {})
+        saved.pop(family_key, None)
+        st.company.set_legend_settings({"legend_company_symbols": saved})
+        return company_symbol_list()
 
     @app.put("/api/descriptions")
     def set_description(body: DescriptionIn) -> dict:

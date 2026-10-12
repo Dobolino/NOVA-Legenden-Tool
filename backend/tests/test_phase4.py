@@ -1670,3 +1670,43 @@ def test_nova_names_are_tidied_for_the_legend_but_company_texts_stay():
     assert doc["blocks"][0]["items"][0]["text"] == "Schlaufkasten (multi) Firma"
     doc = propose([a], CATS, True, {}, "L")
     assert doc["blocks"][0]["items"][0]["text"] == "Schlaufkasten Decke"
+
+
+def test_company_symbols_set_size_turn_and_combine_in_new_proposals():
+    a, b, c = row("dose", ["schalter"]), row("auslass", ["allgemein"]), row("taster", ["schalter"])
+    a["title"], b["title"], c["title"] = "Abzweigdose Wand", "Deckendose", "Taster"
+    saved = {"dose": {"symbol_factor": 1.3, "rotation": 90, "mirror": True,
+                      "parts": [{"family_key": "auslass", "symbol_factor": 0.8, "rotation": 0},
+                                {"family_key": "fehlt"}]},
+             "taster": {"symbol_factor": 0.7}}
+    doc = propose([a, b, c], CATS, True, {}, "L", company_symbols=saved)
+    items = {i["family_key"]: i for blk in doc["blocks"] for i in blk["items"]}
+    assert set(items) == {"dose", "taster"}                      # the Deckendose sits in the combined entry
+    dose = items["dose"]
+    assert (dose["symbol_factor"], dose["rotation"], dose["mirror"]) == (1.3, 90, True)
+    assert [p["family_key"] for p in dose["parts"]] == ["auslass"] and dose["parts"][0]["symbol_factor"] == 0.8
+    assert dose["parts"][0]["text"] == "Deckendose" and items["taster"]["symbol_factor"] == 0.7
+    assert [blk["category_id"] for blk in doc["blocks"]] == ["schalter"]   # «Allgemein» was left empty
+    # without the second symbol in the plan the entry stays alone
+    alone = propose([a, c], CATS, True, {}, "L", company_symbols=saved)
+    assert not any(i.get("parts") for blk in alone["blocks"] for i in blk["items"])
+
+
+def test_company_symbol_api_saves_text_section_and_look(env, monkeypatch):  # noqa: F811
+    client, _tmp = env
+    fams = client.get("/api/library/families").json()["items"]
+    first, second = fams[0], fams[1]
+    r = client.put("/api/company/symbols", json={
+        "family_key": first["key"], "text": "Dose Firma", "category": "kommunikation", "symbol_factor": 1.2,
+        "rotation": 90, "parts": [{"family_key": second["key"], "symbol_factor": 0.9}]})
+    assert r.status_code == 200
+    item = next(i for i in r.json()["items"] if i["family_key"] == first["key"])
+    assert item["text"] == "Dose Firma" and item["category"] == "kommunikation" and item["rotation"] == 90
+    assert item["parts"][0]["family_key"] == second["key"]
+    assert client.get("/api/descriptions").json()  # the text is a company text
+    assert client.get(f"/api/category-family?family_key={first['key']}").json()["categories"] == ["kommunikation"]
+    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    assert first["key"] in client.get(f"/api/projects/{pid}/legend").json()["company_symbols"]
+    left = client.delete(f"/api/company/symbols/{first['key']}").json()
+    assert not left["items"]
+    assert client.put("/api/company/symbols", json={"family_key": "x", "category": "gibtsnicht"}).status_code == 400

@@ -339,6 +339,48 @@ def _plan_hex(value) -> str:
     return text.lower() if _HEX.match(text) and text.lower() != "#ffffff" else ""
 
 
+def _look(saved: dict) -> dict:
+    return {"symbol_factor": round(_num(saved.get("symbol_factor"), 1.0, 0.3, 4.0), 3),
+            "rotation": _rotation(saved.get("rotation")), "mirror": bool(saved.get("mirror"))}
+
+
+def apply_company_symbols(doc: dict, company_symbols: dict) -> dict:
+    """Company size, turn and mirror on every symbol of the doc; a symbol saved as a
+    combined entry takes in the saved further symbols that are in the legend (each leaves
+    its own place). A section that ends up empty goes."""
+    where: dict[str, tuple[dict, dict]] = {}
+    for b in doc["blocks"]:
+        for it in b["items"]:
+            if it.get("kind") == "symbol" and it.get("family_key") and not it.get("hidden"):
+                where.setdefault(it["family_key"], (b, it))
+                saved = company_symbols.get(it["family_key"])
+                if isinstance(saved, dict):
+                    it.update(_look(saved))
+    taken: set[str] = set()
+    for fk, (_b, it) in list(where.items()):
+        saved = company_symbols.get(fk)
+        if not isinstance(saved, dict) or fk in taken or it.get("parts"):
+            continue
+        parts = []
+        for p in (saved.get("parts") or [])[:MAX_PARTS - 1]:
+            other = where.get((p or {}).get("family_key"))
+            if not other or other[1] is it or p["family_key"] in taken:
+                continue
+            ob, oi = other
+            part = {"family_key": oi["family_key"], "symbol_key": oi["symbol_key"], "text": oi.get("text", ""),
+                    "length_mm": oi.get("length_mm"), "width_mm": oi.get("width_mm"), **_look(p)}
+            if oi.get("color"):
+                part["color"] = oi["color"]
+            parts.append(part)
+            ob["items"] = [x for x in ob["items"] if x is not oi]
+            taken.add(p["family_key"])
+        if parts:
+            it["parts"] = parts
+            taken.add(fk)
+    doc["blocks"] = [b for b in doc["blocks"] if b["items"]]
+    return doc
+
+
 def tidy_title(title: str) -> str:
     """A Nova catalogue name made readable for the legend (company texts and stencil names
     are never changed): technical tags go, spelling of schemes and sizes is the same
@@ -407,7 +449,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             descriptions: dict[str, str], title: str, style: dict | None = None,
             colors: dict[str, str] | None = None, covered: set[str] | None = None,
             ap_covered: bool = False, layer_categories: dict[str, str] | None = None,
-            layer_colors: dict[str, str] | None = None) -> dict:
+            layer_colors: dict[str, str] | None = None, company_symbols: dict | None = None) -> dict:
     """New legend with every apparatus in use, grouped by the first visible category.
 
     Every symbol is shown once (Legendenbesprechung 09.10.2026): a symbol on plan layers
@@ -422,6 +464,10 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
 
     ``colors`` maps a category id to the plan colour of its legend layer; it
     gives each section its default look.
+
+    ``company_symbols`` (family key -> saved look) gives a symbol its company size, turn
+    and mirror, and puts the symbols saved as one combined entry together when the
+    project has them.
     """
     style = normalize_style(style)
     doc = empty_doc(title, style)
@@ -504,6 +550,8 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             best = max(bag.items(), key=lambda kv: (kv[1], kv[0]))[0]
             block["style"] = section_style(best)
     doc["blocks"] = sorted(blocks.values(), key=lambda b: order.get(b["category_id"], 999))
+    if company_symbols:
+        apply_company_symbols(doc, company_symbols)
     if has_ap and doc["blocks"] and not ap_covered:
         first = next((b for b in doc["blocks"] if b["category_id"] == "allgemein"), doc["blocks"][0])
         first["items"].append({"id": new_id(), "kind": "note", "family_key": None, "symbol_key": None,

@@ -342,6 +342,22 @@ def test_two_entries_are_combined_with_ctrl_click_and_split_again(editor):
     assert [it["text"] for it in items] == ["Decke", "Wand"] and not items[0].get("parts")
 
 
+def test_a_symbol_is_saved_as_company_symbol_from_the_editor(editor):
+    page, _field, client, (a, _b) = editor
+    item = page.locator("button.outline-item").filter(has_not_text="T Titel").first
+    playwright.expect(item).to_be_visible()
+    item.click()
+    save = page.get_by_role("button", name="Als Firmensymbol speichern")
+    playwright.expect(save).to_be_visible()
+    save.click()
+    playwright.expect(page.get_by_text("✓ Firmensymbol", exact=False)).to_be_visible()
+    items = client.get("/api/company/symbols").json()["items"]
+    assert len(items) == 1 and items[0]["symbol_factor"] == 1.0
+    doc = client.get(f"/api/projects/{a}/legend").json()["legend"]["doc"]
+    first = next(it for b in doc["blocks"] for it in b["items"] if it["kind"] == "symbol")
+    assert items[0]["family_key"] == first["family_key"] and items[0]["text"] == first["text"]
+
+
 def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypatch):
     """Everyone sees the same star list. An empty list stays open; afterwards only admins edit it."""
     from nova_legend import config

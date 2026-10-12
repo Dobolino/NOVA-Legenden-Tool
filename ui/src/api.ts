@@ -371,6 +371,25 @@ export interface LegendInfo {
   company: CompanyLegend;
   oda: boolean;
   in_general: GeneralContents;
+  company_symbols?: Record<string, CompanySymbolLook>;
+}
+
+/** How a symbol family looks in every legend of the company («Firmensymbol»). */
+export interface CompanySymbolLook {
+  symbol_factor: number;
+  rotation: number;
+  mirror: boolean;
+  parts: { family_key: string; symbol_factor: number; rotation: number; mirror: boolean; title?: string }[];
+  by?: string;
+  at?: string;
+}
+
+export interface CompanySymbolItem extends CompanySymbolLook {
+  family_key: string;
+  title: string;
+  text: string;
+  category: string;
+  category_title: string;
 }
 
 /** What the general part already shows (texts normalised like normText in legend.ts). */
@@ -641,6 +660,12 @@ export const api = {
   companyGeneral: () => request<CompanyGeneral>("GET", "/api/company/general"),
   saveGeneralRow: (row: { key: string; text?: string; hidden?: boolean; links?: string[]; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom" }) =>
     request<CompanyGeneral>("PUT", "/api/company/general/row", row),
+  companySymbols: () => request<{ items: CompanySymbolItem[]; symbols: Record<string, CompanySymbolLook> }>("GET", "/api/company/symbols"),
+  saveCompanySymbol: (body: { family_key: string; text?: string; category?: string | null; symbol_factor: number; rotation: number; mirror: boolean;
+    parts: { family_key: string; symbol_factor: number; rotation: number; mirror: boolean }[] }) =>
+    request<{ items: CompanySymbolItem[]; symbols: Record<string, CompanySymbolLook> }>("PUT", "/api/company/symbols", body),
+  resetCompanySymbol: (familyKey: string) =>
+    request<{ items: CompanySymbolItem[]; symbols: Record<string, CompanySymbolLook> }>("DELETE", `/api/company/symbols/${encodeURIComponent(familyKey)}`),
   reloadGeneral: () => request<CompanyGeneral>("POST", "/api/company/general/reload"),
   addGeneralRow: (row: { text: string; symbol_key: string; family_key: string | null; after: string }) =>
     request<CompanyGeneral>("POST", "/api/company/general/extra", row),
