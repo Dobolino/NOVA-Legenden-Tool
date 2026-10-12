@@ -38,10 +38,10 @@ DEFAULT_CATEGORIES: list[Category] = [
              sheets=["90", "100", "390", "400", "50", "60"]),  # Kombinationen Gr.I in both
     Category("kraft", "Kraft und Elektrogeräte", "E_Starkstrom", sheets=["170"]),
     Category("schwachstrom", "Schwachstrom", "E_Schwachstrom", sheets=["330", "270"]),   # 270 Uhren
-    # Telefon, EDV / UKV and TV / Video in one section (Legendenbesprechung 09.10.2026)
+    # Telefon, EDV / UKV, TV / Video and Gegensprechanlage in one section
+    # (Legendenbesprechung 09.10.2026)
     Category("kommunikation", "Kommunikation", "E_EDV", parent="schwachstrom",
-             sheets=["250", "260", "310", "320", "290"]),
-    Category("gsa", "Gegensprechanlage", "E_GSA", parent="schwachstrom", sheets=["345", "346", "347"]),
+             sheets=["250", "260", "310", "320", "290", "345", "346", "347"]),
     Category("pans", "PANS und Krankenruf", "E_Schwachstrom_allgemein", parent="schwachstrom",
              sheets=["370", "380"]),
     Category("knx", "BUS-KNX", "E_BUS-KNX", sheets=["210", "220", "225"]),
@@ -67,8 +67,7 @@ EXTRA_SHEETS: dict[str, list[str]] = {
                    "SD_2P0_UP", "SD_2P0_AP", "VT2"],
     "kraft": ["EG_Anschluesse", "Hauswirtschaft", "Warmwasser", "EG_Antriebe", "Wandler"],
     "schwachstrom": ["S_P5", "AKSG", "OPSG", "UHR"],
-    "kommunikation": ["FMA", "FMVT", "EDV", "TV"],
-    "gsa": ["GSA"],
+    "kommunikation": ["FMA", "FMVT", "EDV", "TV", "GSA"],
     "pans": ["S_P4", "KHS", "KHS_A", "KHS_B", "KHS_C", "RKS"],
     "knx": ["KNX", "KNX_A", "KNX_B", "BUSKNX"],
     "bma": ["S_P7", "BMA"],
@@ -88,7 +87,7 @@ DATASET_RULES: list[tuple[str, str]] = [
 
 # Categories merged into others (defaults version 3): old id -> new id
 MERGED: dict[str, str] = {"telefon": "kommunikation", "edv": "kommunikation", "tv": "kommunikation",
-                          "uhren": "schwachstrom"}
+                          "gsa": "kommunikation", "uhren": "schwachstrom"}
 
 # Name rules that win over the number range: emergency luminaires sit in the
 # luminaire sheets of Nova, but the legend shows them apart from «Licht»
@@ -105,7 +104,7 @@ NAME_RULES: list[tuple[str, str]] = [
     (r"schalter|taster|dimmer", "schalter"),
     (r"knx|bus", "knx"),
     (r"telefon|edv|rj45|daten|ukv|wlan|tv|radio|antenne", "kommunikation"),
-    (r"sprechstelle|türöffner|gsa", "gsa"),
+    (r"sprechstelle|sprechanlage|türöffner|gsa", "kommunikation"),
     (r"uhr", "schwachstrom"),
     (r"leitung|kanal|rohr", "leitungen"),
     (r"verteil|tableau", "verteiler"),

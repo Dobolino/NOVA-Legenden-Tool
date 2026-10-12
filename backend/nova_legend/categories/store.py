@@ -73,7 +73,7 @@ LEGEND_DEFAULTS = {
 
 # Bump when default categories gain number ranges; existing company files
 # are extended once (only ranges that are not assigned anywhere yet).
-DEFAULTS_VERSION = 3
+DEFAULTS_VERSION = 4
 
 CATEGORY_FIELDS = ("title", "parent", "layer", "columns", "spacing", "hidden", "sheets")
 # Company colour of a category: fixed for all projects, wins over the plan colour.
@@ -142,7 +142,8 @@ class CompanyStore:
         version = json.loads(row["value"]) if row else 1
         if version >= DEFAULTS_VERSION:
             return
-        added = self._migrate_v3(con) if version < 3 else []
+        # v3: Kommunikation, Uhren in Schwachstrom; v4: Gegensprechanlage in Kommunikation
+        added = self._migrate_v3(con) if version < 4 else []
         rows = {r["id"]: json.loads(r["sheets"] or "[]")
                 for r in con.execute("SELECT id, sheets FROM categories")}
         used = {s for sheets in rows.values() for s in sheets}
@@ -182,7 +183,7 @@ class CompanyStore:
         ids = {r["id"] for r in con.execute("SELECT id FROM categories")}
         if "kommunikation" not in ids and any(old in ids for old, new in MERGED.items() if new == "kommunikation"):
             cat = next(c for c in DEFAULT_CATEGORIES if c.id == "kommunikation")
-            first = next(old for old in ("telefon", "edv", "tv") if old in ids)
+            first = next(old for old in ("telefon", "edv", "tv", "gsa") if old in ids)
             sort = con.execute("SELECT sort FROM categories WHERE id=?", (first,)).fetchone()[0]
             parent = con.execute("SELECT parent FROM categories WHERE id=?", (first,)).fetchone()[0]
             con.execute("INSERT INTO categories VALUES (?,?,?,?,?,?,?,?,?,?,?)",

@@ -197,7 +197,7 @@ def test_old_company_database_gets_the_compact_categories_once(tmp_path):
     store = CompanyStore(db)
     # an older database: Telefon, EDV, TV and Uhren as their own categories, version 2
     with sqlite3.connect(db) as con:
-        for cid, title, sheets in (("telefon", "Telefon", ["250"]), ("edv", "EDV und UKV", ["310"]),
+        for cid, title, sheets in (("telefon", "Telefon", ["250"]), ("edv", "EDV und UKV", ["310"]), ("gsa", "Gegensprechanlage", ["345"]),
                                    ("tv", "TV und Video", ["290"]), ("uhren", "Uhren", ["270"])):
             con.execute("INSERT INTO categories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (cid, title, "schwachstrom", "", 2, 4.55, 50, 0, json.dumps(sheets), "x", "x"))
@@ -208,10 +208,28 @@ def test_old_company_database_gets_the_compact_categories_once(tmp_path):
         con.execute("INSERT OR REPLACE INTO options VALUES ('defaults_version', '2')")
     store = CompanyStore(db)
     cats = {c["id"]: c for c in store.categories()}
-    assert not {"telefon", "edv", "tv", "uhren"} & set(cats)
+    assert not {"telefon", "edv", "tv", "gsa", "uhren"} & set(cats) and "345" in cats["kommunikation"]["sheets"]
     assert {"250", "310", "290"} <= set(cats["kommunikation"]["sheets"]) and "270" in cats["schwachstrom"]["sheets"]
     assert cats["fluchtweg"]["title"] == "Notbeleuchtung und Fluchtweg"
     assert store.assignments()["fam-tel"] == ["kommunikation"]
     # emergency luminaires leave «Licht» although Nova keeps them in a luminaire sheet
     assert auto_categories("130", "Notleuchte eckig", list(cats.values()))[0] == ["fluchtweg"]
     assert auto_categories("130", "Deckenleuchte", list(cats.values()))[0] == ["licht"]
+
+
+def test_a_database_on_version_3_moves_the_gegensprechanlage_into_kommunikation(tmp_path):
+    import sqlite3
+
+    from nova_legend.categories.store import CompanyStore
+
+    db = tmp_path / "firma.db"
+    CompanyStore(db)
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO categories VALUES ('gsa','Gegensprechanlage','schwachstrom','E_GSA',2,4.55,60,0,"
+                    "'[\"345\", \"GSA\"]','x','x')")
+        con.execute("INSERT OR REPLACE INTO assignments VALUES ('fam-gsa', '[\"gsa\"]', 'x', 'x')")
+        con.execute("INSERT OR REPLACE INTO options VALUES ('defaults_version', '3')")
+    store = CompanyStore(db)
+    cats = {c["id"]: c for c in store.categories()}
+    assert "gsa" not in cats and "GSA" in cats["kommunikation"]["sheets"]
+    assert store.assignments()["fam-gsa"] == ["kommunikation"]
