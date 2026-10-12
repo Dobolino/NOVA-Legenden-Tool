@@ -43,6 +43,17 @@ class GeneralRowIn(BaseModel):
     text_place: str | None = None
 
 
+class GeneralExtraIn(BaseModel):
+    text: str = ""
+    symbol_key: str
+    family_key: str | None = None
+    after: str = ""
+
+
+class GeneralOrderIn(BaseModel):
+    keys: list[str]
+
+
 class LegendIn(BaseModel):
     doc: dict
 
@@ -312,7 +323,18 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         settings = st.company.legend_settings()
         part = general_part.load(settings["legend_general_path"], MAX_SHEET_WIDTH - 2 * MARGIN,
                                  st.settings.oda_path or config.find_oda_converter(), project_layout=template_layout)
-        return part if raw else general_part.apply_overrides(part, settings.get("legend_general_rows") or {})
+        if raw:
+            return part
+        part = general_part.apply_overrides(part, settings.get("legend_general_rows") or {},
+                                            settings.get("legend_general_extra") or [],
+                                            settings.get("legend_general_order") or [])
+        for r in part.rows:
+            if r.get("picture") == "library":
+                geo, engine, _, _ = geometry(r["symbol_key"])
+                if geo is not None:
+                    x0, y0, x1, y1 = geometry_bounds(geo)
+                    r["size"] = [x0 * 1000, y0 * 1000, x1 * 1000, y1 * 1000, engine]
+        return part
 
     system_cache: dict[tuple, dict[str, str]] = {}
 
@@ -369,14 +391,20 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         except OSError:
             stamp = None
         rows = []
-        for r in part.rows:
-            key = general_part.norm_text(r["text"])
+        listed = general_part.with_extras(part, settings.get("legend_general_extra") or [],
+                                          settings.get("legend_general_order") or []) if part.rows else part
+        for r in listed.rows:
+            key = r["key"]
             o = overrides.get(key) or {}
             rows.append({"id": r["id"], "key": key, "original": r["text"], "text": o.get("text") or "",
                          "hidden": bool(o.get("hidden")), "links": o.get("links") or [], "heading": r["heading"],
                          "names": r.get("names", []), "vb": r.get("vb", ""), "svg": r.get("svg", ""),
+                         "extra": bool(r.get("extra")), "extra_id": r["id"][1:] if r.get("extra") else "",
+                         "symbol_key": r.get("symbol_key") or "",
+                         "family_key": r.get("family_key") or "",
                          "by": o.get("by", ""), "at": o.get("at", "")})
-        return {**part.info(), "file_time": stamp, "rows": rows, "company": company_legend()}
+        return {**part.info(), "file_time": stamp, "rows": rows, "company": company_legend(),
+                "oda": bool(st.settings.oda_path or config.find_oda_converter())}
 
     @app.put("/api/company/general/row")
     def put_general_row(body: GeneralRowIn) -> dict:
@@ -412,6 +440,59 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         st.company.set_legend_settings({"legend_general_rows": overrides})
         return company_general()
 
+    @app.post("/api/company/general/extra")
+    def add_general_extra(body: GeneralExtraIn) -> dict:
+        """A row from the symbol library in the general part (admins), e.g. Kernbohrung."""
+        require_admin()
+        import uuid
+
+        if not st.library.symbol_detail(body.symbol_key):
+            raise HTTPException(404, "Symbol nicht gefunden")
+        extras = list(st.company.legend_settings().get("legend_general_extra") or [])
+        extras.append({"id": uuid.uuid4().hex[:8], "text": body.text.strip(), "symbol_key": body.symbol_key,
+                       "family_key": body.family_key or None, "after": body.after,
+                       "by": config.current_user()})
+        st.company.set_legend_settings({"legend_general_extra": extras})
+        return company_general()
+
+    @app.delete("/api/company/general/extra/{extra_id}")
+    def remove_general_extra(extra_id: str) -> dict:
+        require_admin()
+        extras = [x for x in st.company.legend_settings().get("legend_general_extra") or [] if x.get("id") != extra_id]
+        st.company.set_legend_settings({"legend_general_extra": extras})
+        return company_general()
+
+    @app.put("/api/company/general/order")
+    def put_general_order(body: GeneralOrderIn) -> dict:
+        """The order of all rows of the general part (admins); [] = as in the drawing."""
+        require_admin()
+        st.company.set_legend_settings({"legend_general_order": [k for k in body.keys if k]})
+        return company_general()
+
+    @app.get("/api/company/general/template/{file_name}")
+    def export_general_template(file_name: str = "", format: str = "dxf"):  # noqa: A002
+        """The server drawing with every change of the settings built in (texts, hidden rows,
+        order, library rows) and the helper grid NL_RASTER: edit it in Nova or AutoCAD and put
+        it back on the server as the new template."""
+        from ..legend.general_template import build_template
+
+        gen = load_general()
+        if gen.kind != "dxf" or not gen.rows or not gen.dxf_path:
+            raise HTTPException(400, "Der Allgemeinteil ist keine DXF/DWG mit Textspalte. Nichts zu exportieren.")
+        doc = build_template(load_general(raw=True), gen, lambda key: geometry(key)[0])
+        stem = safe_folder_name("E_Legende Allgemeinteil Vorlage")
+        tmp = Path(tempfile.mkdtemp(prefix="nl_general_template_"))
+        out = tmp / f"{stem}.dxf"
+        doc.saveas(out)
+        if format.lower() == "dwg":
+            try:
+                out = dxf_to_dwg(out, st.settings.oda_path or config.find_oda_converter(), tmp / "dwg")
+            except Exception as exc:  # noqa: BLE001 - no converter: say so, the DXF still works
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise HTTPException(400, str(exc)) from None
+        return FileResponse(out, filename=out.name, media_type="application/octet-stream",
+                            background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True))
+
     @app.get("/api/company/general/export/{file_name}")
     def export_general(file_name: str = "", cols: int = 2, format: str = "dxf"):  # noqa: A002
         """The general part alone, arranged in 2 or 3 columns, as DXF or PDF: for use outside
@@ -425,7 +506,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         g = next(p for p in lay["prims"] if p.get("role") == "general")
         lay["height"] = round(g["y"] + g["h"] + doc["style"]["margin"], 2)
         lay["prims"] = [p for p in lay["prims"] if p.get("t") != "hit"]
-        dxf = build_dxf(lay, gen, lambda prim: None, doc["style"]["font"])
+        dxf = build_dxf(lay, gen, lambda prim: geometry(prim["key"])[0], doc["style"]["font"])
         stem = safe_folder_name(f"edeco ag-Allgemeinteil-{cols}-spaltig")
         if format.lower() == "pdf":
             data = build_pdf(dxf, lay["width"], lay["height"], stem)

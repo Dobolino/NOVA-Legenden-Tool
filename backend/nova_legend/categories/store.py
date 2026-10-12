@@ -65,6 +65,10 @@ LEGEND_DEFAULTS = {
     # changes to the rows of the general part, by normalised row text: the drawing on the
     # server stays the source, these are kept beside it ({text, hidden, links, by, at})
     "legend_general_rows": {},
+    # rows added from the symbol library ({id, text, symbol_key, family_key, after}) and
+    # the order of all rows (row keys); both kept beside the server drawing
+    "legend_general_extra": [],
+    "legend_general_order": [],
 }
 
 # Bump when default categories gain number ranges; existing company files

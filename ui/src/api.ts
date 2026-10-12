@@ -301,6 +301,10 @@ export interface GeneralRow {
   names: string[];
   vb: string;
   svg: string;
+  extra?: boolean; // added from the symbol library in the settings
+  extra_id?: string;
+  symbol_key?: string;
+  family_key?: string;
   by: string;
   at: string;
 }
@@ -308,6 +312,7 @@ export interface GeneralRow {
 export interface CompanyGeneral extends GeneralInfo {
   file_time: number | null;
   rows: GeneralRow[];
+  oda?: boolean;
   company: CompanyLegend;
 }
 
@@ -637,6 +642,10 @@ export const api = {
   saveGeneralRow: (row: { key: string; text?: string; hidden?: boolean; links?: string[]; text_scale?: number; symbol_factor?: number; rotation?: number; text_place?: "top" | "middle" | "bottom" }) =>
     request<CompanyGeneral>("PUT", "/api/company/general/row", row),
   reloadGeneral: () => request<CompanyGeneral>("POST", "/api/company/general/reload"),
+  addGeneralRow: (row: { text: string; symbol_key: string; family_key: string | null; after: string }) =>
+    request<CompanyGeneral>("POST", "/api/company/general/extra", row),
+  removeGeneralRow: (extraId: string) => request<CompanyGeneral>("DELETE", `/api/company/general/extra/${encodeURIComponent(extraId)}`),
+  orderGeneral: (keys: string[]) => request<CompanyGeneral>("PUT", "/api/company/general/order", { keys }),
   saveCompanyLegend: (values: { general_path?: string; admins?: string[]; text_size?: number; symbol_scale?: number; hatch_off?: boolean; fill_off?: boolean }) =>
     request<CompanyLegend & { general: GeneralInfo }>("PUT", "/api/company/legend", values),
   legendSymbols: (items: { symbol_key: string; family_key: string | null; length_mm: number | null; width_mm: number | null; flat?: boolean }[], fills: { hatch_off: boolean; fill_off: boolean } = { hatch_off: false, fill_off: false }) =>

@@ -403,7 +403,21 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
                 factor = max(0.3, min(4.0, float(r.get("symbol_factor") or 1.0)))
                 gw, gh = float(r.get("gw") or 0.0), float(r.get("gh") or 0.0)
                 rot = int(r.get("rotation") or 0) % 360
-                if r.get("picture") == "swatch":
+                if r.get("picture") == "library":
+                    # a row added from the symbol library: the Nova symbol, sized like the project symbols
+                    drawing = r.get("size")
+                    box = _symbol_box({"kind": "symbol", "rotation": rot, "symbol_factor": factor,
+                                       "mirror": False}, tuple(drawing) if drawing else None, style, tile)
+                    sx = cx + axis
+                    prims.append({"t": "symbol", "id": r["id"], "key": r["symbol_key"],
+                                  "family_key": r.get("family_key"), "length_mm": None, "width_mm": None,
+                                  "cx": round(sx, 3), "cy": round(mid, 3), "scale": box["scale"], "rot": rot,
+                                  "ax": round(box["ax"], 4), "ay": round(box["ay"], 4), "mirror": False,
+                                  "x0": round(sx - box["left"], 3), "y0": round(mid - box["up"], 3),
+                                  "w": round(box["left"] + box["right"], 3), "h": round(box["up"] + box["down"], 3),
+                                  "layer": "", "hatch_off": False, "fill_off": False,
+                                  "color": "#000000", "flat": False, "general": True})
+                elif r.get("picture") == "swatch":
                     # one chip per colour, the same size in every row, text beside it
                     shrink = factor if factor < 1 else 1.0
                     w = min(tile * 0.92, colw * 0.42) * shrink

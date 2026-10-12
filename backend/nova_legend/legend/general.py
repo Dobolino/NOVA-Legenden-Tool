@@ -50,7 +50,8 @@ class GeneralPart:
         out = {"source": self.source, "kind": self.kind, "error": self.error,
                "w": round(self.w, 2), "h": round(self.h, 2), "file": self.dxf_path}
         if self.rows:
-            out["rows"] = [{k: v for k, v in r.items() if k not in ("svg", "vb", "handles")} for r in self.rows]
+            out["rows"] = [{k: v for k, v in r.items() if k not in ("svg", "vb", "handles", "all", "th")}
+                           for r in self.rows]
             out["symbol_area"] = round(self.symbol_area, 3)
         return out
 
@@ -413,13 +414,20 @@ def _row_factor(value, lo: float, hi: float) -> float:
     return max(lo, min(hi, n))
 
 
-def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
+def extra_key(extra_id: str) -> str:
+    return f"x:{extra_id}"
+
+
+def apply_overrides(part: GeneralPart, overrides: dict, extras: list | None = None,
+                    order: list | None = None) -> GeneralPart:
     """The general part with the company's row changes: another text, a hidden row,
-    symbol families the row stands for. Returns a copy; the cached part stays as read."""
+    symbol families the row stands for, rows added from the symbol library (``extras``)
+    and another order (``order``: row keys). Returns a copy; the cached part stays as read."""
     from dataclasses import replace
 
     if not part.rows:
         return part
+    part = with_extras(part, extras or [], order or [])
     rows = []
     families = set(part.family_keys)
     hidden_texts: set[str] = set()
@@ -438,13 +446,48 @@ def apply_overrides(part: GeneralPart, overrides: dict) -> GeneralPart:
             rotation = int(o.get("rotation") or 0) % 360
         except (TypeError, ValueError):
             rotation = 0
+        if r.get("extra"):
+            key = r["key"]
         rows.append({**r, "key": key, "text": (o.get("text") or "").strip() or r["text"],
                      "text_scale": _row_factor(o.get("text_scale"), 0.5, 3.0),
                      "symbol_factor": _row_factor(o.get("symbol_factor"), 0.3, 4.0),
                      "rotation": rotation, "text_place": place, "line": _is_line_graphic(r)})
+    families.update(r["family_key"] for r in rows if r.get("extra") and r.get("family_key"))
     texts = (set(part.texts) - hidden_texts) | {norm_text(r["text"]) for r in rows}
     names = sorted({n for r in rows for n in (r.get("names") or [])})
     return replace(part, rows=rows, family_keys=sorted(families), texts=sorted(texts), symbol_names=names)
+
+
+def with_extras(part: GeneralPart, extras: list, order: list) -> GeneralPart:
+    """Rows of the drawing plus the rows added from the library, in the chosen order.
+    A library row is placed after the row named in its ``after`` (else at the end)."""
+    from dataclasses import replace
+
+    rows = [dict(r, key=norm_text(r["text"])) for r in part.rows]
+    for x in extras:
+        if not isinstance(x, dict) or not x.get("id") or not x.get("symbol_key"):
+            continue
+        row = {"id": f"x{x['id']}", "key": extra_key(x["id"]), "text": str(x.get("text") or "").strip() or "Symbol",
+               "heading": False, "picture": "library", "symbol_key": x["symbol_key"],
+               "family_key": x.get("family_key") or None, "extra": True, "names": []}
+        at = next((i for i, r in enumerate(rows) if r["key"] == x.get("after")), None)
+        if at is None:
+            rows.append(row)
+        else:
+            rows.insert(at + 1, row)
+    if order:
+        rank = {k: i for i, k in enumerate(order)}
+        # rows the order does not know yet (new in the drawing) keep their place among the others
+        last = -1.0
+        keyed = []
+        for i, r in enumerate(rows):
+            if r["key"] in rank:
+                last = rank[r["key"]]
+                keyed.append((last, i, r))
+            else:
+                keyed.append((last + 0.5, i, r))
+        rows = [r for _a, _b, r in sorted(keyed, key=lambda t: (t[0], t[1]))]
+    return replace(part, rows=rows)
 
 
 # -- rows of a DXF general part -----------------------------------------------------------
@@ -490,7 +533,7 @@ def split_rows(doc, to_mm: float, bands: list[float] | None = None) -> tuple[lis
     in_column = [t for t in big if abs(t[0].dxf.insert.x - text_x) < tol]
     for e, raw, height in in_column:
         rows.append({"text": raw, "heading": False, "y": e.dxf.insert.y + height * 0.36,
-                     "text_h": round(height * to_mm, 3), "ents": [], "names": []})
+                     "text_h": round(height * to_mm, 3), "ents": [], "names": [], "th": e.dxf.handle})
     taken = {id(t[0]) for t in in_column}
     for e, raw, height in big:
         if id(e) in taken:
@@ -498,7 +541,7 @@ def split_rows(doc, to_mm: float, bands: list[float] | None = None) -> tuple[lis
         y = e.dxf.insert.y + height * 0.36
         if all(abs(r["y"] - y) > height for r in rows) and len(raw) > 2:
             rows.append({"text": raw, "heading": True, "y": y, "text_h": round(height * to_mm, 3),
-                         "ents": [], "names": []})
+                         "ents": [], "names": [], "th": e.dxf.handle})
             taken.add(id(e))
     rows.sort(key=lambda r: -r["y"])
     if len(rows) < 3:
@@ -531,7 +574,10 @@ def split_rows(doc, to_mm: float, bands: list[float] | None = None) -> tuple[lis
     out = []
     for i, r in enumerate(rows):
         item = {"id": f"g{i}", "text": r["text"], "heading": r["heading"], "text_h": r["text_h"],
-                "names": sorted(set(r["names"]))}
+                "names": sorted(set(r["names"])),
+                # for the template export: the text entity, the height of the row and every
+                # entity of the row (also leaders and notes the preview leaves out)
+                "th": r["th"], "y": round(r["y"], 6), "all": [e.dxf.handle for e, _b in r["ents"]]}
         if r["ents"]:
             # patterned lines (dashed, dash-dot ...) keep a readable rhythm at 1:1 on paper
             from .linetypes import simplify_linetypes, tune_entities

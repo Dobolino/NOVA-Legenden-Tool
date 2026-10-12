@@ -1613,3 +1613,45 @@ def test_general_lines_take_the_plan_colour_of_their_installation_system():
     done = recolor(part, mapping)
     assert '#0080ff' in done.rows[0]["svg"] and '#0080ff' in done.rows[2]["svg"]
     assert part.rows[0]["svg"] == '<path stroke="#0099FF"/>'            # the cached part stays as read
+
+
+def test_general_editor_adds_library_rows_orders_and_exports_an_editable_template(env, tmp_path):  # noqa: F811
+    from nova_legend.legend.general import _from_dxf
+
+    client, _tmp = env
+    doc = ezdxf.new("R2013")
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    for i, text in enumerate(["Abzweigdose", "Steckdose", "Schalter", "Rack"]):
+        msp.add_text(text, dxfattribs={"height": 2.5, "insert": (20, -i * 5.0 - 0.9)})
+        msp.add_circle((10, -i * 5.0), 1.5)
+    path = tmp_path / "vorlage.dxf"
+    doc.saveas(path)
+    client.put("/api/company/legend", json={"general_path": str(path)})
+    fam = client.get("/api/library/families").json()["items"][0]
+    rows = client.get("/api/company/general").json()["rows"]
+    after = next(r["key"] for r in rows if r["original"] == "Steckdose")
+    data = client.post("/api/company/general/extra", json={
+        "text": "Kernbohrung", "symbol_key": fam["representative"]["key"], "family_key": fam["key"], "after": after}).json()
+    assert [r["original"] for r in data["rows"]] == ["Abzweigdose", "Steckdose", "Kernbohrung", "Schalter", "Rack"]
+    extra = next(r for r in data["rows"] if r["extra"])
+    keys = [r["key"] for r in data["rows"]]
+    keys.insert(0, keys.pop(keys.index(extra["key"])))
+    data = client.put("/api/company/general/order", json={"keys": keys}).json()
+    assert data["rows"][0]["original"] == "Kernbohrung"
+    rack = next(r for r in data["rows"] if r["original"] == "Rack")
+    client.put("/api/company/general/row", json={"key": rack["key"], "hidden": True})
+    sw = next(r for r in data["rows"] if r["original"] == "Schalter")
+    client.put("/api/company/general/row", json={"key": sw["key"], "text": "Schalter UP"})
+    # the library row covers its family in the project sections
+    pid = client.post("/api/projects", json={"name": "P"}).json()["id"]
+    covered = client.get(f"/api/projects/{pid}/legend").json()["in_general"]
+    assert fam["key"] in covered["family_keys"]
+    res = client.get("/api/company/general/template/vorlage.dxf")
+    assert res.status_code == 200
+    out = tmp_path / "neu.dxf"
+    out.write_bytes(res.content)
+    again = _from_dxf("x", out, 190)
+    assert [r["text"] for r in again.rows] == ["Kernbohrung", "Abzweigdose", "Steckdose", "Schalter UP"]
+    assert "NL_RASTER" in ezdxf.readfile(out).layers
+    assert client.delete(f"/api/company/general/extra/{extra['id'][1:]}").json()["rows"][0]["original"] != "Kernbohrung"
