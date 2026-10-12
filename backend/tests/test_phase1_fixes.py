@@ -44,25 +44,25 @@ def counts(client, dataset=""):
 # 2. parent: null makes a sub category a main category again -------------------
 
 def test_parent_null_releases_sub_category(client):
-    tel = client.put("/api/categories/telefon", json={"parent": None})
+    tel = client.put("/api/categories/kommunikation", json={"parent": None})
     assert tel.status_code == 200, tel.text
     assert tel.json()["parent"] is None
     # Fields that were not sent stay unchanged
-    assert tel.json()["title"] == "Telefon" and tel.json()["layer"] == "E_Telefon"
+    assert tel.json()["title"] == "Kommunikation" and tel.json()["layer"] == "E_EDV"
 
 
 def test_update_without_fields_is_rejected(client):
-    assert client.put("/api/categories/telefon", json={}).status_code == 400
+    assert client.put("/api/categories/kommunikation", json={}).status_code == 400
 
 
 def test_title_null_is_ignored_not_cleared(client):
-    res = client.put("/api/categories/telefon", json={"title": None, "columns": 3})
+    res = client.put("/api/categories/kommunikation", json={"title": None, "columns": 3})
     assert res.status_code == 200
-    assert res.json()["title"] == "Telefon" and res.json()["columns"] == 3
+    assert res.json()["title"] == "Kommunikation" and res.json()["columns"] == 3
 
 
 def test_parent_cannot_be_itself(client):
-    assert client.put("/api/categories/telefon", json={"parent": "telefon"}).status_code == 400
+    assert client.put("/api/categories/kommunikation", json={"parent": "kommunikation"}).status_code == 400
 
 
 # 3. number ranges: "230, 240" -> two ranges, no empty or duplicate entries -----

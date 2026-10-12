@@ -185,3 +185,33 @@ def test_category_colour_check_merge_and_company_assignment(env):
     assert b["id"] not in items and items[sub["id"]]["parent"] == a["id"]
     assert client.get("/api/category-family", params={"family_key": "fam-x"}).json()["categories"] == [a["id"]]
     assert client.post("/api/categories/merge", json={"source": a["id"], "target": a["id"]}).status_code == 400
+
+
+def test_old_company_database_gets_the_compact_categories_once(tmp_path):
+    import json
+    import sqlite3
+
+    from nova_legend.categories.store import CompanyStore, auto_categories
+
+    db = tmp_path / "firma.db"
+    store = CompanyStore(db)
+    # an older database: Telefon, EDV, TV and Uhren as their own categories, version 2
+    with sqlite3.connect(db) as con:
+        for cid, title, sheets in (("telefon", "Telefon", ["250"]), ("edv", "EDV und UKV", ["310"]),
+                                   ("tv", "TV und Video", ["290"]), ("uhren", "Uhren", ["270"])):
+            con.execute("INSERT INTO categories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (cid, title, "schwachstrom", "", 2, 4.55, 50, 0, json.dumps(sheets), "x", "x"))
+        con.execute("DELETE FROM categories WHERE id='kommunikation'")
+        con.execute("UPDATE categories SET title='Fluchtwegleuchten', sheets='[\"165\"]' WHERE id='fluchtweg'")
+        con.execute("UPDATE categories SET sheets='[\"330\"]' WHERE id='schwachstrom'")
+        con.execute("INSERT OR REPLACE INTO assignments VALUES ('fam-tel', '[\"telefon\"]', 'x', 'x')")
+        con.execute("INSERT OR REPLACE INTO options VALUES ('defaults_version', '2')")
+    store = CompanyStore(db)
+    cats = {c["id"]: c for c in store.categories()}
+    assert not {"telefon", "edv", "tv", "uhren"} & set(cats)
+    assert {"250", "310", "290"} <= set(cats["kommunikation"]["sheets"]) and "270" in cats["schwachstrom"]["sheets"]
+    assert cats["fluchtweg"]["title"] == "Notbeleuchtung und Fluchtweg"
+    assert store.assignments()["fam-tel"] == ["kommunikation"]
+    # emergency luminaires leave «Licht» although Nova keeps them in a luminaire sheet
+    assert auto_categories("130", "Notleuchte eckig", list(cats.values()))[0] == ["fluchtweg"]
+    assert auto_categories("130", "Deckenleuchte", list(cats.values()))[0] == ["licht"]

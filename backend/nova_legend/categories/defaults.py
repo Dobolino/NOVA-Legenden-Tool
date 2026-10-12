@@ -30,18 +30,18 @@ DEFAULT_CATEGORIES: list[Category] = [
     Category("verteiler", "Verteiler und Stromquellen", "E_Starkstrom", sheets=["405", "420"]),
     Category("licht", "Licht und Leuchten", "E_Licht",
              sheets=["130", "135", "140", "145", "Dialux", "Relux"]),
-    Category("fluchtweg", "Fluchtwegleuchten", "E_Fluchtwegleuchten", sheets=["165"]),
+    # emergency lighting stays a section of its own (Notleuchten and Fluchtweg), never in «Licht»
+    Category("fluchtweg", "Notbeleuchtung und Fluchtweg", "E_Fluchtwegleuchten", sheets=["165"]),
     Category("schalter", "Schalter und Taster", "E_Licht",
              sheets=["10", "20", "30", "40", "50", "60", "70", "80"]),
     Category("steckdosen", "Steckdosen und Dosen", "E_Licht",
              sheets=["90", "100", "390", "400", "50", "60"]),  # Kombinationen Gr.I in both
     Category("kraft", "Kraft und Elektrogeräte", "E_Starkstrom", sheets=["170"]),
-    Category("schwachstrom", "Schwachstrom", "E_Schwachstrom", sheets=["330"]),
-    Category("telefon", "Telefon", "E_Telefon", parent="schwachstrom", sheets=["250", "260"]),
-    Category("edv", "EDV und UKV", "E_EDV", parent="schwachstrom", sheets=["310", "320"]),
-    Category("tv", "TV und Video", "E_RadioTV", parent="schwachstrom", sheets=["290"]),
+    Category("schwachstrom", "Schwachstrom", "E_Schwachstrom", sheets=["330", "270"]),   # 270 Uhren
+    # Telefon, EDV / UKV and TV / Video in one section (Legendenbesprechung 09.10.2026)
+    Category("kommunikation", "Kommunikation", "E_EDV", parent="schwachstrom",
+             sheets=["250", "260", "310", "320", "290"]),
     Category("gsa", "Gegensprechanlage", "E_GSA", parent="schwachstrom", sheets=["345", "346", "347"]),
-    Category("uhren", "Uhren", "E_Uhren", parent="schwachstrom", sheets=["270"]),
     Category("pans", "PANS und Krankenruf", "E_Schwachstrom_allgemein", parent="schwachstrom",
              sheets=["370", "380"]),
     Category("knx", "BUS-KNX", "E_BUS-KNX", sheets=["210", "220", "225"]),
@@ -66,12 +66,9 @@ EXTRA_SHEETS: dict[str, list[str]] = {
     "steckdosen": ["S_KombGr1", "SD_5P0_UP", "SD_5P0_AP", "SD_3P0_UP", "SD_3P0_AP", "SD_3P0_SZ",
                    "SD_2P0_UP", "SD_2P0_AP", "VT2"],
     "kraft": ["EG_Anschluesse", "Hauswirtschaft", "Warmwasser", "EG_Antriebe", "Wandler"],
-    "schwachstrom": ["S_P5", "AKSG", "OPSG"],
-    "telefon": ["FMA", "FMVT"],
-    "edv": ["EDV"],
-    "tv": ["TV"],
+    "schwachstrom": ["S_P5", "AKSG", "OPSG", "UHR"],
+    "kommunikation": ["FMA", "FMVT", "EDV", "TV"],
     "gsa": ["GSA"],
-    "uhren": ["UHR"],
     "pans": ["S_P4", "KHS", "KHS_A", "KHS_B", "KHS_C", "RKS"],
     "knx": ["KNX", "KNX_A", "KNX_B", "BUSKNX"],
     "bma": ["S_P7", "BMA"],
@@ -89,6 +86,16 @@ DATASET_RULES: list[tuple[str, str]] = [
     ("Niederspannung_E", "schema"),   # distribution board schematics (FI, LS, ...)
 ]
 
+# Categories merged into others (defaults version 3): old id -> new id
+MERGED: dict[str, str] = {"telefon": "kommunikation", "edv": "kommunikation", "tv": "kommunikation",
+                          "uhren": "schwachstrom"}
+
+# Name rules that win over the number range: emergency luminaires sit in the
+# luminaire sheets of Nova, but the legend shows them apart from «Licht»
+NAME_FIRST: list[tuple[str, str]] = [
+    (r"\bnot(leucht|beleucht|licht)|sicherheitsleucht|sicherheitsbeleucht", "fluchtweg"),
+]
+
 # Fallback rules on the symbol name (only used when the sheet is unknown)
 NAME_RULES: list[tuple[str, str]] = [
     (r"brand|rauch|hitze|bma|handalarm", "bma"),
@@ -97,11 +104,9 @@ NAME_RULES: list[tuple[str, str]] = [
     (r"steckdose|dose", "steckdosen"),
     (r"schalter|taster|dimmer", "schalter"),
     (r"knx|bus", "knx"),
-    (r"telefon", "telefon"),
-    (r"edv|rj45|daten|ukv|wlan", "edv"),
-    (r"tv|radio|antenne", "tv"),
+    (r"telefon|edv|rj45|daten|ukv|wlan|tv|radio|antenne", "kommunikation"),
     (r"sprechstelle|türöffner|gsa", "gsa"),
-    (r"uhr", "uhren"),
+    (r"uhr", "schwachstrom"),
     (r"leitung|kanal|rohr", "leitungen"),
     (r"verteil|tableau", "verteiler"),
 ]
@@ -114,6 +119,9 @@ def categories_for(sheet: str) -> list[str]:
 
 def category_for(sheet: str, name: str = "") -> tuple[str, str]:
     """Return (category_id, reason) for a symbol."""
+    for pattern, cat_id in NAME_FIRST:
+        if re.search(pattern, name.lower()):
+            return cat_id, f"Namensmuster «{pattern}»"
     for cat in DEFAULT_CATEGORIES:
         if sheet in cat.sheets:
             return cat.id, f"Nummernkreis {sheet}"

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Iterator
 
 from ..config import current_user
-from .defaults import DATASET_RULES, DEFAULT_CATEGORIES, EXTRA_SHEETS, NAME_RULES
+from .defaults import DATASET_RULES, DEFAULT_CATEGORIES, EXTRA_SHEETS, MERGED, NAME_FIRST, NAME_RULES
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories (
@@ -69,7 +69,7 @@ LEGEND_DEFAULTS = {
 
 # Bump when default categories gain number ranges; existing company files
 # are extended once (only ranges that are not assigned anywhere yet).
-DEFAULTS_VERSION = 2
+DEFAULTS_VERSION = 3
 
 CATEGORY_FIELDS = ("title", "parent", "layer", "columns", "spacing", "hidden", "sheets")
 # Company colour of a category: fixed for all projects, wins over the plan colour.
@@ -138,6 +138,7 @@ class CompanyStore:
         version = json.loads(row["value"]) if row else 1
         if version >= DEFAULTS_VERSION:
             return
+        added = self._migrate_v3(con) if version < 3 else []
         rows = {r["id"]: json.loads(r["sheets"] or "[]")
                 for r in con.execute("SELECT id, sheets FROM categories")}
         used = {s for sheets in rows.values() for s in sheets}
@@ -146,7 +147,6 @@ class CompanyStore:
             for sheet in extra:
                 counts[sheet] = counts.get(sheet, 0) + 1
         shared = {sheet for sheet, n in counts.items() if n > 1}
-        added = []
         for cat_id, extra in EXTRA_SHEETS.items():
             if cat_id not in rows:
                 continue
@@ -169,6 +169,34 @@ class CompanyStore:
             added.append("neue Kategorie schema")
         self._set_defaults_version(con)
         self._log(con, "migrate", f"Standard v{DEFAULTS_VERSION}: " + "; ".join(added))
+
+    def _migrate_v3(self, con) -> list[str]:
+        """Fewer sections (Legendenbesprechung 09.10.2026): Telefon, EDV / UKV and TV / Video
+        become «Kommunikation», Uhren go to «Schwachstrom», emergency lighting keeps its own
+        section. Assignments move along; nothing a company added itself is removed."""
+        done = []
+        ids = {r["id"] for r in con.execute("SELECT id FROM categories")}
+        if "kommunikation" not in ids and any(old in ids for old, new in MERGED.items() if new == "kommunikation"):
+            cat = next(c for c in DEFAULT_CATEGORIES if c.id == "kommunikation")
+            first = next(old for old in ("telefon", "edv", "tv") if old in ids)
+            sort = con.execute("SELECT sort FROM categories WHERE id=?", (first,)).fetchone()[0]
+            parent = con.execute("SELECT parent FROM categories WHERE id=?", (first,)).fetchone()[0]
+            con.execute("INSERT INTO categories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (cat.id, cat.title, parent if parent in ids else None, cat.layer, cat.columns,
+                         cat.spacing_mm, sort, 0, "[]", "system", _now()))
+            ids.add("kommunikation")
+            done.append("neue Kategorie kommunikation")
+        for old, new in MERGED.items():
+            if old in ids and new in ids:
+                self._merge(con, old, new)
+                ids.discard(old)
+                done.append(f"{old} -> {new}")
+        if "fluchtweg" in ids:
+            row = con.execute("SELECT title FROM categories WHERE id='fluchtweg'").fetchone()
+            if row and row["title"] == "Fluchtwegleuchten":
+                con.execute("UPDATE categories SET title='Notbeleuchtung und Fluchtweg' WHERE id='fluchtweg'")
+                done.append("fluchtweg umbenannt")
+        return done
 
     # -- options ---------------------------------------------------------------
 
@@ -281,37 +309,41 @@ class CompanyStore:
                             "ids": [c["id"]]})
         return out
 
+    def _merge(self, con, source: str, target: str) -> None:
+        """Merge inside an open transaction (see merge_categories)."""
+        rows = {r["id"]: r for r in con.execute("SELECT * FROM categories WHERE id IN (?,?)", (source, target))}
+        if source not in rows or target not in rows:
+            raise KeyError(source if source not in rows else target)
+        sheets = json.loads(rows[target]["sheets"] or "[]")
+        for sh in json.loads(rows[source]["sheets"] or "[]"):
+            if sh not in sheets:
+                sheets.append(sh)
+        con.execute("UPDATE categories SET sheets=?, updated_by=?, updated_at=? WHERE id=?",
+                    (json.dumps(sheets), current_user(), _now(), target))
+        con.execute("UPDATE categories SET parent=? WHERE parent=?", (target, source))
+        con.execute("UPDATE categories SET parent=NULL WHERE id=? AND parent=?", (target, target))
+        for row in con.execute("SELECT family_key, categories FROM assignments").fetchall():
+            cats = json.loads(row["categories"])
+            if source in cats:
+                merged = []
+                for c in (target if c == source else c for c in cats):
+                    if c not in merged:
+                        merged.append(c)
+                con.execute("UPDATE assignments SET categories=? WHERE family_key=?",
+                            (json.dumps(merged), row["family_key"]))
+        con.execute("DELETE FROM categories WHERE id=?", (source,))
+        stored = self._stored_category_colors(con)
+        if source in stored:
+            stored.pop(source)
+            con.execute("INSERT OR REPLACE INTO options VALUES ('category_colors', ?)", (json.dumps(stored),))
+
     def merge_categories(self, source: str, target: str) -> dict:
         """Put category ``source`` into ``target``: catalogue sheets, symbol assignments
         and sub-categories move over, then ``source`` is removed."""
         if source == target:
             raise ValueError("Quelle und Ziel sind dieselbe Kategorie")
         with self._tx() as con:
-            rows = {r["id"]: r for r in con.execute("SELECT * FROM categories WHERE id IN (?,?)", (source, target))}
-            if source not in rows or target not in rows:
-                raise KeyError(source if source not in rows else target)
-            sheets = json.loads(rows[target]["sheets"] or "[]")
-            for s in json.loads(rows[source]["sheets"] or "[]"):
-                if s not in sheets:
-                    sheets.append(s)
-            con.execute("UPDATE categories SET sheets=?, updated_by=?, updated_at=? WHERE id=?",
-                        (json.dumps(sheets), current_user(), _now(), target))
-            con.execute("UPDATE categories SET parent=? WHERE parent=?", (target, source))
-            con.execute("UPDATE categories SET parent=NULL WHERE id=? AND parent=?", (target, target))
-            for row in con.execute("SELECT family_key, categories FROM assignments").fetchall():
-                cats = json.loads(row["categories"])
-                if source in cats:
-                    merged = []
-                    for c in (target if c == source else c for c in cats):
-                        if c not in merged:
-                            merged.append(c)
-                    con.execute("UPDATE assignments SET categories=? WHERE family_key=?",
-                                (json.dumps(merged), row["family_key"]))
-            con.execute("DELETE FROM categories WHERE id=?", (source,))
-            stored = self._stored_category_colors(con)
-            if source in stored:
-                stored.pop(source)
-                con.execute("INSERT OR REPLACE INTO options VALUES ('category_colors', ?)", (json.dumps(stored),))
+            self._merge(con, source, target)
             self._log(con, "category.merge", f"{source} -> {target}")
         return next(c for c in self.categories() if c["id"] == target)
 
@@ -466,7 +498,12 @@ class CompanyStore:
 
 def auto_categories(sheet: str, name: str, categories: list[dict],
                     dataset: str = "") -> tuple[list[str], str]:
-    """Automatic rule: number range, then dataset rule, then name pattern, else Diverse."""
+    """Automatic rule: number range, then dataset rule, then name pattern, else Diverse.
+    A few name rules come first (emergency luminaires are not «Licht»)."""
+    known_first = {c["id"] for c in categories}
+    for pattern, cat_id in NAME_FIRST:
+        if cat_id in known_first and re.search(pattern, (name or "").lower()):
+            return [cat_id], "Namensmuster"
     ids = [c["id"] for c in categories if sheet in c["sheets"]]
     if ids:
         return ids, f"Nummernkreis {sheet}"
