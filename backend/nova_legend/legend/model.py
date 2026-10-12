@@ -339,6 +339,20 @@ def _plan_hex(value) -> str:
     return text.lower() if _HEX.match(text) and text.lower() != "#ffffff" else ""
 
 
+def tidy_title(title: str) -> str:
+    """A Nova catalogue name made readable for the legend (company texts and stencil names
+    are never changed): technical tags go, spelling of schemes and sizes is the same
+    everywhere. «Schalter-Schema1/Steckdose, T13, Gr1» -> «Schalter-Schema 1 / Steckdose T13, Gr. 1»."""
+    t = re.sub(r"\s*\((?:multi|geo|tde|alt|\d+)\)", "", title or "", flags=re.I)
+    t = re.sub(r"\bSchema\s*(\d)", r"Schema \1", t)
+    t = re.sub(r"\bGr\.?\s*(\d)", r"Gr. \1", t)
+    t = re.sub(r"\bSteckdose,\s*T(\d)", r"Steckdose T\1", t)
+    t = re.sub(r"\s*/\s*", " / ", t)
+    t = re.sub(r"\s+L\.$", " links", t)
+    t = re.sub(r"\s+R\.$", " rechts", t)
+    return " ".join(t.split()).strip(" ,")
+
+
 _POSITION_WORDS = {"liegend", "stehend", "rechts", "links"}
 
 
@@ -465,7 +479,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             chosen = shares[:1] or [("", 0)]
             block = block_for(cid)
             key = cid if by_category else "_all"
-            text = descriptions.get(row["family_key"]) or row.get("title") or ""
+            text = descriptions.get(row["family_key"]) or tidy_title(row.get("title") or "")
             same = _same_text_key(text)
             if same and same in seen_texts.setdefault(key, set()):
                 continue    # a variant with the same text is already in this section
@@ -473,7 +487,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             for color, count in chosen:
                 item = {"id": new_id(), "kind": "symbol", "family_key": row["family_key"],
                         "symbol_key": row["symbol_key"],
-                        "text": descriptions.get(row["family_key"]) or row.get("title") or "",
+                        "text": text,
                         "length_mm": None, "width_mm": None, "line_style": "solid", "line_length": 8.0,
                         **ITEM_EXTRA}
                 if color:

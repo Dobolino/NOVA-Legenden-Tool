@@ -1655,3 +1655,18 @@ def test_general_editor_adds_library_rows_orders_and_exports_an_editable_templat
     assert [r["text"] for r in again.rows] == ["Kernbohrung", "Abzweigdose", "Steckdose", "Schalter UP"]
     assert "NL_RASTER" in ezdxf.readfile(out).layers
     assert client.delete(f"/api/company/general/extra/{extra['id'][1:]}").json()["rows"][0]["original"] != "Kernbohrung"
+
+
+def test_nova_names_are_tidied_for_the_legend_but_company_texts_stay():
+    from nova_legend.legend.model import tidy_title
+
+    assert tidy_title("Schalter-Schema1/Steckdose, T13, Gr1") == "Schalter-Schema 1 / Steckdose T13, Gr. 1"
+    assert tidy_title("Schalter-Schema0/Steckdose T13, Gr.1") == "Schalter-Schema 0 / Steckdose T13, Gr. 1"
+    assert tidy_title("Schlaufkasten Decke (multi)") == "Schlaufkasten Decke"
+    assert tidy_title("Spiegelschrank mit Steckdose L.") == "Spiegelschrank mit Steckdose links"
+    a = row("sk", ["schalter"])
+    a["title"] = "Schlaufkasten Decke (multi)"
+    doc = propose([a], CATS, True, {"sk": "Schlaufkasten (multi) Firma"}, "L")
+    assert doc["blocks"][0]["items"][0]["text"] == "Schlaufkasten (multi) Firma"
+    doc = propose([a], CATS, True, {}, "L")
+    assert doc["blocks"][0]["items"][0]["text"] == "Schlaufkasten Decke"
