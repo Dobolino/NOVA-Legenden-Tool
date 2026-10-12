@@ -254,7 +254,9 @@ def _symbol_box(item: dict, size, style: dict, tile: float) -> dict:
     return box(0.0, 0.0, 0.0, 0.0)
 
 
-PART_GAP = 1.0      # mm between the symbols of a combined entry
+PART_GAP = 1.6      # mm between the symbols of a combined entry
+PART_SIZE = 0.8     # each symbol of a combined entry is a bit smaller than a single one
+PART_MARGIN = 1.0   # mm of free space left of the group and before the text
 
 
 def _combined(item: dict, sizes: dict, single, room: tuple[float, float, float] | None = None) -> dict:
@@ -270,17 +272,19 @@ def _combined(item: dict, sizes: dict, single, room: tuple[float, float, float] 
     for k, part in enumerate(parts, 1):
         merged = {**item, **part, "kind": "symbol", "parts": None}
         members.append((merged, single(merged, sizes.get(f"{item['id']}#{k}"))))
-    widths = [b["left"] + b["right"] for _p, b in members]
+    widths = [(b["left"] + b["right"]) * PART_SIZE for _p, b in members]
     total = sum(widths) + PART_GAP * (len(members) - 1)
-    shrink = 1.0
+    shrink = PART_SIZE
     if room is not None:
         axis, lo, hi = room
+        lo, hi = lo + PART_MARGIN, hi - PART_MARGIN + 0.8
+        room = (axis, lo, hi)
         if total > hi - lo:
             gaps = PART_GAP * (len(members) - 1)
-            shrink = max(0.2, (hi - lo - gaps) / max(sum(widths), 1e-6))
+            shrink = max(0.2, PART_SIZE * (hi - lo - gaps) / max(sum(widths), 1e-6))
     scaled = []
     for (part, b), w in zip(members, widths):
-        if shrink < 1.0:
+        if shrink != 1.0:
             b = {**b, "left": b["left"] * shrink, "right": b["right"] * shrink, "up": b["up"] * shrink,
                  "down": b["down"] * shrink, "scale": round(b["scale"] * shrink, 5)}
         scaled.append((part, b))
@@ -326,6 +330,14 @@ def _general_rows(general: dict, prims: list, x0: float, top: float, inner: floa
     top = _general_header(prims, x0, top, inner, ts, section or {})
     colw = inner / cols
     tile, slot, axis, text_x = tile_frame(style, colw)
+    # a tight grid must not shrink the line patterns of the general part until they blur:
+    # its tile stays at least 80 % of the tile that follows the text size
+    least = min(symbol_tile(style) * 0.8, colw * 0.4)
+    if tile < least:
+        tile = least
+        slot = max(slot, tile)
+        axis = tile / 2 + 0.4
+        text_x = max(text_x, axis + tile / 2 + 1.2)
     gap = max(0.0, float(style.get("entry_gap") or 0.0))
     cap = _line_cap(style)
     side = tile * TILE_FILL

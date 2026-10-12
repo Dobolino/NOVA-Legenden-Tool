@@ -43,6 +43,8 @@ class GeneralPart:
     rows: list[dict] = field(default_factory=list)
     symbol_area: float = 0.0           # mm from the leftmost graphic to the text column
     symbol_names: list[str] = field(default_factory=list)   # normalised names of the symbols (blocks)
+    # colours of the drawing replaced by the plan colours of the project (old hex -> new hex)
+    recolor: dict[str, str] = field(default_factory=dict)
 
     def info(self) -> dict:
         out = {"source": self.source, "kind": self.kind, "error": self.error,
@@ -555,8 +557,112 @@ def split_rows(doc, to_mm: float, bands: list[float] | None = None) -> tuple[lis
                              "src": [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)],
                              "handles": [e.dxf.handle for e, _b in kept]})
                 item["vb"], item["svg"] = _row_svg(doc, [e for e, _b in kept], (x0, y0, x1, y1), f"g{i}")
+                item["colors"] = _row_colors(doc, [e for e, _b in kept])
         out.append(item)
     return out, area, text_x
+
+
+def _row_colors(doc, entities) -> list[str]:
+    """Colours of a row graphic, most used first (blocks resolved, layer colour as fallback)."""
+    from collections import Counter
+
+    counts: Counter = Counter()
+
+    def visit(e, depth=0):
+        if e.dxftype() == "INSERT" and depth < 4:
+            try:
+                for v in e.virtual_entities():
+                    visit(v, depth + 1)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        if e.dxftype() in _NOTE:
+            return
+        color = _paint(e)
+        if color is None:
+            try:
+                layer = doc.layers.get(e.dxf.layer)
+                color = _paint(layer) if layer is not None else None
+            except Exception:  # noqa: BLE001
+                color = None
+        if color:
+            counts[color.lower()] += 1
+
+    for e in entities:
+        visit(e)
+    return [c for c, _n in counts.most_common()]
+
+
+# Farbcodes of the general part -> category of the installation system
+SYSTEM_RULES: list[tuple[str, str]] = [
+    (r"licht", "licht"),
+    (r"kraft", "kraft"),
+    (r"schwachstrom", "schwachstrom"),
+    (r"brand", "bma"),
+    (r"sicherheitsbeleucht|notbeleucht", "fluchtweg"),
+    (r"\bbus\b|knx", "knx"),
+    (r"telefon|multimedia|ukv|audio|video", "kommunikation"),
+]
+
+
+def system_colors(part: GeneralPart, plan_colors: dict[str, str]) -> dict[str, str]:
+    """Which colours of the general part to replace by the plan colour of the project.
+
+    The rows under «Farbcodes» name an installation system next to its colour, e.g.
+    «Lichtinstallation» in #0099ff. When the project draws «Licht» in #0080ff, the
+    lines of the general part (UP-Deckenleitung ...) and the colour code take #0080ff,
+    so they match the plan exactly. A colour or a category used by several codes
+    (Telefonie and Multimedia are both «Kommunikation») stays as drawn."""
+    codes: list[tuple[str, str]] = []
+    in_codes = False
+    for r in part.rows:
+        if r.get("heading"):
+            in_codes = "farbcode" in norm_text(r["text"])
+            continue
+        if not in_codes:
+            continue
+        color = (r.get("swatch") or (r.get("colors") or [""])[0] or "").lower()
+        cat = next((c for pattern, c in SYSTEM_RULES if re.search(pattern, norm_text(r["text"]))), None)
+        if color and cat:
+            codes.append((color, cat))
+    by_color: dict[str, set[str]] = {}
+    by_cat: dict[str, set[str]] = {}
+    for color, cat in codes:
+        by_color.setdefault(color, set()).add(cat)
+        by_cat.setdefault(cat, set()).add(color)
+    out = {}
+    for color, cats in by_color.items():
+        if len(cats) != 1:
+            continue
+        cat = next(iter(cats))
+        sum_codes = sum(1 for _c, k in codes if k == cat)
+        new = (plan_colors.get(cat) or "").lower()
+        if sum_codes == 1 and re.match(r"^#[0-9a-f]{6}$", new) and new != color and new != "#ffffff":
+            out[color] = new
+    return out
+
+
+def recolor(part: GeneralPart, mapping: dict[str, str]) -> GeneralPart:
+    """A copy of the general part with colours replaced (preview and export)."""
+    from dataclasses import replace
+
+    if not mapping:
+        return part
+
+    def swap(text: str) -> str:
+        return re.sub(r"#[0-9a-fA-F]{6}", lambda m: mapping.get(m.group(0).lower(), m.group(0)), text or "")
+
+    rows = []
+    for r in part.rows:
+        r = dict(r)
+        if r.get("svg"):
+            r["svg"] = swap(r["svg"])
+        if r.get("swatch"):
+            r["swatch"] = mapping.get(r["swatch"].lower(), r["swatch"])
+        if r.get("colors"):
+            r["colors"] = [mapping.get(c, c) for c in r["colors"]]
+        rows.append(r)
+    return replace(part, rows=rows, svg=swap(part.svg), recolor=dict(mapping))
 
 
 def _swatch_svg(color: str) -> tuple[str, str]:

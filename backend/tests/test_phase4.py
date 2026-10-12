@@ -1593,3 +1593,23 @@ def test_a_general_row_with_a_slash_covers_each_of_its_parts():
     gen = GeneralPart(kind="dxf", texts=[norm_text("Einlasskasten Gr.1 / Schalungsschoner"),
                                          norm_text("UP-Abzweigdose Decke / Wand")])
     assert covered_families(gen, rows, {}) == {"e", "s", "a"}            # «gross» stays
+
+
+def test_general_lines_take_the_plan_colour_of_their_installation_system():
+    from nova_legend.legend.general import GeneralPart, recolor, system_colors
+
+    rows = [{"id": "g0", "text": "UP-Deckenleitung", "colors": ["#0099ff"], "svg": '<path stroke="#0099FF"/>'},
+            {"id": "g1", "text": "Farbcodes", "heading": True},
+            {"id": "g2", "text": "Lichtinstallation", "colors": ["#0099ff"], "svg": '<path stroke="#0099ff"/>'},
+            {"id": "g3", "text": "Telefonie", "colors": ["#00ff00"], "svg": ""},
+            {"id": "g4", "text": "Multimedia / UKV", "colors": ["#ff00ff"], "svg": ""},
+            {"id": "g5", "text": "Sicherheitsbeleuchtung", "colors": ["#00ff00"], "svg": ""},
+            {"id": "g6", "text": "Kraftinstallation", "swatch": "#ff0000", "colors": ["#ff0000"], "svg": ""}]
+    part = GeneralPart(kind="dxf", rows=rows)
+    plan = {"licht": "#0080FF", "kommunikation": "#cc0099", "fluchtweg": "#00aa00", "kraft": "#ff0000"}
+    mapping = system_colors(part, plan)
+    # Licht changes; Kommunikation has two codes, #00ff00 belongs to two systems, Kraft is already right
+    assert mapping == {"#0099ff": "#0080ff"}
+    done = recolor(part, mapping)
+    assert '#0080ff' in done.rows[0]["svg"] and '#0080ff' in done.rows[2]["svg"]
+    assert part.rows[0]["svg"] == '<path stroke="#0099FF"/>'            # the cached part stays as read

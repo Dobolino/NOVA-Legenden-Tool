@@ -314,6 +314,48 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
                                  st.settings.oda_path or config.find_oda_converter(), project_layout=template_layout)
         return part if raw else general_part.apply_overrides(part, settings.get("legend_general_rows") or {})
 
+    system_cache: dict[tuple, dict[str, str]] = {}
+
+    def installation_colors(p) -> dict[str, str]:
+        """Plan colour of each category: the colour its symbols have most often in the
+        plans (the installation system as drawn), a company colour wins. Cached until a
+        plan is imported again."""
+        plans = tuple((pl.get("id"), pl.get("imported_at")) for pl in p.plans())
+        key = (p.id, plans)
+        if key in system_cache:
+            return system_cache[key]
+        layer_color = {layer["name"]: (layer.get("color") or "").lower() for layer in p.layers()}
+        tally: dict[str, dict[str, int]] = {}
+        try:
+            result = evaluator().evaluate(p)
+        except Exception:  # noqa: BLE001 - without plans the drawing keeps its colours
+            result = {"rows": []}
+        for row in result["rows"]:
+            cats = row.get("categories") or []
+            if not cats or not row.get("total"):
+                continue
+            for name, amount in (row.get("layers") or {}).items():
+                color = layer_color.get(name) or ""
+                if color and color != "#ffffff":
+                    bag = tally.setdefault(cats[0], {})
+                    bag[color] = bag.get(color, 0) + int(amount or 0)
+        out = {cid: max(bag.items(), key=lambda kv: (kv[1], kv[0]))[0] for cid, bag in tally.items() if bag}
+        for c in st.company.categories():
+            if c.get("color"):
+                out[c["id"]] = c["color"]
+        if len(system_cache) > 32:
+            system_cache.clear()
+        system_cache[key] = out
+        return out
+
+    def project_general(p) -> general_part.GeneralPart:
+        """The general part in the plan colours of this project: lines and colour codes of
+        an installation system take the colour its symbols have in the plans."""
+        gen = load_general()
+        if not gen.rows:
+            return gen
+        return general_part.recolor(gen, general_part.system_colors(gen, installation_colors(p)))
+
     @app.get("/api/company/general")
     def company_general() -> dict:
         """The general part as the editor in the settings shows it: every row of the
@@ -669,16 +711,16 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
 
     @app.post("/api/projects/{project_id}/legend/layout")
     def layout_legend(project_id: str, body: LegendIn) -> dict:
-        project(project_id)
+        p = project(project_id)
         doc = normalize(body.doc)
-        gen = load_general()
+        gen = project_general(p)
         lay = place(doc, sizes_of(doc), gen.info() if gen.kind else None)
         return {**lay, "general": gen.info()}
 
     @app.get("/api/projects/{project_id}/legend/general")
     def general_preview(project_id: str) -> dict:
-        project(project_id)
-        gen = load_general()
+        p = project(project_id)
+        gen = project_general(p)
         return {**gen.info(), "svg": gen.svg, "prims": gen.prims,
                 "row_svgs": {r["id"]: {"vb": r.get("vb", ""), "svg": r.get("svg", "")} for r in gen.rows if r.get("svg")}}
 
@@ -705,7 +747,7 @@ def register(app: FastAPI, st, project, evaluator, category_colors) -> None:
         target_block = next((b for b in doc["blocks"] if b["id"] == block), None) if block else None
         if block and target_block is None:
             raise HTTPException(404, "Abschnitt nicht gefunden")
-        gen = load_general() if general else general_part.GeneralPart()
+        gen = project_general(p) if general else general_part.GeneralPart()
         lay = place(doc, sizes_of(doc), gen.info() if gen.kind else None,
                     only_block=block or None, include_general=general)
         dxf = build_dxf(lay, gen if gen.kind else None,

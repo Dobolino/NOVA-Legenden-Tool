@@ -216,6 +216,9 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
             continue
         if r["id"] not in tuned:
             blk = doc.blocks.get(names[r["id"]])
+            if general.recolor:
+                # the plan colours of the project, as in the preview
+                _recolor_block(doc, blk, general.recolor, set())
             win = _source_window(r, p)
             _clip_block(blk, r["src"], win)
             tune_entities(doc, list(blk), general.to_mm * p["k"], seen)
@@ -235,6 +238,27 @@ def _import_general_rows(doc, msp, general: GeneralPart, grows: list[dict], Y) -
             doc.nl_line_factors[names[r["id"]]] = abs(float(p["k"]))
         msp.add_blockref(names[r["id"]], (round(ix, 4), round(iy, 4)), dxfattribs={
             "xscale": s, "yscale": s, "rotation": rot, "layer": _layer(doc, FRAME_LAYER)})
+
+
+def _recolor_block(doc, blk, mapping: dict[str, str], seen: set) -> None:
+    from .general import _paint
+
+    for e in blk:
+        if e.dxftype() == "INSERT":
+            name = e.dxf.name
+            if name not in seen and name in doc.blocks:
+                seen.add(name)
+                _recolor_block(doc, doc.blocks.get(name), mapping, seen)
+            continue
+        color = _paint(e)
+        if color is None:
+            try:
+                color = _paint(doc.layers.get(e.dxf.layer))
+            except Exception:  # noqa: BLE001
+                color = None
+        new = mapping.get((color or "").lower())
+        if new:
+            e.rgb = _rgb(new)
 
 
 def _source_window(row: dict, prim: dict) -> tuple[float, float, float, float]:
