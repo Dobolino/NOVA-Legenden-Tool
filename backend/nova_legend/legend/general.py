@@ -65,6 +65,28 @@ def norm_text(text: str) -> str:
     return " ".join(t.split())
 
 
+def text_parts(text: str) -> set[str]:
+    """The things a general-part row names, normalised. A row with « / » names several:
+    «Einlasskasten Gr.1 / Schalungsschoner» -> einlasskasten, schalungsschoner;
+    «UP-Abzweigdose Decke / Wand» -> up abzweigdose decke, up abzweigdose wand.
+    Sizes («Gr.1»), examples («z.B. ...») and brackets are left off."""
+    raw = re.sub(r"\([^)]*\)", " ", text or "")
+    pieces = [norm_text(p) for p in raw.split("/")]
+    out: set[str] = set()
+    head: list[str] = []
+    for k, piece in enumerate(pieces):
+        words = re.sub(r"\b(gr|grösse|z b)\b.*$", "", piece).split()
+        if not words:
+            continue
+        if k == 0:
+            head = words
+        elif len(words) == 1 and len(head) > 1:
+            # «Decke / Wand»: the second part only names what differs
+            out.add(" ".join(head[:-1] + words))
+        out.add(" ".join(words))
+    return out
+
+
 _cache: dict[tuple, GeneralPart] = {}
 
 

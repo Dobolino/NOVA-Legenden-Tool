@@ -132,6 +132,9 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
     if not gen or not gen.kind:
         return out
     fams, syms, texts = set(gen.family_keys), set(gen.symbol_keys), set(gen.texts)
+    # a row with « / » names several things: each one counts on its own
+    parts = {_no_mount(p) for t in list(texts) + [r.get("text", "") for r in gen.rows or []]
+             for p in general_part.text_parts(t) if len(p) >= 4}
     # symbols of a DXF / DWG general part by their Nova name (block name), without UP/AP:
     # «Steigleitung_ nach oben» shows the family «Steigleitung, nach oben»
     names = {_no_mount(n) for n in getattr(gen, "symbol_names", []) or []}
@@ -145,6 +148,8 @@ def covered_families(gen, rows: list[dict], descriptions: dict[str, str]) -> set
         elif texts and any(norm_text(t) in texts for t in (descriptions.get(fk), row.get("title")) if t):
             out.add(fk)
         elif names and any(_no_mount(norm_text(t)) in names for t in [row.get("title"), *(row.get("names") or [])] if t):
+            out.add(fk)
+        elif parts and any(_no_mount(norm_text(t)) in parts for t in (descriptions.get(fk), row.get("title")) if t):
             out.add(fk)
         elif risers and any(RISER.match(_no_mount(norm_text(t))) and norm_text(t) not in ("leitung", "steigleitung") for t in [row.get("title"), *(row.get("names") or [])] if t):
             out.add(fk)

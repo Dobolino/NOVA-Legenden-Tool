@@ -339,6 +339,16 @@ def _plan_hex(value) -> str:
     return text.lower() if _HEX.match(text) and text.lower() != "#ffffff" else ""
 
 
+_POSITION_WORDS = {"liegend", "stehend", "rechts", "links"}
+
+
+def _same_text_key(text: str) -> str:
+    """Text without case, punctuation and position words: «Storentaster, liegend» and
+    «Storentaster, liegend rechts» are the same legend entry."""
+    words = re.sub(r"[^0-9a-zäöüéèàß°/+]+", " ", (text or "").lower()).split()
+    return " ".join(w for w in words if w not in _POSITION_WORDS)
+
+
 def color_shares(row: dict, category_id: str | None, layer_categories: dict[str, str] | None,
                  layer_colors: dict[str, str] | None) -> list[tuple[str, int]]:
     """(plan colour, count) of this symbol, most used first.
@@ -386,10 +396,11 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             layer_colors: dict[str, str] | None = None) -> dict:
     """New legend with every apparatus in use, grouped by the first visible category.
 
-    A symbol that sits on plan layers of two or more categories is entered in
-    each of those categories, so each copy keeps that category's layer colour.
-    A symbol that sits on two colours inside one category is shown once, in the
-    colour it has most often. The section bar uses the category colour, or, when that
+    Every symbol is shown once (Legendenbesprechung 09.10.2026): a symbol on plan layers
+    of several categories goes to its own category when one of those layers belongs to
+    it, else to the category whose layers hold it most often. It takes the colour it
+    has most often there. Entries with the same text in one section (variants such as
+    «liegend» and «liegend rechts») are shown once. The section bar uses the category colour, or, when that
     layer has none, the colour that occurs most often.
 
     ``covered`` holds the family keys the general part already shows; they are
@@ -418,6 +429,7 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
         return blocks[key]
 
     has_ap = False
+    seen_texts: dict[str, set[str]] = {}
     for row in rows:
         if int(row.get("total") or 0) <= 0 or not row.get("symbol_key"):
             continue
@@ -428,7 +440,17 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             if cid and cid in cats and not cats[cid].get("hidden") and cid not in from_layers:
                 from_layers.append(cid)
         if len(from_layers) >= 2:
-            targets: list[str | None] = list(from_layers)
+            # once only: its own category if a layer belongs to it, else the busiest one
+            own = visible[0] if visible else None
+            if own in from_layers:
+                targets: list[str | None] = [own]
+            else:
+                use: dict[str, int] = {}
+                for name, amount in (row.get("layers") or {}).items():
+                    cid = (layer_categories or {}).get(name)
+                    if cid in from_layers:
+                        use[cid] = use.get(cid, 0) + int(amount or 0)
+                targets = [max(from_layers, key=lambda c: (use.get(c, 0), -from_layers.index(c)))]
         elif row.get("categories") and not visible:
             continue    # only in hidden categories
         else:
@@ -443,6 +465,11 @@ def propose(rows: list[dict], categories: list[dict], by_category: bool,
             chosen = shares[:1] or [("", 0)]
             block = block_for(cid)
             key = cid if by_category else "_all"
+            text = descriptions.get(row["family_key"]) or row.get("title") or ""
+            same = _same_text_key(text)
+            if same and same in seen_texts.setdefault(key, set()):
+                continue    # a variant with the same text is already in this section
+            seen_texts[key].add(same)
             for color, count in chosen:
                 item = {"id": new_id(), "kind": "symbol", "family_key": row["family_key"],
                         "symbol_key": row["symbol_key"],

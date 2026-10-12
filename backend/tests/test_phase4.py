@@ -983,13 +983,29 @@ def test_shipped_defaults_name_no_company_path_and_no_person():
     assert config.Settings().projects_folder == ""
 
 
-def test_symbol_on_two_layers_is_proposed_in_both_categories():
+def test_symbol_on_two_layers_is_proposed_once():
     sample = row("leuchte", ["schalter"])
     sample["layers"] = {"E_Licht": 2, "E_Starkstrom": 1}
     doc = propose([sample], CATS, True, {}, "L",
                   layer_categories={"E_Licht": "schalter", "E_Starkstrom": "allgemein"})
-    placed = {(b["category_id"], i["family_key"]) for b in doc["blocks"] for i in b["items"] if i["kind"] == "symbol"}
-    assert placed == {("schalter", "leuchte"), ("allgemein", "leuchte")}
+    placed = [(b["category_id"], i["family_key"]) for b in doc["blocks"] for i in b["items"] if i["kind"] == "symbol"]
+    assert placed == [("schalter", "leuchte")]                    # its own category, not twice
+    other = row("dose", ["kraft"])
+    other["layers"] = {"E_Licht": 1, "E_Starkstrom": 5}
+    doc = propose([other], CATS, True, {}, "L",
+                  layer_categories={"E_Licht": "schalter", "E_Starkstrom": "allgemein"})
+    assert [b["category_id"] for b in doc["blocks"]] == ["allgemein"]   # the busiest layer wins
+
+
+def test_variants_with_the_same_text_are_one_entry():
+    a, b, c = row("st1", ["schalter"]), row("st2", ["schalter"]), row("up", ["schalter"])
+    a["title"], b["title"] = "Storentaster, liegend", "Storentaster, liegend rechts"
+    c["title"] = "Leitung nach oben"
+    d = row("down", ["schalter"])
+    d["title"] = "Leitung nach unten"
+    doc = propose([a, b, c, d], CATS, True, {}, "L")
+    texts = [i["text"] for blk in doc["blocks"] for i in blk["items"]]
+    assert texts == ["Storentaster, liegend", "Leitung nach oben", "Leitung nach unten"]
 
 
 def test_diagnostics_report_has_no_geometry(env):
@@ -1562,3 +1578,18 @@ def test_combined_entry_draws_its_symbols_side_by_side_with_one_text():
     assert text["text"].startswith("Einlasskasten / Schalungsschoner")
     assert b["x0"] + b["w"] <= grid["x"] + grid["text"] - 0.79       # never runs into the text
     assert a["x0"] >= grid["x"] + 0.29
+
+
+def test_a_general_row_with_a_slash_covers_each_of_its_parts():
+    from nova_legend.api.legend import covered_families
+    from nova_legend.legend.general import GeneralPart, norm_text, text_parts
+
+    assert text_parts("Einlasskasten Gr.1 / Schalungsschoner") == {"einlasskasten", "schalungsschoner"}
+    assert text_parts("UP-Abzweigdose Decke / Wand") == {"up abzweigdose decke", "up abzweigdose wand", "wand"}
+    titles = {"e": "Einlasskasten", "s": "Schalungsschoner", "a": "Abzweigdose Wand, UP", "x": "Einlasskasten gross"}
+    rows = [row(k, ["steckdosen"]) for k in titles]
+    for r in rows:
+        r["title"] = titles[r["family_key"]]
+    gen = GeneralPart(kind="dxf", texts=[norm_text("Einlasskasten Gr.1 / Schalungsschoner"),
+                                         norm_text("UP-Abzweigdose Decke / Wand")])
+    assert covered_families(gen, rows, {}) == {"e", "s", "a"}            # «gross» stays
