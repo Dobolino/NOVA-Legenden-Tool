@@ -291,16 +291,89 @@ a.btn { text-decoration: none; color: inherit; display: inline-block; }
 .modal-back { position: fixed; inset: 0; background: rgb(13 27 36 / 42%); backdrop-filter: blur(4px); display: grid; place-items: center; z-index: 30; padding: 24px; }
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 28px; width: min(560px, 100%); max-height: calc(100dvh - 48px); overflow-y: auto; box-shadow: var(--shadow-pop); }
 .modal h3 { margin: 0 0 4px; }
-.mine-modal { width: min(360px, 100%); padding: 16px; }
+.modal.mine-modal { width: min(360px, 100%); padding: 16px; overflow: visible; }
+.mine-modal.is-blast { animation: mine-shake 720ms linear; }
 .mine-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .mine-count { font-variant-numeric: tabular-nums; font-weight: 650; min-width: 2.2em; }
-.mine-grid { display: grid; gap: 2px; }
+.mine-grid { position: relative; display: grid; gap: 2px; }
 .mine-cell {
+  position: relative; display: grid; place-items: center;
   aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid var(--line-strong); border-radius: 4px;
   background: var(--panel-2); color: var(--fg); font-weight: 700; font-size: 13px; cursor: pointer;
 }
 .mine-cell.open { background: var(--panel); border-color: var(--line); cursor: default; }
 .mine-cell.mine { background: color-mix(in srgb, var(--danger) 18%, var(--panel)); color: var(--danger); }
+.mine-cell.fly {
+  z-index: 4; pointer-events: none; overflow: visible;
+  animation: mine-fly 1180ms linear var(--delay, 0ms) forwards;
+}
+.mine-cell.epicenter { z-index: 6; animation-name: mine-burst; animation-duration: 1460ms; }
+.mine-core {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 32%, #fff 0%, #ffe08a 28%, #ff8c00 58%, #bc3548 100%);
+  box-shadow: 0 0 8px #ff8c00;
+}
+.mine-fx { position: absolute; z-index: 7; width: 0; height: 0; pointer-events: none; }
+.mine-spark, .mine-wave, .mine-flash { position: absolute; pointer-events: none; }
+.mine-spark {
+  left: 50%; top: 50%; width: 6px; height: 6px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 10px 2px #ff8c00;
+  animation: mine-spark 980ms ease-out var(--delay, 0ms) forwards;
+}
+.mine-spark.s1 { --sx: -26px; --sy: -30px; }
+.mine-spark.s2 { --sx: 28px; --sy: -18px; }
+.mine-spark.s3 { --sx: -16px; --sy: 26px; }
+.mine-spark.s4 { --sx: 22px; --sy: 24px; }
+.mine-wave {
+  left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%;
+  border: 2px solid #ff8c00; box-shadow: 0 0 18px #ff8c00, inset 0 0 12px rgb(255 255 255 / 85%);
+  animation: mine-wave 980ms cubic-bezier(.12, .7, .2, 1) forwards;
+}
+.mine-wave.late { animation-delay: 160ms; border-color: #fff3d6; }
+.mine-flash {
+  left: 50%; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ffe0a3 36%, transparent 70%);
+  animation: mine-flash 620ms ease-out forwards;
+}
+@keyframes mine-burst {
+  0% { transform: scale(1); filter: brightness(1); animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+  14% { transform: scale(1.8); filter: brightness(2.8); background: #fff; box-shadow: 0 0 28px 12px #ff8c00, 0 0 4px 2px #fff; animation-timing-function: linear; }
+  30% { transform: scale(1.35); filter: brightness(1.7); background: #fff4df; box-shadow: 0 0 22px 8px #ff8c00; animation-timing-function: cubic-bezier(.45, 0, .75, .25); }
+  42% { transform: scale(0.86) rotate(calc(var(--spin) * 0.08)); background: #ff8c00; animation-timing-function: cubic-bezier(.12, .72, .2, 1); }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(0.08); opacity: 0; }
+}
+@keyframes mine-fly {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; animation-timing-function: cubic-bezier(.3, .85, .4, 1); }
+  20% { transform: scale(1.32); background: #fff7ea; box-shadow: 0 0 0 2px #ff8c00, 0 0 18px 6px rgb(255 140 0 / 72%); animation-timing-function: cubic-bezier(.14, .7, .22, 1); }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(0.1); opacity: 0; }
+}
+@keyframes mine-spark {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  22% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--sx)), calc(-50% + var(--sy))) scale(0.25); opacity: 0; }
+}
+@keyframes mine-wave {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(14); opacity: 0; }
+}
+@keyframes mine-flash {
+  0% { opacity: 0; transform: scale(0.25); }
+  22% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0; transform: scale(2.1); }
+}
+@keyframes mine-shake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  8% { transform: translate3d(-6px, 3px, 0); }
+  16% { transform: translate3d(7px, -4px, 0); }
+  28% { transform: translate3d(-5px, 2px, 0); }
+  40% { transform: translate3d(4px, -2px, 0); }
+  55% { transform: translate3d(-2px, 1px, 0); }
+  72% { transform: translate3d(1px, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mine-cell.fly, .mine-spark, .mine-wave, .mine-flash, .mine-modal.is-blast, .mine-credit { animation: none; }
+  .mine-cell.fly { opacity: 1; transform: none; }
+}
 .mine-cell.n1 { color: #1971c2; }
 .mine-cell.n2 { color: #2b8a3e; }
 .mine-cell.n3 { color: #c92a2a; }
@@ -309,7 +382,23 @@ a.btn { text-decoration: none; color: inherit; display: inline-block; }
 .mine-cell.n6 { color: #0c8599; }
 .mine-cell.n7 { color: var(--fg); }
 .mine-cell.n8 { color: var(--muted); }
-.mine-credit { margin: 12px 0 0; font-size: 11px; color: var(--muted); text-align: center; }
+.mine-modal.is-won { box-shadow: var(--shadow-pop), 0 0 0 1px color-mix(in srgb, var(--brand-orange) 40%, transparent); }
+.mine-credit {
+  margin: 18px 0 2px; display: grid; justify-items: center; gap: 1px; text-align: center;
+  animation: mine-credit-in 720ms cubic-bezier(.16, .84, .28, 1) both;
+}
+.mine-credit-kicker {
+  margin-bottom: 6px; font-size: 11px; font-weight: 650; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted);
+}
+.mine-credit-name {
+  font-size: 26px; line-height: 1.12; font-weight: 750; letter-spacing: -0.04em; color: var(--fg);
+}
+.mine-credit-join { margin: 2px 0; font-size: 13px; font-weight: 500; color: var(--brand); }
+@keyframes mine-credit-in {
+  0% { opacity: 0; transform: translateY(14px) scale(0.94); }
+  100% { opacity: 1; transform: none; }
+}
 .mine-status { margin: 10px 0 0; text-align: center; }
 .choice { display: flex; margin: 10px 0 6px; color: var(--fg); font-weight: 600; }
 .select.full { width: 100%; }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleared, emptyBoard, minesLeft, placeMines, reveal, toggleFlag, MINES, SIZE } from "./minesweeper.ts";
+import { cleared, emptyBoard, minesLeft, placeMines, playClearChime, reveal, toggleFlag, CREDIT, MINES, SIZE } from "./minesweeper.ts";
 
 function sequence(values: number[]) {
   let i = 0;
@@ -23,6 +23,11 @@ test("an empty cell opens its neighbours and a flag stays closed", () => {
   const flagged = toggleFlag(opened, opened.findIndex((cell) => !cell.open));
   const index = flagged.findIndex((cell) => cell.flag);
   assert.equal(reveal(flagged, index)[index].open, false);
+});
+
+test("the hidden credit names Nico Strauss and Alexandre Dürger", () => {
+  assert.equal(CREDIT, "Invented and Created by Nico Strauss und Alexandre Dürger");
+  assert.doesNotThrow(() => playClearChime());
 });
 
 test("the field is cleared only when every safe cell is open", () => {

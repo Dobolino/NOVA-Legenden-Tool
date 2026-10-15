@@ -1,7 +1,28 @@
-import { useEffect, useState } from "react";
-import { Cell, SIZE, cleared, emptyBoard, minesLeft, placeMines, reveal, toggleFlag } from "../minesweeper";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Cell, CREDIT, SIZE, cleared, emptyBoard, minesLeft, placeMines, playClearChime, reveal, toggleFlag } from "../minesweeper";
 
-const CREDIT = "Invented and Created by Nico Strass und Alexandre Dürger";
+/** Direction, spin and stagger so each mine tile leaves the blast on its own path. */
+function flight(index: number, origin: number): CSSProperties {
+  const ox = origin % SIZE;
+  const oy = Math.floor(origin / SIZE);
+  const x = index % SIZE;
+  const y = Math.floor(index / SIZE);
+  let dx = x - ox;
+  let dy = y - oy;
+  if (dx === 0 && dy === 0) {
+    dx = 0.45;
+    dy = -1;
+  }
+  const len = Math.hypot(dx, dy);
+  const reach = 240 + len * 48;
+  const spin = (dx >= 0 ? 1 : -1) * (180 + Math.round(len * 55));
+  return {
+    "--dx": `${Math.round((dx / len) * reach)}px`,
+    "--dy": `${Math.round((dy / len) * reach - 56)}px`,
+    "--spin": `${spin}deg`,
+    "--delay": `${index === origin ? 0 : Math.round(140 + len * 85)}ms`,
+  } as CSSProperties;
+}
 
 /** Hidden field. The credit line appears only after the field is cleared. */
 export default function Minesweeper({ onClose }: { onClose: () => void }) {
@@ -10,6 +31,7 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
   const [lost, setLost] = useState(false);
   const [flagMode, setFlagMode] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [blast, setBlast] = useState<number | null>(null);
 
   const won = cleared(board);
   const running = armed && !lost && !won;
@@ -32,6 +54,7 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
     setBoard(emptyBoard());
     setArmed(false);
     setLost(false);
+    setBlast(null);
     setSeconds(0);
   }
 
@@ -46,10 +69,13 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
     if (cell.flag) return;
     if (cell.mine) {
       setBoard(current.map((item) => (item.mine ? { ...item, open: true } : item)));
+      setBlast(index);
       setLost(true);
       return;
     }
-    setBoard(reveal(current, index));
+    const next = reveal(current, index);
+    setBoard(next);
+    if (cleared(next)) playClearChime();
   }
 
   function onCell(index: number, flag: boolean) {
@@ -64,7 +90,7 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div
-        className="modal mine-modal"
+        className={`modal mine-modal ${blast !== null ? "is-blast" : ""} ${won ? "is-won" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label="Minenfeld"
@@ -86,13 +112,28 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
           <button type="button" className="btn small" onClick={onClose} aria-label="Schliessen">Schliessen</button>
         </div>
         <div className="mine-grid" style={{ gridTemplateColumns: `repeat(${SIZE}, 1fr)` }}>
+          {blast !== null && (
+            <span
+              className="mine-fx"
+              style={{
+                left: `calc(${blast % SIZE} * ((100% - 16px) / ${SIZE} + 2px) + (100% - 16px) / ${SIZE} / 2)`,
+                top: `calc(${Math.floor(blast / SIZE)} * ((100% - 16px) / ${SIZE} + 2px) + (100% - 16px) / ${SIZE} / 2)`,
+              }}
+            >
+              <span className="mine-wave" />
+              <span className="mine-wave late" />
+              <span className="mine-flash" />
+            </span>
+          )}
           {board.map((cell, index) => {
+            const flying = blast !== null && cell.mine;
             const label = cell.flag ? "Fahne" : cell.open ? (cell.mine ? "Mine" : cell.near ? String(cell.near) : "Leer") : "Zu";
             return (
               <button
                 key={index}
                 type="button"
-                className={`mine-cell ${cell.open ? "open" : ""} ${cell.mine && cell.open ? "mine" : ""} n${cell.near}`}
+                className={`mine-cell ${cell.open ? "open" : ""} ${cell.mine && cell.open ? "mine" : ""} ${flying ? "fly" : ""} ${blast === index ? "epicenter" : ""} n${cell.near}`}
+                style={flying ? flight(index, blast) : undefined}
                 aria-label={label}
                 onClick={() => onCell(index, false)}
                 onContextMenu={(e) => {
@@ -100,12 +141,27 @@ export default function Minesweeper({ onClose }: { onClose: () => void }) {
                   onCell(index, true);
                 }}
               >
-                {cell.flag && !cell.open ? "⚑" : cell.open && cell.mine ? "●" : cell.open && cell.near ? cell.near : ""}
+                {flying ? (
+                  <>
+                    <span className="mine-core" />
+                    <span className="mine-spark s1" />
+                    <span className="mine-spark s2" />
+                    <span className="mine-spark s3" />
+                    <span className="mine-spark s4" />
+                  </>
+                ) : cell.flag && !cell.open ? "⚑" : cell.open && cell.near ? cell.near : ""}
               </button>
             );
           })}
         </div>
-        {won && <p className="mine-credit">{CREDIT}</p>}
+        {won && (
+          <div className="mine-credit" role="status" aria-label={CREDIT}>
+            <span className="mine-credit-kicker">Invented and Created by</span>
+            <strong className="mine-credit-name">Nico Strauss</strong>
+            <span className="mine-credit-join">und</span>
+            <strong className="mine-credit-name">Alexandre Dürger</strong>
+          </div>
+        )}
         {lost && <p className="hint mine-status">Getroffen. Noch einmal mit Neu.</p>}
       </div>
     </div>

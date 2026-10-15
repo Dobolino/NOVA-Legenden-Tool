@@ -2,6 +2,7 @@
 
 export const SIZE = 9;
 export const MINES = 10;
+export const CREDIT = "Invented and Created by Nico Strauss und Alexandre Dürger";
 
 export interface Cell {
   mine: boolean;
@@ -73,4 +74,32 @@ export function minesLeft(board: Cell[]): number {
   const flagged = board.filter((cell) => cell.flag).length;
   const mines = board.filter((cell) => cell.mine).length;
   return (mines || MINES) - flagged;
+}
+
+/** Short rising chord when the field is cleared. Needs a click, so the browser allows sound. */
+export function playClearChime(): void {
+  if (typeof window === "undefined") return;
+  const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx) return;
+  const ctx = new Ctx();
+  void ctx.resume();
+  const master = ctx.createGain();
+  master.gain.value = 0.2;
+  master.connect(ctx.destination);
+  const notes = [392, 493.88, 587.33, 783.99];
+  notes.forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const start = ctx.currentTime + i * 0.12;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.85, start + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.7);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(start);
+    osc.stop(start + 0.72);
+  });
+  window.setTimeout(() => void ctx.close(), 1600);
 }
