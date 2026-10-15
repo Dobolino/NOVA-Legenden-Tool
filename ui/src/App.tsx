@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Category, Options, setDatasetNames, Status, UpdateInfo } from "./api";
 import Library from "./components/Library";
 import Categories from "./components/Categories";
@@ -9,6 +9,7 @@ import { applyTheme, effectiveDark, loadTheme, ThemeMode } from "./theme";
 import { NavigationProvider, useNavigation } from "./Navigation";
 import { Icon } from "./components/Icons";
 import edecoLogo from "./assets/edeco-logo.svg?raw";
+import Minesweeper from "./components/Minesweeper";
 
 type Tab = "projects" | "library" | "categories" | "settings" | "help";
 
@@ -103,6 +104,16 @@ function AppContent() {
 
   const noDatasets = status && status.datasets.length === 0;
   const current = NAVIGATION.find((item) => item.id === tab)!;
+  const [mineOpen, setMineOpen] = useState(false);
+  const secretClicks = useRef<number[]>([]);
+  const secret = () => {
+    const now = Date.now();
+    secretClicks.current = [...secretClicks.current.filter((t) => now - t < 4000), now];
+    if (secretClicks.current.length >= 5) {
+      secretClicks.current = [];
+      setMineOpen(true);
+    }
+  };
 
   return (
     <div className="app" inert={pending}>
@@ -112,6 +123,7 @@ function AppContent() {
             className="brand-logo"
             role="img"
             aria-label="edeco ag"
+            onClick={secret}
             dangerouslySetInnerHTML={{ __html: edecoLogo.replace(/<\?xml[^?]*\?>/, "") }}
           />
           <div className="brand-name">NOVA<span>Legenden</span></div>
@@ -134,7 +146,7 @@ function AppContent() {
           <span className="nav-footer-label">NOVA-Legenden</span>
           <span>Elektroplanung</span>
           <span className="nav-copy">
-            <span>© 2026 edeco ag</span>
+            <button type="button" className="nav-secret" onClick={secret}>© 2026 edeco ag</button>
             <span>Alle Rechte vorbehalten.</span>
           </span>
           <span className="powered">Powered by Trimble Nova</span>
@@ -217,6 +229,7 @@ function AppContent() {
         </div>
       </div>
       {toast && <div className={`toast ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.text}</div>}
+      {mineOpen && <Minesweeper onClose={() => setMineOpen(false)} />}
     </div>
   );
 }
