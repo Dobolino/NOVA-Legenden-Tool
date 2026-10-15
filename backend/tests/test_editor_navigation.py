@@ -36,6 +36,29 @@ def launch_chromium(pw):
     pytest.skip("Kein Chromium für die Browser-Tests gefunden (NOVA_TEST_CHROMIUM setzen)")
 
 
+def open_app(page, port):
+    """Open the local UI. Windows CI sometimes reports ERR_NO_BUFFER_SPACE for a moment."""
+    url = f"http://127.0.0.1:{port}"
+    last = None
+    for attempt in range(5):
+        try:
+            page.goto(url, wait_until="domcontentloaded")
+            return
+        except Exception as exc:  # noqa: BLE001 - only transient network errors are retried
+            last = exc
+            text = str(exc)
+            transient = (
+                "ERR_NO_BUFFER_SPACE" in text
+                or "ERR_CONNECTION" in text
+                or "ERR_NETWORK_CHANGED" in text
+                or "ERR_INSUFFICIENT_RESOURCES" in text
+            )
+            if not transient or attempt == 4:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    raise last
+
+
 @pytest.fixture()
 def editor(env):
     client, tmp = env
@@ -68,7 +91,7 @@ def editor(env):
             page = browser.new_page()
             errors = []
             page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(f"http://127.0.0.1:{port}")
+            open_app(page, port)
             page.get_by_text("Browser A", exact=True).click()
             page.get_by_role("button", name="Legende", exact=True).click()
             page.get_by_role("button", name="T Titel", exact=True).click()
@@ -384,7 +407,7 @@ def test_the_admin_list_is_visible_and_locks_after_the_first_name(env, monkeypat
         with playwright.sync_playwright() as pw:
             browser = launch_chromium(pw)
             page = browser.new_page(viewport={"width": 1280, "height": 900})
-            page.goto(f"http://127.0.0.1:{port}")
+            open_app(page, port)
             page.get_by_role("button", name="Einstellungen", exact=True).click()
             playwright.expect(page.get_by_role("heading", name="Legende Allgemein", exact=True)).to_be_visible()
             playwright.expect(page.get_by_role("heading", name="Admin", exact=True)).to_be_visible()
