@@ -259,12 +259,47 @@ PART_SIZE = 0.8     # each symbol of a combined entry is a bit smaller than a si
 PART_MARGIN = 1.0   # mm of free space left of the group and before the text
 
 
-def _combined(item: dict, sizes: dict, single, room: tuple[float, float, float] | None = None) -> dict:
+def _combined_tiles(item: dict, sizes: dict, single, room: tuple[float, float, float], tile: float) -> dict:
+    """Combined entry in tile mode: one equal square per symbol, side by side.
+
+    The squares shrink together so the group stays in the symbol column, and each
+    drawing is centred in its own square the same way a single symbol fills its tile."""
+    axis, lo, hi = room
+    parts = item.get("parts") or []
+    members = [item] + [{**item, **part, "kind": "symbol", "parts": None} for part in parts]
+    n = len(members)
+    gap = 0.45
+    span = max(hi - lo, 1.0)
+    side = min(float(tile), (span - gap * (n - 1)) / n)
+    if side < 2.0:
+        gap = 0.2
+        side = max(1.6, (span - gap * (n - 1)) / n)
+    total = n * side + (n - 1) * gap
+    origin = min(max(axis - total / 2, lo), hi - total)
+    frames = []
+    out_parts = []
+    for i, part in enumerate(members):
+        key = item["id"] if i == 0 else f"{item['id']}#{i}"
+        box = single(part, sizes.get(key), side, False)
+        dx = origin + i * (side + gap) + side / 2 - axis
+        # as tall as the normal tile, only narrower, so the row of tiles stays even
+        frames.append({"dx": round(dx, 4), "side": round(side, 4), "h": round(float(tile), 4)})
+        out_parts.append({"dx": round(dx, 4), "box": box, "part": part})
+    return {"left": round(axis - origin, 4), "right": round(origin + total - axis, 4),
+            "up": float(tile) / 2, "down": float(tile) / 2,
+            "scale": out_parts[0]["box"]["scale"], "ax": out_parts[0]["box"]["ax"],
+            "ay": out_parts[0]["box"]["ay"], "parts": out_parts, "frames": frames}
+
+
+def _combined(item: dict, sizes: dict, single, room: tuple[float, float, float] | None = None,
+              tile: float | None = None) -> dict:
     """Box of an entry. A combined entry (``parts``) puts its symbols side by side, each
     with its own size rule, the group centred on the symbol axis. ``room`` = (axis,
     left edge, right edge) of the symbol column: a group wider than that shrinks and
-    moves so it never runs into the text."""
+    moves so it never runs into the text. In tile mode each symbol gets its own square."""
     parts = item.get("parts") or []
+    if tile and room and parts and item["kind"] == "symbol":
+        return _combined_tiles(item, sizes, single, room, tile)
     first = single(item, sizes.get(item["id"]))
     if not parts or item["kind"] != "symbol":
         return first
@@ -591,8 +626,13 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row, continued: b
         # equal tiles: every drawing fills one tile sized from the text.
         # a raster other than Standard uses the chosen row height and text distance
         tile, fixed, axis, text_x = tile_frame(style, colw)
-        boxes = {it["id"]: _combined(it, sizes, lambda part, size: _symbol_box(part, size, style, tile),
-                                     (axis, 0.3, text_x - 0.8)) for it in items}
+        def tile_box(part, size, side=tile, even=True):
+            # a combined symbol fills its own cell; the shared area rule would
+            # leave it looking small inside the narrower tile
+            used = style if even else {**style, "normalize_size": False}
+            return _symbol_box(part, size, used, side)
+
+        boxes = {it["id"]: _combined(it, sizes, tile_box, (axis, 0.4, text_x - 0.5), tile) for it in items}
     per_col = math.ceil(len(items) / cols) if items else 0
     col_heights = []
     # every place of the grid is a cell (also the empty ones): the editor drops entries
@@ -625,9 +665,29 @@ def _block(block, style, sizes, prims, x0, y, inner, cols, ts, row, continued: b
         col_heights.append((used[-1]["y"] + used[-1]["h"] - (top + head_h + pad)) if used else 0.0)
     body_h = max(col_heights or [0.0]) if items else row
     total_h = head_h + pad + body_h + pad
+    frames = None
+    if not real:
+        frames = []
+        grid_top = top + head_h + pad
+        for cell in cells:
+            if cell["y"] > grid_top + body_h - 0.05:
+                continue
+            box = boxes.get(cell["id"]) if cell.get("id") else None
+            custom = (box or {}).get("frames")
+            mid = cell["y"] + cell["h"] / 2
+            if custom:
+                for fr in custom:
+                    side = fr["side"]
+                    hgt = fr.get("h", side)
+                    frames.append({"x": round(cell["x"] + axis + fr["dx"] - side / 2, 3),
+                                   "y": round(mid - hgt / 2, 3),
+                                   "w": round(side, 3), "h": round(hgt, 3)})
+            else:
+                frames.append({"x": round(cell["x"] + axis - tile / 2, 3),
+                               "y": round(mid - tile / 2, 3), "w": tile, "h": tile})
     prims.append({"t": "grid", "block": block["id"], "x": x0 + pad, "y": top + head_h + pad,
                   "slot": row if fixed is None else fixed, "gap": gap_mm,
-                  "tile": None if real else tile,
+                  "tile": None if real else tile, "frames": frames,
                   "w": inner - 2 * pad, "h": body_h, "row": (row if fixed is None else fixed) + gap_mm,
                   "cols": cols, "colw": colw,
                   "axis": axis, "text": text_x})

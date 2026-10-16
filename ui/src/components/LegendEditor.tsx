@@ -1506,7 +1506,9 @@ function GridLines({ g }: { g: LegendPrim }) {
       )}
       {tile && (
         <g stroke="#2b8a3e" strokeOpacity={0.5} fill="none">
-          {cols.flatMap((x) =>
+          {(g.frames as { x: number; y: number; w: number; h: number }[] | undefined)?.map((r, i) => (
+            <rect key={`f${i}`} x={r.x} y={r.y} width={r.w} height={r.h} />
+          )) ?? cols.flatMap((x) =>
             tops.map((y) => <rect key={`t${x}-${y}`} x={x + g.axis - tile / 2} y={y + (slot - tile) / 2} width={tile} height={tile} />),
           )}
         </g>

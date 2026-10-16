@@ -1580,6 +1580,32 @@ def test_combined_entry_draws_its_symbols_side_by_side_with_one_text():
     assert a["x0"] >= grid["x"] + 0.29
 
 
+def test_combined_symbols_each_get_an_equal_tile_in_front_of_the_text():
+    doc = normalize({"version": 3, "style": {"columns": 2, "symbol_size": "tile"}, "blocks": [
+        {"id": "S", "title": "Schalter", "items": [
+            {"id": "c", "kind": "symbol", "symbol_key": "k1", "text": "Bewegungsmelder 180°",
+             "parts": [{"symbol_key": "k2", "text": "Bewegungsmelder 360°"}]},
+            {"id": "s", "kind": "symbol", "symbol_key": "k3", "text": "Taster"}]}]})
+    sizes = {"c": (-4.0, -4.0, 4.0, 4.0, False), "c#1": (-1.0, -6.0, 1.0, 6.0, False),
+             "s": (-3.0, -3.0, 3.0, 3.0, False)}
+    lay = layout(doc, sizes)
+    grid = next(p for p in lay["prims"] if p["t"] == "grid")
+    frames = sorted(grid["frames"], key=lambda r: (r["y"], r["x"]))
+    pair = [r for r in frames if abs(r["w"] - grid["tile"]) > 0.05]
+    lone = [r for r in frames if abs(r["w"] - grid["tile"]) <= 0.05]
+    assert len(pair) == 2 and len(lone) >= 1
+    assert pair[0]["w"] == pytest.approx(pair[1]["w"]) and pair[0]["h"] == pytest.approx(grid["tile"])
+    assert pair[0]["w"] < grid["tile"] and pair[0]["y"] == pytest.approx(lone[0]["y"])
+    gap = pair[1]["x"] - (pair[0]["x"] + pair[0]["w"])
+    assert gap == pytest.approx(0.45, abs=0.05)
+    assert pair[1]["x"] + pair[1]["w"] <= grid["x"] + grid["text"] - 0.4
+    syms = [p for p in lay["prims"] if p["t"] == "symbol" and p["id"] == "c"]
+    for sym, frame in zip(sorted(syms, key=lambda p: p["cx"]), pair):
+        assert sym["cx"] == pytest.approx(frame["x"] + frame["w"] / 2, abs=0.02)
+        assert sym["cy"] == pytest.approx(frame["y"] + frame["h"] / 2, abs=0.02)
+        assert max(sym["w"], sym["h"]) <= frame["w"] * 0.75 + 0.02
+
+
 def test_a_general_row_with_a_slash_covers_each_of_its_parts():
     from nova_legend.api.legend import covered_families
     from nova_legend.legend.general import GeneralPart, norm_text, text_parts
