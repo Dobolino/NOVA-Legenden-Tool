@@ -40,6 +40,7 @@ function AppContent() {
   const [revision, setRevision] = useState(0); // bumps when library data changes
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [theme, setThemeState] = useState<ThemeMode>(loadTheme);
   const setTheme = useCallback((mode: ThemeMode) => {
     applyTheme(mode);
@@ -83,6 +84,21 @@ function AppContent() {
   useEffect(() => {
     api.updateCheck().then(setUpdate).catch(() => undefined);
   }, []);
+
+  /** Click on the program version: ask again, then show the result. */
+  async function checkForUpdate() {
+    setChecking(true);
+    try {
+      const u = await api.updateCheck();
+      setUpdate(u);
+      if (u.available) notify(`Update ${u.latest} ist verfügbar.`);
+      else notify(u.message || "Du hast die neueste Version.", Boolean(u.message && !u.latest));
+    } catch (e) {
+      notify((e as Error).message, true);
+    } finally {
+      setChecking(false);
+    }
+  }
 
   /** Same as «Jetzt aktualisieren» in the settings: confirm, download, check, silent setup, restart. */
   async function installUpdate() {
@@ -144,6 +160,17 @@ function AppContent() {
         </nav>
         <div className="nav-footer">
           <span className="nav-footer-label">NOVA-Legenden</span>
+          {status?.version_label && (
+            <button
+              type="button"
+              className="nav-version"
+              onClick={checkForUpdate}
+              disabled={checking}
+              title="Nach Updates suchen"
+            >
+              {checking ? "Suche …" : status.version_label}
+            </button>
+          )}
           <span>Elektroplanung</span>
           <span className="nav-copy">
             <button type="button" className="nav-secret" onClick={secret}>© 2026 edeco ag</button>

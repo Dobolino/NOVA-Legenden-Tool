@@ -29,6 +29,15 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .app-nav .tab.active { box-shadow: inset 3px 0 0 var(--accent); }
 .nav-footer { margin-top: auto; padding: 28px 12px 0; display: flex; flex-direction: column; gap: 1px; font-size: 11px; line-height: 1.35; color: var(--muted); }
 .nav-footer-label { font-weight: 600; color: var(--fg); margin-bottom: 6px; }
+.nav-version, .version-link {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.nav-version:hover, .version-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.nav-version:disabled, .version-link:disabled { cursor: progress; }
 .nav-copy { display: flex; flex-direction: column; margin-top: 10px; }
 .nav-secret { all: unset; font: inherit; color: inherit; text-align: left; }
 .nav-footer .powered { margin-top: 10px; }

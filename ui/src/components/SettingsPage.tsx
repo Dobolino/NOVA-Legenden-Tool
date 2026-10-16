@@ -27,16 +27,20 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
   const [stencilInfo, setStencilInfo] = useState<StencilData | null>(null);
   const [busy, setBusy] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   async function checkUpdate() {
+    setChecking(true);
     setBusy(true);
     try {
       const u = await api.updateCheck();
       onUpdate(u);
-      if (!u.available) notify(u.message || "Du hast die neueste Version.", Boolean(u.message && !u.latest));
+      if (u.available) notify(`Update ${u.latest} ist verfügbar.`);
+      else notify(u.message || "Du hast die neueste Version.", Boolean(u.message && !u.latest));
     } catch (e) {
       notify((e as Error).message, true);
     } finally {
+      setChecking(false);
       setBusy(false);
     }
   }
@@ -143,7 +147,10 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
         <div className="card">
           <h3>Programm-Update</h3>
           <p className="desc">
-            Installiert: {status.version_label}.
+            Installiert:{" "}
+            <button type="button" className="version-link" onClick={checkUpdate} disabled={checking} title="Nach Updates suchen">
+              {checking ? "Suche …" : status.version_label}
+            </button>.
             {update?.latest ? ` Neueste Version: ${update.latest}.` : ""}
           </p>
           {update?.available && (
@@ -441,7 +448,11 @@ export default function SettingsPage({ status, update, onUpdate, notify, onChang
           <h3>Info</h3>
           <dl className="kv">
             <dt>Programmversion</dt>
-            <dd>{status.version_label}</dd>
+            <dd>
+              <button type="button" className="version-link" onClick={checkUpdate} disabled={checking} title="Nach Updates suchen">
+                {checking ? "Suche …" : status.version_label}
+              </button>
+            </dd>
             <dt>Benutzer</dt>
             <dd>{status.user}</dd>
             <dt>Lokale Daten</dt>
